@@ -33,15 +33,15 @@
   },
   "skillOverrides": {
     "fewer-permission-prompts": "on",
-    "test-driven-development": "on",
-    "systematic-debugging": "on",
+    "superpowers:test-driven-development": "on",
+    "superpowers:systematic-debugging": "on",
     "security-review": "on",
-    "verification-before-completion": "on",
-    "finishing-a-development-branch": "on",
+    "superpowers:verification-before-completion": "on",
+    "superpowers:finishing-a-development-branch": "on",
     "init": "on",
-    "writing-plans": "on",
-    "executing-plans": "on",
-    "requesting-code-review": "on",
+    "superpowers:writing-plans": "on",
+    "superpowers:executing-plans": "on",
+    "superpowers:requesting-code-review": "on",
     "graphify": "on"
   }
 }
