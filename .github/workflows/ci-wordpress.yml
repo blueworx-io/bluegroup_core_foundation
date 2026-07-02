@@ -1,0 +1,146 @@
+name: CI Guardrails (WordPress)
+
+# Reusable guardrail workflow for WordPress plugin projects. Runs Playwright
+# against a staging/preview URL instead of spinning up WordPress + a database.
+#
+#   jobs:
+#     guardrails:
+#       uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-wordpress.yml@main
+#       with:
+#         preview_url: https://staging.example.com
+#         plugin_slug: my-plugin
+#
+on:
+  workflow_call:
+    inputs:
+      preview_url:
+        description: Staging/preview URL Playwright runs against.
+        type: string
+        required: true
+      plugin_slug:
+        description: Plugin slug (used for the single-zip check). Inferred from the main plugin file if empty.
+        type: string
+        default: ''
+      node_version:
+        description: Node.js version (only used if the plugin has a package.json).
+        type: string
+        default: '20'
+      php_version:
+        description: PHP version.
+        type: string
+        default: '8.2'
+      lint_command:
+        description: Command to run the linter (skipped if no package.json).
+        type: string
+        default: npm run lint
+      build_command:
+        description: Command to build assets (skipped if no package.json).
+        type: string
+        default: npm run build
+      test_command:
+        description: Command to run Playwright tests against the preview URL.
+        type: string
+        default: npx playwright test
+      foundation_ref:
+        description: Ref of the foundation repo to pull the shared check scripts from.
+        type: string
+        default: main
+
+jobs:
+  guardrails:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout foundation (shared check scripts)
+        uses: actions/checkout@v4
+        with:
+          repository: blueworx-io/bluegroup_core_foundation
+          ref: ${{ inputs.foundation_ref }}
+          path: .foundation
+
+      - name: Fetch base branch
+        if: github.base_ref != ''
+        run: git fetch --no-tags origin "${{ github.base_ref }}" || true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php_version }}
+          tools: composer, cs2pr, phpcs
+
+      - name: Install Node dependencies (if package.json)
+        run: |
+          if [ -f package.json ]; then
+            if [ -f package-lock.json ]; then npm ci; else npm install; fi
+          else
+            echo "No package.json — skipping Node install."
+          fi
+
+      - name: Lint (if package.json)
+        run: |
+          if [ -f package.json ]; then ${{ inputs.lint_command }}; else echo "No package.json — skipping lint."; fi
+
+      - name: Build (if package.json)
+        run: |
+          if [ -f package.json ]; then ${{ inputs.build_command }}; else echo "No package.json — skipping build."; fi
+
+      - name: PHP syntax check
+        run: |
+          set -o pipefail
+          find . \( -path ./vendor -o -path ./node_modules -o -path ./.foundation \) -prune \
+            -o -name '*.php' -print0 | xargs -0 -r -n1 -P4 php -l
+
+      - name: PHPCS (if a phpcs config exists)
+        run: |
+          if ls phpcs.xml phpcs.xml.dist .phpcs.xml >/dev/null 2>&1; then
+            if [ -f composer.json ]; then composer install --no-interaction --no-progress || true; fi
+            if [ -f vendor/bin/phpcs ]; then
+              vendor/bin/phpcs -q --report=checkstyle | cs2pr
+            else
+              phpcs -q --report=checkstyle | cs2pr
+            fi
+          else
+            echo "No phpcs config (phpcs.xml / .dist / .phpcs.xml) — skipping PHPCS."
+          fi
+
+      - name: Version bump check (plugin header)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          VERSION_SOURCE: plugin-header
+        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-version-bump.mjs"
+
+      - name: Changelog check
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-changelog.mjs"
+
+      - name: Approved dependencies check
+        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-approved-deps.mjs"
+
+      - name: Plugin version sync (header vs package.json)
+        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-plugin-version-sync.mjs"
+
+      - name: Plugin zip check (only one <slug> zip)
+        env:
+          PLUGIN_SLUG: ${{ inputs.plugin_slug }}
+        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-plugin-zip.mjs"
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Playwright tests (against preview URL)
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ inputs.preview_url }}
+          BASE_URL: ${{ inputs.preview_url }}
+        run: ${{ inputs.test_command }}

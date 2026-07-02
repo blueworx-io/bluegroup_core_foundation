@@ -1,0 +1,100 @@
+name: CI Guardrails (headless)
+
+# Reusable guardrail workflow for headless projects (Netlify deploy + API backend).
+# Mechanically the same as standalone today, kept separate because headless is its
+# own project type and gets its own rules — notably the Netlify preview required
+# check (extension point below).
+#
+#   jobs:
+#     guardrails:
+#       uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-headless.yml@main
+#
+on:
+  workflow_call:
+    inputs:
+      node_version:
+        description: Node.js version.
+        type: string
+        default: '20'
+      lint_command:
+        description: Command to run the linter.
+        type: string
+        default: npm run lint
+      build_command:
+        description: Command to build the project.
+        type: string
+        default: npm run build
+      test_command:
+        description: Command to run Playwright tests against the local build.
+        type: string
+        default: npx playwright test
+      foundation_ref:
+        description: Ref of the foundation repo to pull the shared check scripts from.
+        type: string
+        default: main
+      netlify_preview_url:
+        description: Reserved for the headless-only Netlify preview required check (see below).
+        type: string
+        default: ''
+
+jobs:
+  guardrails:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout foundation (shared check scripts)
+        uses: actions/checkout@v4
+        with:
+          repository: blueworx-io/bluegroup_core_foundation
+          ref: ${{ inputs.foundation_ref }}
+          path: .foundation
+
+      - name: Fetch base branch
+        if: github.base_ref != ''
+        run: git fetch --no-tags origin "${{ github.base_ref }}" || true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Install dependencies
+        run: if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+      - name: Lint
+        run: ${{ inputs.lint_command }}
+
+      - name: Build
+        run: ${{ inputs.build_command }}
+
+      - name: Version bump check
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-version-bump.mjs"
+
+      - name: Changelog check
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-changelog.mjs"
+
+      - name: Approved dependencies check
+        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-approved-deps.mjs"
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Playwright tests (local build)
+        run: ${{ inputs.test_command }}
+
+      # ── Headless-only extension point: Netlify preview required check ─────────
+      # For headless projects the Netlify preview deploy is a REQUIRED check.
+      # When wired up, add a step here that waits for / verifies the Netlify
+      # preview for this PR (e.g. poll the Netlify deploy status or the
+      # `netlify_preview_url` input) and fails if it isn't ready and healthy.
+      # Left as a documented placeholder for now — see the design spec.

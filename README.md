@@ -30,12 +30,77 @@ curl -o CLAUDE.md \
 > Code settings, with one exception — **graphify** is a per-machine Python CLI.
 > Install it once per machine with `uv tool install graphifyy && graphify install`.
 
+## Using the CI guardrails
+
+Instead of repeating the rules per repo, a project adds one small caller workflow
+that points at the reusable workflow for its type. On every pull request the shared
+workflow installs + lints, builds, checks the version bump, checks the changelog,
+checks dependencies against the project's `approved-deps.json`, and runs Playwright.
+
+**Standalone**
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+on: pull_request
+jobs:
+  guardrails:
+    uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-standalone.yml@main
+```
+
+**Headless**
+
+```yaml
+name: CI
+on: pull_request
+jobs:
+  guardrails:
+    uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-headless.yml@main
+```
+
+**WordPress plugin** (Playwright runs against a staging/preview URL — no WordPress or
+database is spun up in CI):
+
+```yaml
+name: CI
+on: pull_request
+jobs:
+  guardrails:
+    uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-wordpress.yml@main
+    with:
+      preview_url: https://staging.example.com
+      plugin_slug: my-plugin
+```
+
+All inputs have sensible defaults (`node_version`, `lint_command`, `build_command`,
+`test_command`, `foundation_ref`; WordPress adds `php_version`, `preview_url`,
+`plugin_slug`). Override only what a project needs.
+
+> **Pin for reproducibility:** replace `@main` with a tag (e.g. `@v1`) and set the
+> matching `foundation_ref: v1` so the workflow and the shared check scripts move
+> together.
+
+## What each project copies in
+
+- [`CLAUDE.md.template`](CLAUDE.md.template) → the project's `CLAUDE.md`
+- [`templates/approved-deps.json`](templates/approved-deps.json) → the project's
+  `approved-deps.json` (then fill in its allowed dependencies)
+- [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) and
+  [`.github/ISSUE_TEMPLATE/task.md`](.github/ISSUE_TEMPLATE/task.md)
+- [`.claude/settings.json`](.claude/settings.json) — shared permissions + approved-skill
+  enablement
+
 ## What's here
 
-- [`CLAUDE.md.template`](CLAUDE.md.template) — condensed global rules every project
-  copies in as its own `CLAUDE.md`.
+- `.github/workflows/` — the three reusable guardrail workflows (`ci-*.yml`) plus this
+  repo's own `foundation-ci.yml` (runs the check-script tests on every PR; required by
+  branch protection)
+- `scripts/` — the generic check scripts the workflows call (version bump, changelog,
+  approved deps, plugin version-sync, plugin zip) plus their tested cores in `scripts/lib/`
+- `templates/approved-deps.json` — the empty allow-list starter
+- `.github/` PR + issue templates
+- `.claude/settings.json` — shared Claude Code permissions and approved skills
+- `CLAUDE.md.template` — condensed global rules every project carries as its `CLAUDE.md`
+- `docs/` — the design spec, implementation plan, and the saved setup prompt
 
-The reusable CI guardrail workflows (standalone / headless / WordPress), the shared
-check scripts, the `approved-deps.json` starter, the shared Claude Code settings
-(`.claude/settings.json`), and the PR/issue templates are part of the foundation
-build and are documented here as they land.
+_The Team Guidelines doc (the other reference) lives in ClickUp._
