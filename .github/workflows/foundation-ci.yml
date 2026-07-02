@@ -1,0 +1,28 @@
+name: Foundation CI
+
+# Self-CI for this repo: runs the check-script unit tests and syntax-checks every
+# script on each PR. This is the status check that main's branch protection
+# requires. (The ci-*.yml workflows are reusable and only run in consumer repos.)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax-check all scripts
+        run: for f in scripts/*.mjs scripts/lib/*.mjs; do node --check "$f"; done
+
+      - name: Run unit tests
+        run: node --test scripts/lib/*.test.mjs

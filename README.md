@@ -92,7 +92,9 @@ All inputs have sensible defaults (`node_version`, `lint_command`, `build_comman
 
 ## What's here
 
-- `.github/workflows/` — the three reusable guardrail workflows
+- `.github/workflows/` — the three reusable guardrail workflows (`ci-*.yml`) plus this
+  repo's own `foundation-ci.yml` (runs the check-script tests on every PR; required by
+  branch protection)
 - `scripts/` — the generic check scripts the workflows call (version bump, changelog,
   approved deps, plugin version-sync, plugin zip) plus their tested cores in `scripts/lib/`
 - `templates/approved-deps.json` — the empty allow-list starter
