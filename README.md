@@ -26,6 +26,11 @@ curl -o CLAUDE.md \
   https://raw.githubusercontent.com/blueworx-io/bluegroup_core_foundation/main/CLAUDE.md.template
 ```
 
+For **headless** projects there is a saved follow-on prompt,
+[`docs/starter-prompt-headless-framework.md`](docs/starter-prompt-headless-framework.md),
+that scaffolds the standard framework — Next.js (App Router) + TypeScript — on top
+of the initial setup.
+
 > **Skills note:** the approved skills load automatically from the shared Claude
 > Code settings, with one exception — **graphify** is a per-machine Python CLI.
 > Install it once per machine with `uv tool install graphifyy && graphify install`.
@@ -101,6 +106,7 @@ All inputs have sensible defaults (`node_version`, `lint_command`, `build_comman
 - `.github/` PR + issue templates
 - `.claude/settings.json` — shared Claude Code permissions and approved skills
 - `CLAUDE.md.template` — condensed global rules every project carries as its `CLAUDE.md`
-- `docs/` — the design spec, implementation plan, and the saved setup prompt
+- `docs/` — the design spec, implementation plan, and the saved prompts (setup +
+  headless framework starter)
 
 _The Team Guidelines doc (the other reference) lives in ClickUp._
