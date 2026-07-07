@@ -52,6 +52,7 @@ Do this proactively at the end of any session with deployable changes — never 
 
 ## Approved Tools & Styles
 
+- Framework (headless projects): Next.js (App Router) + TypeScript — scaffolded via create-next-app
 - Component base: Radix Themes
 - Icons: lucide-react
 - Styling: Tailwind CSS
