@@ -61,11 +61,33 @@ Do this proactively at the end of any session with deployable changes — never 
 - Inspiration only, never copied directly: 21st.dev
 - No page builders (Elementor etc.) — WordPress sites are built as a plugin, in code, never straight into WordPress core or a loose theme
 
-## Approved Skills
+## Skill Usage Policy
 
-Enabled automatically by the shared settings file from `bluegroup_core_foundation` — nobody installs these by hand: fewer-permission-prompts, test-driven-development, systematic-debugging, security-review, verification-before-completion, finishing-a-development-branch, init, writing-plans, executing-plans, requesting-code-review, graphify
+These skills load automatically from the shared `bluegroup_core_foundation` settings — nobody enables them by hand (graphify is the one per-machine exception, below). **You MUST invoke each one the moment its trigger applies, before doing the work — no human will remind you.** Say "Using [skill] because [trigger]" out loud so the choice is visible and correctable.
 
-> **Footnote — graphify:** graphify is the one exception to "nobody installs these by hand." It is a per-machine Python CLI (PyPI package `graphifyy`), not a config-enabled marketplace plugin, so each machine installs it once with `uv tool install graphifyy && graphify install`. The shared settings still list it as approved, and every other skill here loads automatically from that settings file.
+| When this happens | You MUST use | How |
+|---|---|---|
+| Starting any feature, component, or behaviour change | brainstorming → writing-plans | Explore intent with `superpowers:brainstorming` before entering plan mode, then capture the plan with `superpowers:writing-plans` before touching code |
+| Executing an approved written plan | executing-plans | Drive it with `superpowers:executing-plans` and honour its review checkpoints |
+| Implementing any feature or bug fix | test-driven-development | Write the failing test first with `superpowers:test-driven-development`, before implementation code |
+| Any bug, test failure, or unexpected behaviour | systematic-debugging | Find root cause with `superpowers:systematic-debugging` before proposing or writing a fix |
+| A security-sensitive change (auth, secrets, input handling, uploads, payments, access control) | security-review | Run `security-review` before committing |
+| About to claim work is done / before any commit or PR | verification-before-completion | Run `superpowers:verification-before-completion` and show real command output — evidence before claims |
+| Work complete, before merge | requesting-code-review → finishing-a-development-branch | Get review via `superpowers:requesting-code-review`, then integrate with `superpowers:finishing-a-development-branch` |
+| Any question about this codebase's architecture, file relationships, or content | graphify | Treat it as a graph query first (see below) |
+| A brand-new repo that has no `CLAUDE.md` yet | init | Generate the project's `CLAUDE.md` with `init` |
+| Repeated permission prompts for safe, read-only commands | fewer-permission-prompts | Run `fewer-permission-prompts` to add a scoped allowlist to the project's `.claude/settings.json` |
+
+### graphify — per-machine install + usage
+
+- **Install once per machine:** `uv tool install graphifyy && graphify install`. It's a Python CLI (PyPI `graphifyy`), not a config-enabled plugin — the shared settings only mark it approved.
+- **PATH gotcha:** the CLI installs to `~/.local/bin` (Windows: `%USERPROFILE%\.local\bin`), which may not be on PATH. If `graphify` isn't found, add that directory to PATH — don't reinstall.
+- **Usage:** for any question about this project's architecture, how files relate, or where something lives, treat it as a graphify query first. If `graphify-out/` exists, query the existing graph; if none exists yet, build it, then query.
+
+### Enforced vs model-driven — know the difference
+
+- **Deterministic (enforced every time by CI):** lint, build, version bump, changelog, approved-deps, Playwright test — the Hard Guardrails above. Never bypass these; the triggers below never override them.
+- **Model-driven (this policy + each skill's own description):** every trigger in the table. Strong, but they fire on *your* judgement, not a guarantee — which is exactly why the "say it out loud" rule exists. There are deliberately no per-skill hooks: these skills fire on the *kind* of change (a bug, a security-sensitive edit, a feature), which a tool/event hook can't detect without misfiring, and the truly must-happen-every-time checks already live in CI.
 
 ## Model Guidance
 
