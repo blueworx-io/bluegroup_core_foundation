@@ -33,6 +33,7 @@
   },
   "skillOverrides": {
     "fewer-permission-prompts": "on",
+    "superpowers:brainstorming": "on",
     "superpowers:test-driven-development": "on",
     "superpowers:systematic-debugging": "on",
     "security-review": "on",
