@@ -34,6 +34,11 @@ of the initial setup.
 > **Skills note:** the approved skills load automatically from the shared Claude
 > Code settings, with one exception — **graphify** is a per-machine Python CLI.
 > Install it once per machine with `uv tool install graphifyy && graphify install`.
+> The CLI installs to `~/.local/bin` (Windows: `%USERPROFILE%\.local\bin`), which
+> may not be on PATH — if `graphify` isn't found, add that directory to PATH rather
+> than reinstalling. The template's **Skill Usage Policy** section then tells Claude
+> Code *when and how* to fire each skill automatically, so nobody has to remember to
+> invoke them.
 
 ## Using the CI guardrails
 
