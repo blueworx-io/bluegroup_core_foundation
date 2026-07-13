@@ -47,7 +47,10 @@ Every build or change starts from an approved GitHub Issue.
 Do this proactively at the end of any session with deployable changes — never wait to be asked.
 
 - Standalone: `npm install`, `npm run build`, then remove `node_modules` to leave the folder clean for manual zipping
-- WordPress plugin: bump the plugin version, then zip the plugin folder and place the zip at `<plugin-parent-dir>/<plugin-slug>.zip` — remove any older versioned zips in that same directory before creating the new one. The zip is the deployment artifact, never copy individual files
+- WordPress plugin: bump the plugin version and update the changelog, then build the zip **one level up from the repo** at `<plugin-parent-dir>/<plugin-slug>.zip` — never inside the repo working tree. Remove any older `<slug>.zip` in that parent folder first. The zip is the deployment artifact, never copy individual files
+  - The archive **must use forward slashes** (`<slug>/<slug>.php`, nested one level) — WordPress hosts are Linux and a backslash zip mis-extracts, reporting "Plugin file does not exist." on activate
+  - **Never use PowerShell `Compress-Archive`** — on Windows PS 5.1 it writes backslash entries (the exact bug above). Build with **bsdtar**: `/c/Windows/System32/tar.exe -a -c -f ../<slug>.zip -C dist <slug>` (Git Bash) or `& "$env:WINDIR\System32\tar.exe" -a -c -f "..\<slug>.zip" -C dist <slug>` (PowerShell); GNU `tar` can't write zip, so call System32 `tar.exe` explicitly
+  - Verify before handing off: `unzip -l ../<slug>.zip` — every entry must read `<slug>/...` with `/`. Any `\` means the zip is broken; rebuild. Don't deliver a zip you haven't listed
 - Headless: nothing manual — CI and Netlify handle install, build, and deploy once merged
 
 ## Approved Tools & Styles
