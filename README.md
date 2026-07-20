@@ -107,6 +107,12 @@ All inputs have sensible defaults (`node_version`, `lint_command`, `build_comman
 > green having asserted nothing. The check reads the json reporter's output, so a
 > custom command needs `--reporter=list,json` (or equivalent) or it will fail
 > asking for it.
+>
+> WordPress projects have a temporary escape hatch, `allow_zero_tests: true`,
+> which downgrades that failure to a warning for a project that has no working
+> test host yet. It is not a fix — a project setting it is not being tested — so
+> it should always have an open issue against it and be removed once real tests
+> run.
 
 > **Pin for reproducibility:** replace `@main` with a tag (e.g. `@v1`) and set the
 > matching `foundation_ref: v1` so the workflow and the shared check scripts move
