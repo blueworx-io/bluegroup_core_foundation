@@ -7,24 +7,39 @@
 // overrides test_command must keep the json reporter or this check fails loudly
 // rather than silently passing.
 
+//
+// ALLOW_ZERO_TESTS=true downgrades a failure to a warning. It is a temporary
+// escape hatch for a project that has no working test host yet — it does not
+// make the problem go away, it just stops it blocking unrelated work. Every
+// run says so in the log.
+
 import { existsSync } from 'node:fs';
 import { readJson } from './lib/io.mjs';
 import { testsExecuted } from './lib/checks.mjs';
 
 const reportPath = process.env.PLAYWRIGHT_JSON_OUTPUT_NAME || 'playwright-report.json';
+const allowZero = process.env.ALLOW_ZERO_TESTS === 'true';
+
+function fail(message) {
+  if (allowZero) {
+    console.log(`::warning title=Test gate suppressed::${message.split('\n')[0]} (allow_zero_tests is on for this project, so this is a warning rather than a failure — it still means CI proved nothing.)`);
+    console.log(message);
+    process.exit(0);
+  }
+  console.error(message);
+  process.exit(1);
+}
 
 if (!existsSync(reportPath)) {
-  console.error(
+  fail(
     `No Playwright JSON report at ${reportPath}, so the number of tests that ran can't be verified.\n` +
       "  If this project overrides test_command, keep the json reporter — e.g. `npx playwright test --reporter=list,json`.",
   );
-  process.exit(1);
 }
 
 const report = readJson(reportPath);
 if (!report) {
-  console.error(`${reportPath} exists but could not be parsed as JSON.`);
-  process.exit(1);
+  fail(`${reportPath} exists but could not be parsed as JSON.`);
 }
 
 const result = testsExecuted({ report });
@@ -33,5 +48,4 @@ if (result.ok) {
   process.exit(0);
 }
 
-console.error(result.message);
-process.exit(1);
+fail(result.message);

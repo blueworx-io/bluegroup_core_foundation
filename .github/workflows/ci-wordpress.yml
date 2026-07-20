@@ -48,6 +48,13 @@ on:
           reporter — the zero-tests check reads its output.
         type: string
         default: npx playwright test --reporter=list,json
+      allow_zero_tests:
+        description: >-
+          Temporary escape hatch: downgrade the zero-tests failure to a warning
+          for a project that has no working test host yet. Leave false. A project
+          setting this true is not being tested — track the removal.
+        type: boolean
+        default: false
       wp_login_path:
         description: Path to the WordPress login screen, if the project moves it off /wp-login.php.
         type: string
@@ -189,4 +196,5 @@ jobs:
         if: always()
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-report.json
+          ALLOW_ZERO_TESTS: ${{ inputs.allow_zero_tests }}
         run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-tests-ran.mjs"
