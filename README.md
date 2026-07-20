@@ -80,11 +80,26 @@ jobs:
     with:
       preview_url: https://staging.example.com
       plugin_slug: my-plugin
+    secrets: inherit
 ```
+
+> **`secrets: inherit` is not optional in practice.** Tests that sign in to wp-admin
+> need `WP_ADMIN_USER` and `WP_ADMIN_PASS` as repo secrets. Without them those specs
+> skip themselves and the run reports green having asserted nothing. Pass them
+> explicitly instead if you prefer:
+>
+> ```yaml
+>     secrets:
+>       WP_ADMIN_USER: ${{ secrets.WP_ADMIN_USER }}
+>       WP_ADMIN_PASS: ${{ secrets.WP_ADMIN_PASS }}
+> ```
+>
+> The same trap applies to `preview_url`: point it at a real instance. Specs that
+> guard on a placeholder URL skip too.
 
 All inputs have sensible defaults (`node_version`, `lint_command`, `build_command`,
 `test_command`, `foundation_ref`; WordPress adds `php_version`, `preview_url`,
-`plugin_slug`). Override only what a project needs.
+`plugin_slug`, `wp_login_path`). Override only what a project needs.
 
 > **Pin for reproducibility:** replace `@main` with a tag (e.g. `@v1`) and set the
 > matching `foundation_ref: v1` so the workflow and the shared check scripts move
