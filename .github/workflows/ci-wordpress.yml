@@ -9,6 +9,11 @@ name: CI Guardrails (WordPress)
 #       with:
 #         preview_url: https://staging.example.com
 #         plugin_slug: my-plugin
+#       secrets: inherit
+#
+# Tests that sign in to wp-admin need WP_ADMIN_USER and WP_ADMIN_PASS. Without
+# them those specs skip themselves and the run reports green having asserted
+# nothing — pass them via `secrets: inherit` (or explicitly) so the gate is real.
 #
 on:
   workflow_call:
@@ -41,10 +46,21 @@ on:
         description: Command to run Playwright tests against the preview URL.
         type: string
         default: npx playwright test
+      wp_login_path:
+        description: Path to the WordPress login screen, if the project moves it off /wp-login.php.
+        type: string
+        default: ''
       foundation_ref:
         description: Ref of the foundation repo to pull the shared check scripts from.
         type: string
         default: main
+    secrets:
+      WP_ADMIN_USER:
+        description: WordPress admin username for tests that sign in. Specs requiring it skip themselves when absent.
+        required: false
+      WP_ADMIN_PASS:
+        description: WordPress admin password for tests that sign in. Specs requiring it skip themselves when absent.
+        required: false
 
 jobs:
   guardrails:
@@ -139,8 +155,24 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
+      # The secrets context is not usable in an `if:` expression, so read them
+      # through env and test the values in the shell instead.
+      - name: Warn if admin credentials are missing
+        env:
+          WP_ADMIN_USER: ${{ secrets.WP_ADMIN_USER }}
+          WP_ADMIN_PASS: ${{ secrets.WP_ADMIN_PASS }}
+        run: |
+          if [ -z "$WP_ADMIN_USER" ] || [ -z "$WP_ADMIN_PASS" ]; then
+            echo "::warning title=No WordPress admin credentials::WP_ADMIN_USER / WP_ADMIN_PASS were not passed to this workflow. Specs that sign in to wp-admin will skip themselves, so this run may assert far less than it appears to. Pass them with 'secrets: inherit' in the caller."
+          else
+            echo "WordPress admin credentials present."
+          fi
+
       - name: Playwright tests (against preview URL)
         env:
           PLAYWRIGHT_BASE_URL: ${{ inputs.preview_url }}
           BASE_URL: ${{ inputs.preview_url }}
+          WP_ADMIN_USER: ${{ secrets.WP_ADMIN_USER }}
+          WP_ADMIN_PASS: ${{ secrets.WP_ADMIN_PASS }}
+          WP_LOGIN_PATH: ${{ inputs.wp_login_path }}
         run: ${{ inputs.test_command }}
