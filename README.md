@@ -101,6 +101,13 @@ All inputs have sensible defaults (`node_version`, `lint_command`, `build_comman
 `test_command`, `foundation_ref`; WordPress adds `php_version`, `preview_url`,
 `plugin_slug`, `wp_login_path`). Override only what a project needs.
 
+> **If you override `test_command`, keep the json reporter.** Every workflow fails
+> the build when a Playwright run executes zero tests — `npx playwright test` exits
+> 0 when everything skips, so without that gate a suite that skips itself reports
+> green having asserted nothing. The check reads the json reporter's output, so a
+> custom command needs `--reporter=list,json` (or equivalent) or it will fail
+> asking for it.
+
 > **Pin for reproducibility:** replace `@main` with a tag (e.g. `@v1`) and set the
 > matching `foundation_ref: v1` so the workflow and the shared check scripts move
 > together.
@@ -121,7 +128,8 @@ All inputs have sensible defaults (`node_version`, `lint_command`, `build_comman
   repo's own `foundation-ci.yml` (runs the check-script tests on every PR; required by
   branch protection)
 - `scripts/` — the generic check scripts the workflows call (version bump, changelog,
-  approved deps, plugin version-sync, plugin zip) plus their tested cores in `scripts/lib/`
+  approved deps, plugin version-sync, plugin zip, tests-actually-ran) plus their tested
+  cores in `scripts/lib/`
 - `templates/approved-deps.json` — the empty allow-list starter
 - `.github/` PR + issue templates
 - `.claude/settings.json` — shared Claude Code permissions and approved skills
