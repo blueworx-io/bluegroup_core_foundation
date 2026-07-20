@@ -66,6 +66,76 @@ export function pluginZip({ zipFiles, slug }) {
   };
 }
 
+// A Playwright run that executes nothing still exits 0, so a suite that skips
+// itself wholesale reports green having asserted nothing. Skipped tests do not
+// count as executed — that is the failure mode this exists to catch.
+export function testsExecuted({ report }) {
+  const counts = countOutcomes(report);
+  const { executed, skipped } = counts;
+
+  if (executed > 0) {
+    const detail = skipped > 0 ? ` (${skipped} skipped)` : '';
+    return { ok: true, counts, message: `${executed} test(s) executed${detail}.` };
+  }
+
+  if (skipped > 0) {
+    return {
+      ok: false,
+      counts,
+      message:
+        `Every test skipped (${skipped} skipped, 0 executed). The suite asserted nothing, so this run proves nothing.\n` +
+        '  Usual causes: a placeholder preview/base URL that specs guard against, or missing credentials\n' +
+        '  (e.g. WP_ADMIN_USER / WP_ADMIN_PASS) that make specs skip themselves.',
+    };
+  }
+
+  return {
+    ok: false,
+    counts,
+    message:
+      'No tests were found or executed. A project must have at least one Playwright test that actually runs.',
+  };
+}
+
+// Prefer Playwright's own stats block; fall back to walking the suite tree for
+// older report shapes. Returns { executed, skipped, total }.
+function countOutcomes(report) {
+  const stats = report?.stats;
+  if (stats && typeof stats === 'object') {
+    const expected = num(stats.expected);
+    const unexpected = num(stats.unexpected);
+    const flaky = num(stats.flaky);
+    const skipped = num(stats.skipped);
+    const executed = expected + unexpected + flaky;
+    return { executed, skipped, total: executed + skipped };
+  }
+
+  let executed = 0;
+  let skipped = 0;
+  for (const status of walkStatuses(report?.suites)) {
+    if (status === 'skipped') skipped += 1;
+    else executed += 1;
+  }
+  return { executed, skipped, total: executed + skipped };
+}
+
+function* walkStatuses(suites) {
+  for (const suite of suites ?? []) {
+    for (const spec of suite.specs ?? []) {
+      for (const test of spec.tests ?? []) {
+        for (const result of test.results ?? []) {
+          if (result?.status) yield result.status;
+        }
+      }
+    }
+    yield* walkStatuses(suite.suites);
+  }
+}
+
+function num(value) {
+  return Number.isFinite(value) ? value : 0;
+}
+
 function toNameSet(allow) {
   if (Array.isArray(allow)) return new Set(allow);
   if (allow && typeof allow === 'object') return new Set(Object.keys(allow));

@@ -25,9 +25,11 @@ on:
         type: string
         default: npm run build
       test_command:
-        description: Command to run Playwright tests against the local build.
+        description: >-
+          Command to run Playwright tests against the local build. Keep the json
+          reporter — the zero-tests check reads its output.
         type: string
-        default: npx playwright test
+        default: npx playwright test --reporter=list,json
       foundation_ref:
         description: Ref of the foundation repo to pull the shared check scripts from.
         type: string
@@ -90,7 +92,18 @@ jobs:
         run: npx playwright install --with-deps
 
       - name: Playwright tests (local build)
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-report.json
         run: ${{ inputs.test_command }}
+
+      # `npx playwright test` exits 0 when every test skips, so a suite that
+      # skips itself wholesale would otherwise report green having asserted
+      # nothing. Runs even when the tests failed, to report what actually ran.
+      - name: Tests actually ran check
+        if: always()
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-report.json
+        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-tests-ran.mjs"
 
       # ── Headless-only extension point: Netlify preview required check ─────────
       # For headless projects the Netlify preview deploy is a REQUIRED check.
