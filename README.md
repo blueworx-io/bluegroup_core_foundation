@@ -118,6 +118,39 @@ All inputs have sensible defaults (`node_version`, `lint_command`, `build_comman
 > matching `foundation_ref: v1` so the workflow and the shared check scripts move
 > together.
 
+## Releasing a WordPress plugin (auto-updates)
+
+Plugins update themselves on live sites from GitHub Releases — no manual zip
+uploads. A plugin repo adds one more caller workflow:
+
+```yaml
+# .github/workflows/release.yml
+name: Release
+on:
+  push:
+    tags: ['v*']
+jobs:
+  release:
+    uses: blueworx-io/bluegroup_core_foundation/.github/workflows/release-wordpress.yml@main
+    with:
+      plugin_slug: my-plugin
+    permissions:
+      contents: write
+```
+
+> **`permissions: contents: write` is required.** A reusable workflow cannot widen
+> the permissions its caller gives it, so without this the publish step fails with
+> a 403.
+
+Pushing a `v*` tag verifies the tag matches the plugin's `Version:` header, builds
+a clean zip, checks the archive nests exactly one level, and publishes it as a
+Release asset. Sites running the vendored Plugin Update Checker install it like
+any other update.
+
+Full setup — vendoring the library, the paste-in bootstrap, the per-site token,
+and the release checklist — is in
+[`docs/wordpress-auto-updates.md`](docs/wordpress-auto-updates.md).
+
 ## What each project copies in
 
 - [`CLAUDE.md.template`](CLAUDE.md.template) → the project's `CLAUDE.md`
@@ -130,13 +163,15 @@ All inputs have sensible defaults (`node_version`, `lint_command`, `build_comman
 
 ## What's here
 
-- `.github/workflows/` — the three reusable guardrail workflows (`ci-*.yml`) plus this
-  repo's own `foundation-ci.yml` (runs the check-script tests on every PR; required by
-  branch protection)
+- `.github/workflows/` — the three reusable guardrail workflows (`ci-*.yml`), the reusable
+  WordPress release workflow (`release-wordpress.yml`), plus this repo's own
+  `foundation-ci.yml` (runs the check-script tests on every PR; required by branch
+  protection)
 - `scripts/` — the generic check scripts the workflows call (version bump, changelog,
-  approved deps, plugin version-sync, plugin zip, tests-actually-ran) plus their tested
-  cores in `scripts/lib/`
-- `templates/approved-deps.json` — the empty allow-list starter
+  approved deps, plugin version-sync, plugin zip, tests-actually-ran, release-tag match)
+  plus the `plugin-info` resolver and their tested cores in `scripts/lib/`
+- `templates/` — `approved-deps.json` (the empty allow-list starter) and
+  `plugin-update-checker-bootstrap.php` (paste-in auto-update wiring for plugins)
 - `.github/` PR + issue templates
 - `.claude/settings.json` — shared Claude Code permissions and approved skills
 - `CLAUDE.md.template` — condensed global rules every project carries as its `CLAUDE.md`
