@@ -68,8 +68,8 @@ jobs:
     uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-headless.yml@main
 ```
 
-**WordPress plugin** (Playwright runs against a staging/preview URL — no WordPress or
-database is spun up in CI):
+**WordPress plugin** (Playwright runs against a disposable WordPress the run
+provisions itself — PHP + SQLite, no Docker, no hosting):
 
 ```yaml
 name: CI
@@ -78,10 +78,19 @@ jobs:
   guardrails:
     uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-wordpress.yml@main
     with:
-      preview_url: https://staging.example.com
       plugin_slug: my-plugin
+      use_local_wordpress: true
     secrets: inherit
 ```
+
+> **This is the default for new plugin projects.** See
+> [`docs/wordpress-test-harness.md`](docs/wordpress-test-harness.md) for how to run
+> the same instance locally, and add `.wp-test/` to the project's `.gitignore`.
+>
+> The alternative — `preview_url: https://staging.example.com` against a hosted
+> staging site — is still supported, but it is how CI came to report green while
+> running zero tests: a placeholder URL makes every spec skip itself. If you use
+> it, point it at something real and pass `WP_ADMIN_USER` / `WP_ADMIN_PASS`.
 
 > **`secrets: inherit` is not optional in practice.** Tests that sign in to wp-admin
 > need `WP_ADMIN_USER` and `WP_ADMIN_PASS` as repo secrets. Without them those specs
@@ -135,12 +144,12 @@ All inputs have sensible defaults (`node_version`, `lint_command`, `build_comman
   branch protection)
 - `scripts/` — the generic check scripts the workflows call (version bump, changelog,
   approved deps, plugin version-sync, plugin zip, tests-actually-ran) plus their tested
-  cores in `scripts/lib/`
+  cores in `scripts/lib/`, and `wp-test-env.mjs`, the local WordPress harness
 - `templates/approved-deps.json` — the empty allow-list starter
 - `.github/` PR + issue templates
 - `.claude/settings.json` — shared Claude Code permissions and approved skills
 - `CLAUDE.md.template` — condensed global rules every project carries as its `CLAUDE.md`
-- `docs/` — the design spec, implementation plan, and the saved prompts (setup +
-  headless framework starter)
+- `docs/` — the design spec, implementation plan, the local WordPress test harness
+  guide, and the saved prompts (setup + headless framework starter)
 
 _The Team Guidelines doc (the other reference) lives in ClickUp._
