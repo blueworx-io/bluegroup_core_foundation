@@ -1,0 +1,226 @@
+name: Release (WordPress)
+
+# Reusable release workflow for WordPress plugin projects. Pushing a version tag
+# builds a clean plugin zip and publishes it as a GitHub Release asset, which is
+# what the plugin's update checker installs from.
+#
+#   # .github/workflows/release.yml
+#   name: Release
+#   on:
+#     push:
+#       tags: ['v*']
+#   jobs:
+#     release:
+#       uses: blueworx-io/bluegroup_core_foundation/.github/workflows/release-wordpress.yml@main
+#       with:
+#         plugin_slug: my-plugin
+#       permissions:
+#         contents: write
+#
+# `permissions: contents: write` belongs in the caller — a reusable workflow
+# cannot widen the permissions it is given. Without it, publishing 403s.
+#
+on:
+  workflow_call:
+    inputs:
+      plugin_slug:
+        description: Plugin slug — the folder name inside the zip. Inferred from the main plugin file if empty.
+        type: string
+        default: ''
+      node_version:
+        description: Node.js version (only used if the plugin has a package.json).
+        type: string
+        default: '20'
+      build_command:
+        description: Command to build assets (skipped if no package.json).
+        type: string
+        default: npm run build
+      exclude_paths:
+        description: >-
+          Extra paths to leave out of the zip, one per line, as rsync patterns
+          (a leading / anchors to the repo root). Added to the defaults.
+        type: string
+        default: ''
+      foundation_ref:
+        description: Ref of the foundation repo to pull the shared check scripts from.
+        type: string
+        default: main
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout tagged commit
+        uses: actions/checkout@v4
+
+      - name: Checkout foundation (shared check scripts)
+        uses: actions/checkout@v4
+        with:
+          repository: blueworx-io/bluegroup_core_foundation
+          ref: ${{ inputs.foundation_ref }}
+          path: .foundation
+
+      - name: Resolve plugin file and slug
+        id: info
+        env:
+          PLUGIN_SLUG: ${{ inputs.plugin_slug }}
+        run: node "$GITHUB_WORKSPACE/.foundation/scripts/plugin-info.mjs" >> "$GITHUB_OUTPUT"
+
+      # The guardrail that matters most: a tag that disagrees with the header
+      # publishes a Release no site is ever offered.
+      - name: Release tag matches plugin header
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          PLUGIN_FILE: ${{ steps.info.outputs.plugin_file }}
+        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-release-tag.mjs"
+
+      - name: Setup Node
+        if: hashFiles('package.json') != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Install and build (if package.json)
+        run: |
+          if [ -f package.json ]; then
+            if [ -f package-lock.json ]; then npm ci; else npm install; fi
+            ${{ inputs.build_command }}
+          else
+            echo "No package.json — skipping install and build."
+          fi
+
+      # Staged with rsync so the exclude list is declarative and the zip only
+      # ever contains what shipped through it.
+      - name: Stage clean plugin tree
+        env:
+          SLUG: ${{ steps.info.outputs.slug }}
+          EXTRA_EXCLUDES: ${{ inputs.exclude_paths }}
+        run: |
+          set -euo pipefail
+          cat > /tmp/plugin-excludes.txt <<'EOF'
+          .git/
+          /.github
+          /.foundation
+          /.claude
+          /node_modules
+          /tests
+          /test-results
+          /playwright-report
+          /docs
+          /playwright.config.*
+          /package.json
+          /package-lock.json
+          /approved-deps.json
+          /.editorconfig
+          /.gitignore
+          /.gitattributes
+          /phpcs.xml
+          /phpcs.xml.dist
+          /.phpcs.xml
+          /.eslintrc*
+          /eslint.config.*
+          .env
+          .env.*
+          .npmrc
+          *.pem
+          *.key
+          # Deliberately unanchored (no leading /) so a stray zip anywhere in the
+          # tree — e.g. left over from a local build — never ships either.
+          *.zip
+          EOF
+          if [ -n "$EXTRA_EXCLUDES" ]; then
+            printf '%s\n' "$EXTRA_EXCLUDES" >> /tmp/plugin-excludes.txt
+          fi
+          echo "Excluding:"
+          sed 's/^/  /' /tmp/plugin-excludes.txt
+          mkdir -p "$RUNNER_TEMP/stage/$SLUG"
+          rsync -a --exclude-from=/tmp/plugin-excludes.txt ./ "$RUNNER_TEMP/stage/$SLUG/"
+          echo "Staged tree:"
+          find "$RUNNER_TEMP/stage/$SLUG" -maxdepth 1 -mindepth 1 | sed 's/^/  /'
+
+      # GNU tar on Ubuntu cannot write zip format, so this uses zip(1). Entries
+      # come out with forward slashes, which is what WordPress needs.
+      - name: Build zip
+        env:
+          SLUG: ${{ steps.info.outputs.slug }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/stage"
+          zip -r -q "$GITHUB_WORKSPACE/$SLUG.zip" "$SLUG"
+          ls -lh "$GITHUB_WORKSPACE/$SLUG.zip"
+
+      - name: Verify zip shape
+        env:
+          SLUG: ${{ steps.info.outputs.slug }}
+          PLUGIN_FILE: ${{ steps.info.outputs.plugin_file }}
+        run: |
+          set -euo pipefail
+          unzip -l "$SLUG.zip"
+          entries=$(unzip -Z1 "$SLUG.zip")
+          stray=$(printf '%s\n' "$entries" | awk -v s="$SLUG/" 'index($0, s) != 1' || true)
+          if [ -n "$stray" ]; then
+            echo "::error title=Malformed plugin zip::Entries outside $SLUG/ — the archive must nest exactly one level:"
+            printf '%s\n' "$stray" | sed 's/^/  /'
+            exit 1
+          fi
+          main_entry="$SLUG/$(basename "$PLUGIN_FILE")"
+          if ! printf '%s\n' "$entries" | grep -qFx "$main_entry"; then
+            echo "::error title=Malformed plugin zip::Main plugin file $main_entry is missing from the archive."
+            exit 1
+          fi
+          if ! printf '%s\n' "$entries" | grep -qFx "$SLUG/plugin-update-checker/plugin-update-checker.php"; then
+            echo "::error title=Update checker missing::$SLUG/plugin-update-checker/plugin-update-checker.php is not in the archive — sites would fatal on update and could never receive another."
+            exit 1
+          fi
+          echo "Zip verified: every entry under $SLUG/, main file $main_entry present."
+
+      - name: Extract changelog section for this version
+        id: notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          if [ -f CHANGELOG.md ]; then
+            awk -v v="$version" '
+              /^##[[:space:]]/ {
+                if (flag) exit
+                h = $0
+                sub(/\r$/, "", h)
+                sub(/^##[[:space:]]+/, "", h)
+                sub(/^\[/, "", h)
+                sub(/\].*$/, "", h)
+                sub(/[[:space:]].*$/, "", h)
+                if (h == v) { flag = 1 }
+                next
+              }
+              flag { print }
+            ' CHANGELOG.md > /tmp/release-notes.md
+          else
+            : > /tmp/release-notes.md
+          fi
+          if [ -s /tmp/release-notes.md ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "Release notes taken from CHANGELOG.md:"
+            sed 's/^/  /' /tmp/release-notes.md
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=No changelog section::No CHANGELOG.md section for $version — falling back to GitHub's generated notes."
+          fi
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          SLUG: ${{ steps.info.outputs.slug }}
+          NOTES_FOUND: ${{ steps.notes.outputs.found }}
+        run: |
+          set -euo pipefail
+          if [ "$NOTES_FOUND" = "true" ]; then
+            gh release create "$TAG" "$SLUG.zip" --title "$TAG" --notes-file /tmp/release-notes.md
+          else
+            gh release create "$TAG" "$SLUG.zip" --title "$TAG" --generate-notes
+          fi
+          echo "Published $TAG with $SLUG.zip attached."

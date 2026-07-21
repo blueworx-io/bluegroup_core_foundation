@@ -686,10 +686,10 @@ Our plugin repos are private, so each site needs a read-only token to see them.
 
 ```bash
 # from the plugin repo root
-curl -L -o puc.zip https://github.com/YahnisElsts/plugin-update-checker/archive/refs/tags/v5.6.zip
+curl -L -o puc.zip https://github.com/YahnisElsts/plugin-update-checker/archive/refs/tags/v5.7.zip
 unzip -q puc.zip && rm puc.zip
-mv plugin-update-checker-5.6 plugin-update-checker
-git add plugin-update-checker && git commit -m "chore: vendor plugin-update-checker v5.6"
+mv plugin-update-checker-5.7 plugin-update-checker
+git add plugin-update-checker && git commit -m "chore: vendor plugin-update-checker v5.7"
 ```
 
 Committed deliberately: no Composer step, no build dependency, and the zip the
@@ -738,10 +738,13 @@ Inputs, all optional except as noted:
 | `exclude_paths` | none | Extra rsync patterns to keep out of the zip |
 | `foundation_ref` | `main` | Ref this repo's scripts come from — pin it alongside your CI's |
 
-The zip already excludes `.git`, `.github`, `.claude`, `node_modules`, `dist`,
-`tests`, `test-results`, `playwright-report`, `docs`, Playwright/ESLint/PHPCS
-config, `package*.json`, `approved-deps.json`, and any `*.zip`. Use
-`exclude_paths` only for something project-specific.
+The zip already excludes `.git`, `.github`, `.claude`, `node_modules`, `tests`,
+`test-results`, `playwright-report`, `docs`, Playwright/ESLint/PHPCS config,
+`package*.json`, `approved-deps.json`, and any `*.zip`. Use `exclude_paths` only
+for something project-specific.
+
+Build output **is** included — the workflow stages outside the repo, so a
+plugin that builds to `dist/` ships those assets.
 
 ## One-time setup, per site
 

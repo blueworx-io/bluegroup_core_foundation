@@ -38,3 +38,11 @@ Build the following:
 7. Save our two reference docs into this repo (I'll provide the content): the Team Guidelines doc and this setup prompt itself, so the whole system is documented in the one place it lives.
 
 Work on a branch, then open a pull request for me to review before merging, same as any other project.
+
+## Addendum — WordPress plugin auto-updates (2026-07-21)
+
+Every WordPress plugin must auto-update on live sites when a release is published
+on GitHub. The foundation provides the reusable `release-wordpress.yml`, the
+`check-release-tag.mjs` guardrail, and the paste-in
+`templates/plugin-update-checker-bootstrap.php`. A new plugin project wires all
+three up as part of setup — see [`wordpress-auto-updates.md`](wordpress-auto-updates.md).
