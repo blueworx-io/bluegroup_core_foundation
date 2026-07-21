@@ -5,7 +5,10 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
 
-const SKIP_DIRS = new Set(['node_modules', '.git', 'vendor', '.foundation']);
+// .wp-test holds a provisioned WordPress (see scripts/wp-test-env.mjs). It is a
+// whole WordPress tree, so walking it would find core's PHP files and any zip
+// left in it — never the project's own.
+const SKIP_DIRS = new Set(['node_modules', '.git', 'vendor', '.foundation', '.wp-test']);
 
 export function readJson(path) {
   if (!existsSync(path)) return null;

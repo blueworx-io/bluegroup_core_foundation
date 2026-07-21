@@ -19,9 +19,19 @@ on:
   workflow_call:
     inputs:
       preview_url:
-        description: Staging/preview URL Playwright runs against.
+        description: >-
+          Staging/preview URL Playwright runs against. Not needed when
+          use_local_wordpress is true. One of the two is required.
         type: string
-        required: true
+        required: false
+        default: ''
+      use_local_wordpress:
+        description: >-
+          Provision a disposable WordPress on the runner (PHP + SQLite, no Docker)
+          and test against that instead of a preview URL. Prefer this — a run that
+          owns its own instance cannot silently skip against a dead staging host.
+        type: boolean
+        default: false
       plugin_slug:
         description: Plugin slug (used for the single-zip check). Inferred from the main plugin file if empty.
         type: string
@@ -103,6 +113,26 @@ jobs:
         with:
           php-version: ${{ inputs.php_version }}
           tools: composer, cs2pr, phpcs
+          # pdo_sqlite/sqlite3 back the local WordPress harness.
+          extensions: pdo_sqlite, sqlite3
+
+      - name: Resolve the test target
+        env:
+          PREVIEW_URL: ${{ inputs.preview_url }}
+          USE_LOCAL: ${{ inputs.use_local_wordpress }}
+        run: |
+          if [ "$USE_LOCAL" = "true" ]; then
+            echo "TEST_BASE_URL=http://127.0.0.1:8881" >> "$GITHUB_ENV"
+          elif [ -n "$PREVIEW_URL" ]; then
+            echo "TEST_BASE_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
+            case "$PREVIEW_URL" in
+              *placeholder*|*example.com*)
+                echo "::warning title=Placeholder preview URL::preview_url looks like a placeholder ($PREVIEW_URL). Specs that guard against it will skip, and the zero-tests check will then fail the build. Set use_local_wordpress: true instead." ;;
+            esac
+          else
+            echo "Neither preview_url nor use_local_wordpress was provided. Set one." >&2
+            exit 1
+          fi
 
       - name: Install Node dependencies (if package.json)
         run: |
@@ -123,7 +153,7 @@ jobs:
       - name: PHP syntax check
         run: |
           set -o pipefail
-          find . \( -path ./vendor -o -path ./node_modules -o -path ./.foundation \) -prune \
+          find . \( -path ./vendor -o -path ./node_modules -o -path ./.foundation -o -path ./.wp-test \) -prune \
             -o -name '*.php' -print0 | xargs -0 -r -n1 -P4 php -l
 
       - name: PHPCS (if a phpcs config exists)
@@ -177,15 +207,41 @@ jobs:
             echo "WordPress admin credentials present."
           fi
 
-      - name: Playwright tests (against preview URL)
+      - name: Start local WordPress
+        if: inputs.use_local_wordpress
         env:
-          PLAYWRIGHT_BASE_URL: ${{ inputs.preview_url }}
-          BASE_URL: ${{ inputs.preview_url }}
-          WP_ADMIN_USER: ${{ secrets.WP_ADMIN_USER }}
-          WP_ADMIN_PASS: ${{ secrets.WP_ADMIN_PASS }}
+          PLUGIN_SLUG: ${{ inputs.plugin_slug }}
+        run: |
+          SLUG="${PLUGIN_SLUG:-$(basename "$PWD")}"
+          node "$GITHUB_WORKSPACE/.foundation/scripts/wp-test-env.mjs" up \
+            --plugin . --slug "$SLUG" --dir .wp-test --port 8881
+
+      # The local harness ships its own admin account; a preview URL relies on
+      # the caller's secrets. Either way the suite reads the same variables.
+      - name: Playwright tests
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ env.TEST_BASE_URL }}
+          BASE_URL: ${{ env.TEST_BASE_URL }}
+          WP_ADMIN_USER: ${{ inputs.use_local_wordpress && 'admin' || secrets.WP_ADMIN_USER }}
+          WP_ADMIN_PASS: ${{ inputs.use_local_wordpress && 'wptest-admin-pw' || secrets.WP_ADMIN_PASS }}
           WP_LOGIN_PATH: ${{ inputs.wp_login_path }}
           PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-report.json
         run: ${{ inputs.test_command }}
+
+      - name: Stop local WordPress
+        if: always() && inputs.use_local_wordpress
+        run: |
+          node "$GITHUB_WORKSPACE/.foundation/scripts/wp-test-env.mjs" down --dir .wp-test || true
+
+      - name: Upload WordPress debug log on failure
+        if: failure() && inputs.use_local_wordpress
+        uses: actions/upload-artifact@v4
+        with:
+          name: wordpress-debug-log
+          path: |
+            .wp-test/php-server.log
+            .wp-test/wp/wp-content/debug.log
+          if-no-files-found: ignore
 
       # `npx playwright test` exits 0 when every test skips, so a suite that
       # skips itself wholesale would otherwise report green having asserted
