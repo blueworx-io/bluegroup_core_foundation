@@ -3,6 +3,10 @@
  * Plugin Update Checker bootstrap — copy this block into the plugin's main file,
  * below the plugin header, and replace <repo> and <slug>.
  *
+ * WARNING: Do not wrap this block in a function, closure, hook callback,
+ * or conditional. The "use" import must be at file scope; wrapping causes
+ * a PHP parse error.
+ *
  * Prerequisites:
  *   1. Vendor the library into the plugin at plugin-update-checker/ and commit it
  *      (see docs/wordpress-auto-updates.md in the foundation).
