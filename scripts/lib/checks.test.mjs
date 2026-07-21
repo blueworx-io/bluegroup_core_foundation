@@ -6,6 +6,7 @@ import {
   approvedDeps,
   pluginVersionSync,
   pluginZip,
+  releaseTag,
   testsExecuted,
 } from './checks.mjs';
 
@@ -124,4 +125,37 @@ test('testsExecuted: tolerates malformed stats values', () => {
   const result = testsExecuted({ report });
   assert.equal(result.ok, false);
   assert.deepEqual(result.counts, { executed: 0, skipped: 0, total: 0 });
+});
+
+test('releaseTag: passes when the tag matches the header, with or without a leading v', () => {
+  const args = { headerVersion: '1.2.0', pluginFile: 'my-plugin.php' };
+  assert.equal(releaseTag({ ...args, tag: 'v1.2.0' }).ok, true);
+  assert.equal(releaseTag({ ...args, tag: '1.2.0' }).ok, true);
+});
+
+test('releaseTag: fails when the tag and header disagree', () => {
+  const result = releaseTag({ tag: 'v1.2.0', headerVersion: '1.1.0', pluginFile: 'my-plugin.php' });
+  assert.equal(result.ok, false);
+  assert.match(result.message, /1\.2\.0/);
+  assert.match(result.message, /1\.1\.0/);
+});
+
+test('releaseTag: fails when the plugin file or Version header is missing', () => {
+  assert.equal(releaseTag({ tag: 'v1.2.0', headerVersion: '1.2.0', pluginFile: null }).ok, false);
+  assert.equal(releaseTag({ tag: 'v1.2.0', headerVersion: null, pluginFile: 'my-plugin.php' }).ok, false);
+});
+
+test('releaseTag: fails on a non-semver tag or header', () => {
+  assert.equal(releaseTag({ tag: 'release-2', headerVersion: '1.2.0', pluginFile: 'my-plugin.php' }).ok, false);
+  assert.equal(releaseTag({ tag: 'v1.2.0', headerVersion: '1.2', pluginFile: 'my-plugin.php' }).ok, false);
+});
+
+test('releaseTag: fails when no tag was supplied', () => {
+  assert.equal(releaseTag({ tag: '', headerVersion: '1.2.0', pluginFile: 'my-plugin.php' }).ok, false);
+});
+
+test('releaseTag: matches prerelease tags exactly', () => {
+  const args = { headerVersion: '1.2.0-beta.1', pluginFile: 'my-plugin.php' };
+  assert.equal(releaseTag({ ...args, tag: 'v1.2.0-beta.1' }).ok, true);
+  assert.equal(releaseTag({ ...args, tag: 'v1.2.0' }).ok, false);
 });

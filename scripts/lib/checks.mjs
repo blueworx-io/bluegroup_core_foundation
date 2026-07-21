@@ -2,7 +2,7 @@
 // (approvedDeps also returns offenders: string[]). No I/O here — callers
 // gather inputs (git/fs) and pass them in, which keeps these unit-testable.
 
-import { compareSemver } from './semver.mjs';
+import { compareSemver, parseSemver } from './semver.mjs';
 
 export function versionBumped({ current, base }) {
   if (base === null || base === undefined) {
@@ -64,6 +64,41 @@ export function pluginZip({ zipFiles, slug }) {
     ok: false,
     message: `More than one "${slug}" zip present — only the current version's zip should exist:\n  ${zipFiles.join('\n  ')}`,
   };
+}
+
+// A tag whose version disagrees with the plugin header publishes a Release that
+// looks healthy but is never offered to sites: the update checker compares the
+// header inside the released zip against the installed version, sees no
+// difference, and reports "up to date" forever. Fail loudly here instead.
+export function releaseTag({ tag, headerVersion, pluginFile }) {
+  if (!pluginFile) {
+    return { ok: false, message: 'No plugin main file (with "Plugin Name:") found — cannot verify the release tag.' };
+  }
+  if (!tag) {
+    return { ok: false, message: 'No release tag supplied (RELEASE_TAG is empty).' };
+  }
+  if (!headerVersion) {
+    return {
+      ok: false,
+      message: `No "Version:" header found in ${pluginFile}. Add one — the update checker reads it to decide whether a site is out of date.`,
+    };
+  }
+  if (!parseSemver(tag)) {
+    return { ok: false, message: `Release tag "${tag}" is not valid semver. Tag releases as v1.2.3.` };
+  }
+  if (!parseSemver(headerVersion)) {
+    return { ok: false, message: `Version header "${headerVersion}" in ${pluginFile} is not valid semver.` };
+  }
+  if (compareSemver(tag, headerVersion) !== 0) {
+    return {
+      ok: false,
+      message:
+        `Release tag ${tag} does not match the plugin header version ${headerVersion} in ${pluginFile}.\n` +
+        '  Sites compare the header inside the released zip against what they have installed, so a\n' +
+        '  mismatch publishes a Release that is never offered as an update. Fix one and re-tag.',
+    };
+  }
+  return { ok: true, message: `Release tag ${tag} matches the plugin header version in ${pluginFile}.` };
 }
 
 // A Playwright run that executes nothing still exits 0, so a suite that skips
