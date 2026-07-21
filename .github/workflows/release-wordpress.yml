@@ -175,12 +175,17 @@ jobs:
           version="${TAG#v}"
           if [ -f CHANGELOG.md ]; then
             awk -v v="$version" '
-              BEGIN {
-                gsub(/[.[\]()*+?^$|\\{}]/, "\\\\&", v)
-                re = "^##[[:space:]]+\\[?" v "\\]?([^0-9.]|$)"
+              /^##[[:space:]]/ {
+                if (flag) exit
+                h = $0
+                sub(/\r$/, "", h)
+                sub(/^##[[:space:]]+/, "", h)
+                sub(/^\[/, "", h)
+                sub(/\].*$/, "", h)
+                sub(/[[:space:]].*$/, "", h)
+                if (h == v) { flag = 1 }
+                next
               }
-              $0 ~ re { flag = 1; next }
-              flag && /^## / { exit }
               flag { print }
             ' CHANGELOG.md > /tmp/release-notes.md
           else
