@@ -105,7 +105,6 @@ jobs:
           /.foundation
           /.claude
           /node_modules
-          /dist
           /tests
           /test-results
           /playwright-report
@@ -129,10 +128,10 @@ jobs:
           fi
           echo "Excluding:"
           sed 's/^/  /' /tmp/plugin-excludes.txt
-          mkdir -p "dist/$SLUG"
-          rsync -a --exclude-from=/tmp/plugin-excludes.txt ./ "dist/$SLUG/"
+          mkdir -p "$RUNNER_TEMP/stage/$SLUG"
+          rsync -a --exclude-from=/tmp/plugin-excludes.txt ./ "$RUNNER_TEMP/stage/$SLUG/"
           echo "Staged tree:"
-          find "dist/$SLUG" -maxdepth 1 -mindepth 1 | sed 's/^/  /'
+          find "$RUNNER_TEMP/stage/$SLUG" -maxdepth 1 -mindepth 1 | sed 's/^/  /'
 
       # GNU tar on Ubuntu cannot write zip format, so this uses zip(1). Entries
       # come out with forward slashes, which is what WordPress needs.
@@ -141,9 +140,9 @@ jobs:
           SLUG: ${{ steps.info.outputs.slug }}
         run: |
           set -euo pipefail
-          cd dist
-          zip -r -q "../$SLUG.zip" "$SLUG"
-          cd ..
+          cd "$RUNNER_TEMP/stage"
+          zip -r -q "$GITHUB_WORKSPACE/$SLUG.zip" "$SLUG"
+          cd "$GITHUB_WORKSPACE"
           ls -lh "$SLUG.zip"
 
       - name: Verify zip shape
@@ -154,14 +153,14 @@ jobs:
           set -euo pipefail
           unzip -l "$SLUG.zip"
           entries=$(unzip -Z1 "$SLUG.zip")
-          stray=$(printf '%s\n' "$entries" | grep -v "^$SLUG/" || true)
+          stray=$(printf '%s\n' "$entries" | awk -v s="$SLUG/" 'index($0, s) != 1' || true)
           if [ -n "$stray" ]; then
             echo "::error title=Malformed plugin zip::Entries outside $SLUG/ — the archive must nest exactly one level:"
             printf '%s\n' "$stray" | sed 's/^/  /'
             exit 1
           fi
           main_entry="$SLUG/$(basename "$PLUGIN_FILE")"
-          if ! printf '%s\n' "$entries" | grep -qx "$main_entry"; then
+          if ! printf '%s\n' "$entries" | grep -qFx "$main_entry"; then
             echo "::error title=Malformed plugin zip::Main plugin file $main_entry is missing from the archive."
             exit 1
           fi
@@ -176,8 +175,12 @@ jobs:
           version="${TAG#v}"
           if [ -f CHANGELOG.md ]; then
             awk -v v="$version" '
-              index($0, "## ") == 1 && index($0, v) > 0 { flag = 1; next }
-              flag && index($0, "## ") == 1 { exit }
+              BEGIN {
+                gsub(/[.[\]()*+?^$|\\{}]/, "\\\\&", v)
+                re = "^##[[:space:]]+\\[?" v "\\]?([^0-9.]|$)"
+              }
+              $0 ~ re { flag = 1; next }
+              flag && /^## / { exit }
               flag { print }
             ' CHANGELOG.md > /tmp/release-notes.md
           else
