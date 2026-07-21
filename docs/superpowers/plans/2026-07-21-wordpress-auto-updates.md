@@ -686,10 +686,10 @@ Our plugin repos are private, so each site needs a read-only token to see them.
 
 ```bash
 # from the plugin repo root
-curl -L -o puc.zip https://github.com/YahnisElsts/plugin-update-checker/archive/refs/tags/v5.6.zip
+curl -L -o puc.zip https://github.com/YahnisElsts/plugin-update-checker/archive/refs/tags/v5.7.zip
 unzip -q puc.zip && rm puc.zip
-mv plugin-update-checker-5.6 plugin-update-checker
-git add plugin-update-checker && git commit -m "chore: vendor plugin-update-checker v5.6"
+mv plugin-update-checker-5.7 plugin-update-checker
+git add plugin-update-checker && git commit -m "chore: vendor plugin-update-checker v5.7"
 ```
 
 Committed deliberately: no Composer step, no build dependency, and the zip the
