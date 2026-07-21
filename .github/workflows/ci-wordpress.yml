@@ -196,7 +196,10 @@ jobs:
 
       # The secrets context is not usable in an `if:` expression, so read them
       # through env and test the values in the shell instead.
+      # Only meaningful against a preview URL. The local harness ships its own
+      # admin account, so warning there is noise that reads like a real problem.
       - name: Warn if admin credentials are missing
+        if: ${{ ! inputs.use_local_wordpress }}
         env:
           WP_ADMIN_USER: ${{ secrets.WP_ADMIN_USER }}
           WP_ADMIN_PASS: ${{ secrets.WP_ADMIN_PASS }}
