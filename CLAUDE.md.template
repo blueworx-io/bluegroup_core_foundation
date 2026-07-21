@@ -24,6 +24,18 @@ Every build or change starts from an approved GitHub Issue.
 - No new dependency without prior approval (`approved-deps.json`)
 - New functionality or a real bug fix has a Playwright test
 
+## Testing (WordPress plugins)
+
+- Test against the **local WordPress harness**, not a hosted staging site. One command,
+  no Docker, uses your own PHP:
+  `node ../bluegroup_core_foundation/scripts/wp-test-env.mjs up --plugin .`
+  then `PLAYWRIGHT_BASE_URL=http://127.0.0.1:8881 WP_ADMIN_USER=admin WP_ADMIN_PASS=wptest-admin-pw npx playwright test --workers=1`
+- In CI, pass `use_local_wordpress: true` instead of `preview_url`. Add `.wp-test/` to `.gitignore`
+- **A skipped test is not a passing test.** CI fails a run that executes zero tests, because
+  a placeholder URL once let a whole suite skip itself while reporting green for months
+- Prefer tests that create what they need over tests that assume ambient site state
+- Full guide, including why each setting exists: `docs/wordpress-test-harness.md` in the foundation
+
 ## Golden Rules
 
 - Always work on a branch, never main
