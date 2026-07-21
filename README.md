@@ -160,6 +160,10 @@ and the release checklist — is in
   [`.github/ISSUE_TEMPLATE/task.md`](.github/ISSUE_TEMPLATE/task.md)
 - [`.claude/settings.json`](.claude/settings.json) — shared permissions + approved-skill
   enablement
+- WordPress plugins only:
+  [`templates/plugin-update-checker-bootstrap.php`](templates/plugin-update-checker-bootstrap.php)
+  → pasted into the plugin's main file (see
+  [`docs/wordpress-auto-updates.md`](docs/wordpress-auto-updates.md))
 
 ## What's here
 
