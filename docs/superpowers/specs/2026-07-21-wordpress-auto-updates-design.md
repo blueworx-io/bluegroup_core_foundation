@@ -29,10 +29,12 @@ are the reusable pieces plus the docs that tell a plugin project how to wire the
 ### Why the tag/header check earns its place
 
 If a plugin is tagged `v1.2.0` while its header still reads `Version: 1.1.0`, the release
-publishes and looks completely healthy. But PUC compares the *header inside the released
-zip* against the installed version, finds them equal, and reports "no update available"
-forever. Sites silently stop updating with no error anywhere. Failing the release build on
-a mismatch turns a silent, invisible failure into a loud one.
+publishes and looks completely healthy. But PUC decides whether an update exists by reading
+the `Version:` header from the plugin's main file *at the tagged ref* (it does not open the
+zip for this comparison — only for the actual install), finds it equal to what's installed,
+and reports "no update available" forever. Sites silently stop updating with no error
+anywhere. Failing the release build on a mismatch turns a silent, invisible failure into a
+loud one.
 
 ## Deliverables
 

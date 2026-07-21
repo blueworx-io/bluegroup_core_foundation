@@ -66,6 +66,15 @@ export function findZips(cwd, slug) {
   }, 4).map((f) => basename(f));
 }
 
+// Visits every file at the current depth before descending into any
+// subdirectory, so a match at depth N is always returned ahead of a match at
+// depth N+1 regardless of alphabetical sort order. This matters for
+// findPluginMainFile(): a WordPress main plugin file is always at the repo
+// root, but a subdirectory file (e.g. an admin class) can also legitimately
+// carry a "Plugin Name:" docblock, and readdirSync's alphabetical order can
+// put that subdirectory ahead of the root file (e.g. "admin/" before
+// "my-plugin.php"). Depth-first-into-subdirs traversal would return the
+// subdirectory file in that case; this breadth-by-depth order never does.
 function walk(dir, predicate, maxDepth, depth = 0, acc = []) {
   if (depth > maxDepth) return acc;
   let entries;
@@ -74,11 +83,15 @@ function walk(dir, predicate, maxDepth, depth = 0, acc = []) {
   } catch {
     return acc;
   }
+  const subdirs = [];
   for (const entry of entries) {
     if (SKIP_DIRS.has(entry.name)) continue;
     const full = join(dir, entry.name);
-    if (entry.isDirectory()) walk(full, predicate, maxDepth, depth + 1, acc);
+    if (entry.isDirectory()) subdirs.push(full);
     else if (predicate(full)) acc.push(full);
+  }
+  for (const full of subdirs) {
+    walk(full, predicate, maxDepth, depth + 1, acc);
   }
   return acc;
 }

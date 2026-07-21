@@ -25,8 +25,13 @@ use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 $blueworx_update_checker = PucFactory::buildUpdateChecker(
 	'https://github.com/blueworx-io/<repo>/',
 	__FILE__,
-	'<slug>' // Must equal the plugin's folder name. Omit it and WordPress can
-	         // install the update alongside the original as a second copy.
+	'<slug>' // Must equal the plugin's folder name. This same string is also the
+	         // release workflow's `plugin_slug` input and the site's installed
+	         // directory name — all three must agree, or WordPress installs the
+	         // update alongside the original as a second copy and deactivates it.
+	         // Prefer leaving `plugin_slug` unset in the workflow so it derives
+	         // from the main plugin file instead of being a fourth place to keep
+	         // in sync by hand.
 );
 
 /*
@@ -43,8 +48,10 @@ if ( defined( 'BLUEWORX_PLUGIN_UPDATE_TOKEN' ) && BLUEWORX_PLUGIN_UPDATE_TOKEN )
 
 /*
  * Install the zip attached to the Release, not GitHub's auto-generated source
- * tarball. The tarball is named <repo>-<tag>, so without this the update
- * extracts to the wrong folder — WordPress treats it as a different plugin and
- * the original deactivates — and it ships every dev file in the repo.
+ * tarball. The tarball's folder is named <repo>-<version> (GitHub drops the
+ * tag's leading "v", e.g. plugin-update-checker-5.7 for tag v5.7), so without
+ * this the update extracts to the wrong folder — WordPress treats it as a
+ * different plugin and the original deactivates — and it ships every dev file
+ * in the repo.
  */
 $blueworx_update_checker->getVcsApi()->enableReleaseAssets();

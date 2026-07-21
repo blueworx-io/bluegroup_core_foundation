@@ -100,7 +100,7 @@ jobs:
         run: |
           set -euo pipefail
           cat > /tmp/plugin-excludes.txt <<'EOF'
-          /.git
+          .git/
           /.github
           /.foundation
           /.claude
@@ -121,6 +121,13 @@ jobs:
           /.phpcs.xml
           /.eslintrc*
           /eslint.config.*
+          .env
+          .env.*
+          .npmrc
+          *.pem
+          *.key
+          # Deliberately unanchored (no leading /) so a stray zip anywhere in the
+          # tree — e.g. left over from a local build — never ships either.
           *.zip
           EOF
           if [ -n "$EXTRA_EXCLUDES" ]; then
@@ -142,8 +149,7 @@ jobs:
           set -euo pipefail
           cd "$RUNNER_TEMP/stage"
           zip -r -q "$GITHUB_WORKSPACE/$SLUG.zip" "$SLUG"
-          cd "$GITHUB_WORKSPACE"
-          ls -lh "$SLUG.zip"
+          ls -lh "$GITHUB_WORKSPACE/$SLUG.zip"
 
       - name: Verify zip shape
         env:
@@ -162,6 +168,10 @@ jobs:
           main_entry="$SLUG/$(basename "$PLUGIN_FILE")"
           if ! printf '%s\n' "$entries" | grep -qFx "$main_entry"; then
             echo "::error title=Malformed plugin zip::Main plugin file $main_entry is missing from the archive."
+            exit 1
+          fi
+          if ! printf '%s\n' "$entries" | grep -qFx "$SLUG/plugin-update-checker/plugin-update-checker.php"; then
+            echo "::error title=Update checker missing::$SLUG/plugin-update-checker/plugin-update-checker.php is not in the archive — sites would fatal on update and could never receive another."
             exit 1
           fi
           echo "Zip verified: every entry under $SLUG/, main file $main_entry present."
@@ -197,7 +207,7 @@ jobs:
             sed 's/^/  /' /tmp/release-notes.md
           else
             echo "found=false" >> "$GITHUB_OUTPUT"
-            echo "No CHANGELOG.md section for $version — falling back to generated notes."
+            echo "::warning title=No changelog section::No CHANGELOG.md section for $version — falling back to GitHub's generated notes."
           fi
 
       - name: Publish GitHub Release

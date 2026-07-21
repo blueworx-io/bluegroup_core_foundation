@@ -67,9 +67,10 @@ export function pluginZip({ zipFiles, slug }) {
 }
 
 // A tag whose version disagrees with the plugin header publishes a Release that
-// looks healthy but is never offered to sites: the update checker compares the
-// header inside the released zip against the installed version, sees no
-// difference, and reports "up to date" forever. Fail loudly here instead.
+// looks healthy but is never offered to sites: the update checker reads the
+// header from the plugin's main file at the tagged ref, compares it to what's
+// installed, sees no difference, and reports "up to date" forever. Fail loudly
+// here instead.
 export function releaseTag({ tag, headerVersion, pluginFile }) {
   if (!pluginFile) {
     return { ok: false, message: 'No plugin main file (with "Plugin Name:") found — cannot verify the release tag.' };
@@ -94,7 +95,7 @@ export function releaseTag({ tag, headerVersion, pluginFile }) {
       ok: false,
       message:
         `Release tag ${tag} does not match the plugin header version ${headerVersion} in ${pluginFile}.\n` +
-        '  Sites compare the header inside the released zip against what they have installed, so a\n' +
+        '  Sites compare the header at the released tag against what they have installed, so a\n' +
         '  mismatch publishes a Release that is never offered as an update. Fix one and re-tag.',
     };
   }

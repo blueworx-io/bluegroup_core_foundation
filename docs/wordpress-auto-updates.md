@@ -30,7 +30,11 @@ swap of that folder — check for a new tag when you touch a plugin.
 
 Copy [`templates/plugin-update-checker-bootstrap.php`](../templates/plugin-update-checker-bootstrap.php)
 into the plugin's main `.php` file, below the plugin header, and replace `<repo>`
-and `<slug>`. `<slug>` must equal the plugin's folder name.
+and `<slug>`. `<slug>` must equal the plugin's folder name — the same string also
+has to match the `plugin_slug` workflow input in step 3. Those two places (plus
+the site's installed directory name) all disagreeing is the exact failure mode
+in the troubleshooting section below, and nothing in the pipeline checks that
+they agree, so it's worth double-checking by eye.
 
 Confirm the header carries a valid semver version:
 
@@ -62,7 +66,7 @@ Inputs, all optional except as noted:
 
 | Input | Default | Purpose |
 |-------|---------|---------|
-| `plugin_slug` | inferred from the main plugin file | Folder name inside the zip |
+| `plugin_slug` | inferred from the main plugin file | Folder name inside the zip. **Prefer omitting this** — it must be identical to the plugin's folder name on the site and to the third argument of `buildUpdateChecker()` in the bootstrap, and letting it derive from the main plugin file removes one of the three places that string has to be kept in sync by hand. Only set it explicitly if the plugin's folder name doesn't match its main file's basename. |
 | `node_version` | `20` | Only used when a `package.json` exists |
 | `build_command` | `npm run build` | Skipped when there is no `package.json` |
 | `exclude_paths` | none | Extra rsync patterns to keep out of the zip |
@@ -140,7 +144,8 @@ from Dashboard → Updates.
 **The update installs as a second copy, or deactivates the plugin.** The slug
 passed to `buildUpdateChecker()` doesn't match the plugin's folder name, or
 `enableReleaseAssets()` is missing so PUC is installing GitHub's source tarball,
-whose folder is named `<repo>-<tag>`.
+whose folder is named `<repo>-<version>` (GitHub drops the tag's leading `v`,
+e.g. `plugin-update-checker-5.7` for tag `v5.7`).
 
 **The update ships dev files.** `enableReleaseAssets()` is missing — same cause
 as above.
