@@ -45,7 +45,8 @@ of the initial setup.
 Instead of repeating the rules per repo, a project adds one small caller workflow
 that points at the reusable workflow for its type. On every pull request the shared
 workflow installs + lints, builds, checks the version bump, checks the changelog,
-checks dependencies against the project's `approved-deps.json`, and runs Playwright.
+checks dependencies against the project's `approved-deps.json`, runs PHPCS and
+PHPUnit when their configs are present, and runs Playwright.
 
 **Standalone**
 
