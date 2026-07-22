@@ -18,7 +18,12 @@ WP_ADMIN_USER=admin WP_ADMIN_PASS=wptest-admin-pw \
   npx playwright test --workers=1
 ```
 
-Tear down with `... wp-test-env.mjs down`.
+Tear down with `... wp-test-env.mjs down`. Both `up` and `down` reconcile against
+whatever `php` is actually listening on the port, not just the pid they last
+recorded — so an orphan left by an interrupted run (on Windows two servers can
+bind one port and requests then route to whichever answers first) is cleaned up
+rather than left holding the port. Only `php` processes on that port are ever
+killed.
 
 ## Why this exists
 
