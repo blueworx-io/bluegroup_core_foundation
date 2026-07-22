@@ -169,6 +169,27 @@ jobs:
             echo "No phpcs config (phpcs.xml / .dist / .phpcs.xml) — skipping PHPCS."
           fi
 
+      - name: PHPUnit (if a phpunit config exists)
+        run: |
+          if ls phpunit.xml phpunit.xml.dist >/dev/null 2>&1; then
+            # The plugin's unit tests run without a WordPress runtime (fakes/stubs),
+            # so they belong in this job, not the Playwright one. composer install
+            # only if the PHPCS step above did not already provide the vendor dir.
+            if [ ! -f vendor/bin/phpunit ] && [ -f composer.json ]; then
+              composer install --no-interaction --no-progress || true;
+            fi
+            if [ -f vendor/bin/phpunit ]; then
+              vendor/bin/phpunit
+            elif command -v phpunit >/dev/null 2>&1; then
+              phpunit
+            else
+              echo "phpunit config present but phpunit is not installed — run 'composer require --dev phpunit/phpunit'." >&2
+              exit 1
+            fi
+          else
+            echo "No phpunit config (phpunit.xml / .dist) — skipping PHPUnit."
+          fi
+
       - name: Version bump check (plugin header)
         env:
           BASE_REF: ${{ github.base_ref }}
