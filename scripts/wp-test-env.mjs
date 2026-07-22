@@ -20,6 +20,7 @@ import {
 } from 'node:fs';
 import { join, resolve, basename } from 'node:path';
 import { platform } from 'node:os';
+import { parseListeningPids } from './lib/port.mjs';
 
 const WP_ZIP = 'https://wordpress.org/latest.zip';
 const SQLITE_ZIP = 'https://downloads.wordpress.org/plugin/sqlite-database-integration.zip';
@@ -261,22 +262,70 @@ async function waitForServer() {
 }
 
 function stopServer({ quiet = false } = {}) {
-  if (!existsSync(pidFile)) {
-    if (!quiet) log('No server pid file — nothing to stop.');
-    return;
+  // The pidFile is only a hint. An interrupted or stale run can leave a php -S
+  // listening that it never recorded, and on Windows two servers can bind the
+  // same port, so killing only the recorded pid leaves that orphan holding the
+  // port — the next `up` then adds a second listener and requests route to
+  // whichever answers first. The port is the real resource, so reconcile
+  // against whatever is actually bound to it, not just the remembered pid.
+  const targets = new Set(serverPidsOnPort());
+  if (existsSync(pidFile)) {
+    const recorded = Number(readFileSync(pidFile, 'utf8').trim());
+    if (Number.isInteger(recorded) && recorded > 0) targets.add(recorded);
   }
-  const pid = Number(readFileSync(pidFile, 'utf8').trim());
+
+  const killed = [];
+  for (const pid of targets) {
+    // Only ever kill our own php. A pid can be recycled by the OS, and the port
+    // could (however unlikely) be held by something else — never take out an
+    // unrelated process.
+    if (!isPhpProcess(pid)) continue;
+    try {
+      if (platform() === 'win32') {
+        execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
+      } else {
+        process.kill(pid, 'SIGTERM');
+      }
+      killed.push(pid);
+    } catch {
+      // Already gone between listing and killing — fine.
+    }
+  }
+
+  rmSync(pidFile, { force: true });
+  if (quiet) return;
+  log(killed.length ? `Stopped server on port ${port} (pid ${killed.join(', ')}).` : 'No server running — nothing to stop.');
+}
+
+/** PIDs currently LISTENING on our port, cross-platform, best-effort. */
+function serverPidsOnPort() {
   try {
     if (platform() === 'win32') {
-      execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
-    } else {
-      process.kill(pid, 'SIGTERM');
+      const out = execFileSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf8' });
+      return parseListeningPids(out, port);
     }
-    if (!quiet) log(`Stopped server (pid ${pid}).`);
+    // POSIX: lsof reports listening pids directly, no parsing needed. Absent on
+    // some minimal images — treat that as "cannot reconcile" and fall back to
+    // the recorded pid alone.
+    const out = execFileSync('lsof', ['-nP', '-iTCP:' + port, '-sTCP:LISTEN', '-t'], { encoding: 'utf8' });
+    return out.split(/\s+/).filter(Boolean).map(Number);
   } catch {
-    if (!quiet) log(`Server pid ${pid} was not running.`);
+    return [];
   }
-  rmSync(pidFile, { force: true });
+}
+
+/** True when pid is a live php process — guards against pid recycling and never kills a stranger. */
+function isPhpProcess(pid) {
+  try {
+    if (platform() === 'win32') {
+      const out = execFileSync('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8' });
+      return /^"php\.exe"/i.test(out.trim());
+    }
+    const out = execFileSync('ps', ['-p', String(pid), '-o', 'comm='], { encoding: 'utf8' });
+    return /php/i.test(out);
+  } catch {
+    return false;
+  }
 }
 
 // --- helpers ----------------------------------------------------------------
