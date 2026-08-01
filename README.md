@@ -127,7 +127,8 @@ jobs:
 
 All inputs have sensible defaults (`node_version`, `lint_command`, `build_command`,
 `test_command`, `foundation_ref`; WordPress adds `php_version`, `preview_url`,
-`plugin_slug`, `wp_login_path`). Override only what a project needs.
+`plugin_slug`, `wp_login_path`, `changelog_dir`). Override only what a project
+needs.
 
 > **Set `foundation_ref` to match the `@ref` you called with.** The `@ref` picks the
 > workflow; `foundation_ref` picks the check scripts the workflow checks out. They
@@ -153,6 +154,29 @@ All inputs have sensible defaults (`node_version`, `lint_command`, `build_comman
 > test host yet. It is not a fix — a project setting it is not being tested — so
 > it should always have an open issue against it and be removed once real tests
 > run.
+
+### The changelog check accepts two shapes
+
+A PR passes the changelog guardrail by **either** editing `CHANGELOG.md` — the
+original rule, and still the default for a project that does nothing — **or** by
+adding a file under a fragment directory, `changelog.d/` by default.
+
+Fragments exist because the first shape has a cost that grows with the number of
+open branches. Every entry goes at the top of one shared file, so any two live
+branches change the same lines and every merge hits the same conflict. It is
+trivial to resolve and easy to resolve wrongly, which is how it earns its keep as
+a source of bugs. A file per branch cannot conflict; a release step folds the
+pending fragments into `CHANGELOG.md` on the default branch, where nothing is
+running in parallel.
+
+A project opts in by creating the directory — there is no workflow change,
+because `changelog_dir` already defaults to `changelog.d`. A project without that
+directory can never match the second shape, so nothing about its CI changes. Set
+`changelog_dir` only to use a different name, or `''` to turn the second shape
+off entirely.
+
+The directory's own `README.md` is excluded: documenting the format is not a
+changelog entry.
 
 ## Versioning
 

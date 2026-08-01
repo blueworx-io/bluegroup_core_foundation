@@ -34,6 +34,65 @@ test('changelogUpdated: passes only when the changelog is in the diff', () => {
   );
 });
 
+test('changelogUpdated: a fragment under the fragment dir satisfies the check', () => {
+  assert.equal(
+    changelogUpdated({
+      changedFiles: ['src/a.js', 'changelog.d/add-thing.md'],
+      changelogPath: 'CHANGELOG.md',
+      changelogDir: 'changelog.d',
+    }).ok,
+    true,
+  );
+});
+
+test('changelogUpdated: editing CHANGELOG.md still passes when a fragment dir is configured', () => {
+  assert.equal(
+    changelogUpdated({
+      changedFiles: ['CHANGELOG.md'],
+      changelogPath: 'CHANGELOG.md',
+      changelogDir: 'changelog.d',
+    }).ok,
+    true,
+  );
+});
+
+test('changelogUpdated: fails when neither shape is present', () => {
+  const result = changelogUpdated({
+    changedFiles: ['src/a.js'],
+    changelogPath: 'CHANGELOG.md',
+    changelogDir: 'changelog.d',
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.message, /changelog\.d\//);
+  assert.match(result.message, /CHANGELOG\.md/);
+});
+
+test('changelogUpdated: the fragment dir README does not count as an entry', () => {
+  assert.equal(
+    changelogUpdated({
+      changedFiles: ['changelog.d/README.md'],
+      changelogPath: 'CHANGELOG.md',
+      changelogDir: 'changelog.d',
+    }).ok,
+    false,
+  );
+});
+
+test('changelogUpdated: no fragment dir configured means fragments do not count', () => {
+  assert.equal(
+    changelogUpdated({ changedFiles: ['changelog.d/add-thing.md'], changelogPath: 'CHANGELOG.md' }).ok,
+    false,
+  );
+  assert.equal(
+    changelogUpdated({
+      changedFiles: ['changelog.d/add-thing.md'],
+      changelogPath: 'CHANGELOG.md',
+      changelogDir: '',
+    }).ok,
+    false,
+  );
+});
+
 test('approvedDeps: flags deps not on the allow-list', () => {
   const pkg = { dependencies: { react: '^18' }, devDependencies: { vitest: '^1' } };
   const empty = approvedDeps({ pkg, approved: { dependencies: {}, devDependencies: {} } });
