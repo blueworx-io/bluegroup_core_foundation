@@ -8,6 +8,7 @@ import {
   pluginZip,
   releaseTag,
   testsExecuted,
+  testsExecutedAcross,
 } from './checks.mjs';
 
 test('versionBumped: passes on first build (no base)', () => {
@@ -158,4 +159,50 @@ test('releaseTag: matches prerelease tags exactly', () => {
   const args = { headerVersion: '1.2.0-beta.1', pluginFile: 'my-plugin.php' };
   assert.equal(releaseTag({ ...args, tag: 'v1.2.0-beta.1' }).ok, true);
   assert.equal(releaseTag({ ...args, tag: 'v1.2.0' }).ok, false);
+});
+
+// Sharding splits one suite across N runners, so the gate has to be applied to
+// the sum. Any single shard legitimately executing nothing is not a failure —
+// every shard executing nothing is exactly the failure this check exists for.
+test('testsExecutedAcross: sums executed counts over shards', () => {
+  const reports = [
+    { stats: { expected: 40, unexpected: 0, flaky: 0, skipped: 1 } },
+    { stats: { expected: 44, unexpected: 1, flaky: 0, skipped: 0 } },
+    { stats: { expected: 45, unexpected: 0, flaky: 2, skipped: 1 } },
+  ];
+  const result = testsExecutedAcross({ reports });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.counts, { executed: 132, skipped: 2, total: 134 });
+});
+
+test('testsExecutedAcross: one empty shard is fine when another ran', () => {
+  const reports = [
+    { stats: { expected: 0, unexpected: 0, flaky: 0, skipped: 0 } },
+    { stats: { expected: 7, unexpected: 0, flaky: 0, skipped: 0 } },
+  ];
+  assert.equal(testsExecutedAcross({ reports }).ok, true);
+});
+
+test('testsExecutedAcross: fails when every shard skipped everything', () => {
+  const reports = [
+    { stats: { expected: 0, unexpected: 0, flaky: 0, skipped: 4 } },
+    { stats: { expected: 0, unexpected: 0, flaky: 0, skipped: 5 } },
+  ];
+  const result = testsExecutedAcross({ reports });
+  assert.equal(result.ok, false);
+  assert.match(result.message, /Every test skipped/);
+});
+
+test('testsExecutedAcross: fails when no reports were collected at all', () => {
+  const result = testsExecutedAcross({ reports: [] });
+  assert.equal(result.ok, false);
+  assert.match(result.message, /No Playwright JSON report/);
+});
+
+test('testsExecutedAcross: a single report behaves exactly like testsExecuted', () => {
+  const report = { stats: { expected: 3, unexpected: 0, flaky: 0, skipped: 0 } };
+  assert.deepEqual(
+    testsExecutedAcross({ reports: [report] }).counts,
+    testsExecuted({ report }).counts,
+  );
 });

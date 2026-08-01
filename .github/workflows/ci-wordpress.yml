@@ -1,19 +1,38 @@
 name: CI Guardrails (WordPress)
 
-# Reusable guardrail workflow for WordPress plugin projects. Runs Playwright
-# against a staging/preview URL instead of spinning up WordPress + a database.
+# Reusable guardrail workflow for WordPress plugin projects. Provisions a
+# disposable WordPress on the runner (preferred) or points Playwright at a
+# staging/preview URL.
 #
 #   jobs:
 #     guardrails:
 #       uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-wordpress.yml@main
 #       with:
-#         preview_url: https://staging.example.com
+#         use_local_wordpress: true
 #         plugin_slug: my-plugin
 #       secrets: inherit
 #
 # Tests that sign in to wp-admin need WP_ADMIN_USER and WP_ADMIN_PASS. Without
 # them those specs skip themselves and the run reports green having asserted
 # nothing — pass them via `secrets: inherit` (or explicitly) so the gate is real.
+#
+# ## Job layout, and why the gate is a separate job
+#
+# `guardrails` is the job branch protection requires by name in every consumer
+# repo. Putting the Playwright run itself on a matrix would rename its check to
+# `guardrails (1)`, `guardrails (2)`… — the required check would then never
+# report and every PR in every project would block forever.
+#
+# So the work is split and `guardrails` stays a single, unmatrixed job that
+# reports the verdict:
+#
+#   prep    -> decides how many shards to run
+#   static  -> lint, build, PHP syntax, PHPCS, PHPUnit, version/changelog/deps/zip
+#   tests   -> Playwright, one runner per shard (matrix)
+#   guardrails -> asserts the above passed AND that the shards actually ran tests
+#
+# `static` and `tests` run concurrently, so the default single-shard setup is no
+# slower than the old single job, and usually a little faster.
 #
 on:
   workflow_call:
@@ -32,6 +51,16 @@ on:
           owns its own instance cannot silently skip against a dead staging host.
         type: boolean
         default: false
+      shards:
+        description: >-
+          How many runners to split the Playwright suite across. Default 1, which
+          behaves exactly as an unsharded run. Each shard is a separate runner
+          with its own WordPress, so specs that mutate site-wide state stay
+          isolated — that isolation is why the suites pin `workers: 1` and why
+          raising THAT instead of this would corrupt runs. Only worth raising for
+          a suite long enough to notice; the per-shard setup cost is real.
+        type: number
+        default: 1
       plugin_slug:
         description: Plugin slug (used for the single-zip check). Inferred from the main plugin file if empty.
         type: string
@@ -54,8 +83,9 @@ on:
         default: npm run build
       test_command:
         description: >-
-          Command to run Playwright tests against the preview URL. Keep the json
-          reporter — the zero-tests check reads its output.
+          Command to run Playwright tests. Keep the json reporter — the
+          zero-tests check reads its output. When shards > 1 a `--shard=i/n`
+          argument is appended to whatever this is set to.
         type: string
         default: npx playwright test --reporter=list,json
       allow_zero_tests:
@@ -82,7 +112,32 @@ on:
         required: false
 
 jobs:
-  guardrails:
+  # Turns the `shards` number into the JSON array the matrix needs. GitHub
+  # expressions have no range function, so this cannot be done inline.
+  prep:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - name: Plan the shards
+        id: plan
+        env:
+          SHARDS: ${{ inputs.shards }}
+        run: |
+          n="${SHARDS:-1}"
+          case "$n" in
+            ''|*[!0-9]*) echo "shards must be a positive whole number; got '$n'." >&2; exit 1 ;;
+          esac
+          if [ "$n" -lt 1 ]; then
+            echo "shards must be at least 1; got '$n'." >&2
+            exit 1
+          fi
+          echo "shards=[$(seq -s, 1 "$n")]" >> "$GITHUB_OUTPUT"
+          echo "Running the Playwright suite across $n shard(s)."
+
+  static:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -113,26 +168,6 @@ jobs:
         with:
           php-version: ${{ inputs.php_version }}
           tools: composer, cs2pr, phpcs
-          # pdo_sqlite/sqlite3 back the local WordPress harness.
-          extensions: pdo_sqlite, sqlite3
-
-      - name: Resolve the test target
-        env:
-          PREVIEW_URL: ${{ inputs.preview_url }}
-          USE_LOCAL: ${{ inputs.use_local_wordpress }}
-        run: |
-          if [ "$USE_LOCAL" = "true" ]; then
-            echo "TEST_BASE_URL=http://127.0.0.1:8881" >> "$GITHUB_ENV"
-          elif [ -n "$PREVIEW_URL" ]; then
-            echo "TEST_BASE_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
-            case "$PREVIEW_URL" in
-              *placeholder*|*example.com*)
-                echo "::warning title=Placeholder preview URL::preview_url looks like a placeholder ($PREVIEW_URL). Specs that guard against it will skip, and the zero-tests check will then fail the build. Set use_local_wordpress: true instead." ;;
-            esac
-          else
-            echo "Neither preview_url nor use_local_wordpress was provided. Set one." >&2
-            exit 1
-          fi
 
       - name: Install Node dependencies (if package.json)
         run: |
@@ -212,6 +247,85 @@ jobs:
           PLUGIN_SLUG: ${{ inputs.plugin_slug }}
         run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-plugin-zip.mjs"
 
+  tests:
+    needs: prep
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      # One shard failing must not cancel the others — a partial picture of what
+      # is broken costs another full cycle to complete.
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.prep.outputs.shards) }}
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+
+      - name: Checkout foundation (shared check scripts)
+        uses: actions/checkout@v4
+        with:
+          repository: blueworx-io/bluegroup_core_foundation
+          ref: ${{ inputs.foundation_ref }}
+          path: .foundation
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php_version }}
+          # pdo_sqlite/sqlite3 back the local WordPress harness.
+          extensions: pdo_sqlite, sqlite3
+
+      - name: Resolve the test target
+        env:
+          PREVIEW_URL: ${{ inputs.preview_url }}
+          USE_LOCAL: ${{ inputs.use_local_wordpress }}
+        run: |
+          if [ "$USE_LOCAL" = "true" ]; then
+            echo "TEST_BASE_URL=http://127.0.0.1:8881" >> "$GITHUB_ENV"
+          elif [ -n "$PREVIEW_URL" ]; then
+            echo "TEST_BASE_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
+            case "$PREVIEW_URL" in
+              *placeholder*|*example.com*)
+                echo "::warning title=Placeholder preview URL::preview_url looks like a placeholder ($PREVIEW_URL). Specs that guard against it will skip, and the zero-tests check will then fail the build. Set use_local_wordpress: true instead." ;;
+            esac
+          else
+            echo "Neither preview_url nor use_local_wordpress was provided. Set one." >&2
+            exit 1
+          fi
+
+      # A preview URL is ONE site. Sharding against it would have several runners
+      # toggling the same site-wide settings at once, which is the corruption the
+      # suites' `workers: 1` exists to prevent — only a per-runner WordPress
+      # makes shards independent.
+      - name: Refuse to shard against a shared preview URL
+        if: ${{ inputs.shards > 1 && ! inputs.use_local_wordpress }}
+        run: |
+          echo "shards > 1 requires use_local_wordpress: true." >&2
+          echo "Sharding against a single shared preview URL would have the shards corrupt each other's site state." >&2
+          exit 1
+
+      - name: Install Node dependencies (if package.json)
+        run: |
+          if [ -f package.json ]; then
+            if [ -f package-lock.json ]; then npm ci; else npm install; fi
+          else
+            echo "No package.json — skipping Node install."
+          fi
+
+      # Also built in `static`, deliberately: a project whose specs exercise
+      # built assets needs them here, and making this job wait on `static` just
+      # to reuse them would serialise the two and give back the time sharding
+      # bought.
+      - name: Build (if package.json)
+        run: |
+          if [ -f package.json ]; then ${{ inputs.build_command }}; else echo "No package.json — skipping build."; fi
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
@@ -231,6 +345,8 @@ jobs:
             echo "WordPress admin credentials present."
           fi
 
+      # Every shard is its own runner, so every shard gets its own WordPress on
+      # the same default port. Nothing to keep apart — the isolation is free.
       - name: Start local WordPress
         if: inputs.use_local_wordpress
         env:
@@ -250,31 +366,100 @@ jobs:
           WP_ADMIN_PASS: ${{ inputs.use_local_wordpress && 'wptest-admin-pw' || secrets.WP_ADMIN_PASS }}
           WP_LOGIN_PATH: ${{ inputs.wp_login_path }}
           PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-report.json
-        run: ${{ inputs.test_command }}
+          SHARD_INDEX: ${{ matrix.shard }}
+          SHARD_TOTAL: ${{ inputs.shards }}
+        run: |
+          # Unsharded runs get no --shard argument at all, so a single-shard run
+          # is byte-for-byte the command projects ran before this existed.
+          if [ "${SHARD_TOTAL:-1}" -gt 1 ]; then
+            echo "Running shard ${SHARD_INDEX} of ${SHARD_TOTAL}."
+            ${{ inputs.test_command }} "--shard=${SHARD_INDEX}/${SHARD_TOTAL}"
+          else
+            ${{ inputs.test_command }}
+          fi
 
       - name: Stop local WordPress
         if: always() && inputs.use_local_wordpress
         run: |
           node "$GITHUB_WORKSPACE/.foundation/scripts/wp-test-env.mjs" down --dir .wp-test || true
 
+      # The gate lives in the `guardrails` job, which has to see every shard's
+      # numbers to apply it to the total — one shard's report is not the suite.
+      - name: Upload this shard's Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-shard-${{ matrix.shard }}
+          path: playwright-report.json
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload WordPress debug log on failure
         if: failure() && inputs.use_local_wordpress
         uses: actions/upload-artifact@v4
         with:
-          name: wordpress-debug-log
+          name: wordpress-debug-log-shard-${{ matrix.shard }}
           path: |
             .wp-test/php-server.log
             .wp-test/wp/wp-content/debug.log
           if-no-files-found: ignore
 
+  # The job branch protection requires. Keep this name — see the note at the top.
+  guardrails:
+    if: always()
+    needs: [prep, static, tests]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # `needs.<job>.result` is `skipped` when a dependency was cancelled or its
+      # own dependency failed, and GitHub counts a skipped required check as a
+      # pass. Anything that is not an explicit success therefore has to fail
+      # here, or the gate quietly stops being one.
+      - name: Check the guardrail jobs passed
+        env:
+          PREP: ${{ needs.prep.result }}
+          STATIC: ${{ needs.static.result }}
+          TESTS: ${{ needs.tests.result }}
+        run: |
+          echo "prep:   $PREP"
+          echo "static: $STATIC"
+          echo "tests:  $TESTS"
+          failed=0
+          for pair in "prep:$PREP" "static:$STATIC" "tests:$TESTS"; do
+            name="${pair%%:*}"
+            result="${pair#*:}"
+            if [ "$result" != "success" ]; then
+              echo "::error title=Guardrail failed::The '$name' job did not succeed (result: $result)."
+              failed=1
+            fi
+          done
+          [ "$failed" -eq 0 ]
+
+      - name: Checkout foundation (shared check scripts)
+        uses: actions/checkout@v4
+        with:
+          repository: blueworx-io/bluegroup_core_foundation
+          ref: ${{ inputs.foundation_ref }}
+          path: .foundation
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Download every shard's Playwright report
+        uses: actions/download-artifact@v4
+        with:
+          pattern: playwright-report-shard-*
+          path: .shard-reports
+
       # `npx playwright test` exits 0 when every test skips, so a suite that
       # skips itself wholesale would otherwise report green having asserted
-      # nothing. This is what turns the missing-credentials warning above, and a
-      # placeholder preview_url, into a hard failure. Runs even when the tests
-      # failed, to report what actually ran.
+      # nothing. Applied to the SUM across shards: one shard can legitimately
+      # get an empty slice, but every shard asserting nothing is the failure.
       - name: Tests actually ran check
-        if: always()
         env:
-          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-report.json
+          PLAYWRIGHT_REPORT_DIR: .shard-reports
           ALLOW_ZERO_TESTS: ${{ inputs.allow_zero_tests }}
         run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-tests-ran.mjs"
