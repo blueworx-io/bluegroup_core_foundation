@@ -106,7 +106,46 @@ export function releaseTag({ tag, headerVersion, pluginFile }) {
 // itself wholesale reports green having asserted nothing. Skipped tests do not
 // count as executed — that is the failure mode this exists to catch.
 export function testsExecuted({ report }) {
-  const counts = countOutcomes(report);
+  return verdict(countOutcomes(report));
+}
+
+// The sharded form of the same gate. Playwright's --shard splits one suite
+// across N runners, so no single shard's report is the suite — the gate has to
+// be applied to the sum. A shard that executes nothing is not, on its own, a
+// failure (with more shards than spec files one of them legitimately gets an
+// empty slice); every shard executing nothing is precisely the failure this
+// exists to catch, and summing first is what keeps that distinction.
+//
+// An empty `reports` array means no shard produced a report at all — a broken
+// upload or a job that died before writing one. That is never a pass: it is the
+// same "cannot verify anything ran" state as a missing single report.
+export function testsExecutedAcross({ reports }) {
+  if (!Array.isArray(reports) || 0 === reports.length) {
+    return {
+      ok: false,
+      counts: { executed: 0, skipped: 0, total: 0 },
+      message:
+        'No Playwright JSON report was collected from any shard, so the number of tests that ran cannot be verified.\n' +
+        '  Every shard should upload its report; check the upload step and that test_command keeps the json reporter.',
+    };
+  }
+
+  const counts = reports
+    .map((report) => countOutcomes(report))
+    .reduce(
+      (total, c) => ({
+        executed: total.executed + c.executed,
+        skipped: total.skipped + c.skipped,
+        total: total.total + c.total,
+      }),
+      { executed: 0, skipped: 0, total: 0 },
+    );
+
+  return verdict(counts);
+}
+
+// Shared verdict so the single-report and sharded paths can never drift apart.
+function verdict(counts) {
   const { executed, skipped } = counts;
 
   if (executed > 0) {

@@ -60,6 +60,42 @@ and WordPress debug logs as an artifact if the run fails. You no longer need
 
 **Add `.wp-test/` to the project's `.gitignore`.** It is a full WordPress tree.
 
+### Sharding a slow suite
+
+Once a suite is long enough to be the reason PRs are slow, split it across
+runners with `shards`:
+
+```yaml
+    with:
+      plugin_slug: my-plugin
+      use_local_wordpress: true
+      shards: 3
+```
+
+Each shard is a **separate runner with its own WordPress**, which is the whole
+reason this works. The suites pin `workers: 1` because specs toggle site-wide
+state — feature flags, menu order, protection settings — and running them
+concurrently against one site makes one spec's "off" another's "on". Raising
+`workers` would do exactly that; raising `shards` gives each group its own site
+instead, so nothing is shared to corrupt. Leave `workers: 1` alone.
+
+Playwright decides the split, so the shards are roughly even but not identical,
+and wall clock lands near the slowest shard rather than `total / shards`.
+
+Two things to know:
+
+- **`shards: 1` is the default and changes nothing.** The test command is run
+  without a `--shard` argument at all, exactly as before this existed.
+- **Sharding requires `use_local_wordpress: true`.** The workflow refuses to
+  shard against a `preview_url`, because that is one shared site and the shards
+  would corrupt each other. This fails the run rather than producing quiet
+  nonsense.
+
+The zero-tests gate is applied to the **sum** across shards, not per shard: with
+more shards than spec files one shard can legitimately get an empty slice, but
+every shard asserting nothing still fails the build. Each shard uploads its JSON
+report and the `guardrails` job adds them up.
+
 ## Requirements
 
 - **PHP on PATH with `pdo_sqlite`.** The script checks and fails with a clear
