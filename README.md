@@ -56,7 +56,9 @@ name: CI
 on: pull_request
 jobs:
   guardrails:
-    uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-standalone.yml@main
+    uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-standalone.yml@v1
+    with:
+      foundation_ref: v1
 ```
 
 **Headless**
@@ -66,7 +68,9 @@ name: CI
 on: pull_request
 jobs:
   guardrails:
-    uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-headless.yml@main
+    uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-headless.yml@v1
+    with:
+      foundation_ref: v1
 ```
 
 **WordPress plugin** (Playwright runs against a disposable WordPress the run
@@ -77,10 +81,11 @@ name: CI
 on: pull_request
 jobs:
   guardrails:
-    uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-wordpress.yml@main
+    uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-wordpress.yml@v1
     with:
       plugin_slug: my-plugin
       use_local_wordpress: true
+      foundation_ref: v1
     secrets: inherit
 ```
 
@@ -111,6 +116,11 @@ All inputs have sensible defaults (`node_version`, `lint_command`, `build_comman
 `test_command`, `foundation_ref`; WordPress adds `php_version`, `preview_url`,
 `plugin_slug`, `wp_login_path`). Override only what a project needs.
 
+> **Set `foundation_ref` to match the `@ref` you called with.** The `@ref` picks the
+> workflow; `foundation_ref` picks the check scripts the workflow checks out. They
+> default apart — `foundation_ref` defaults to `main` — so calling `@v1` without it
+> runs the v1 workflow against whatever is on `main` today.
+
 > **If you override `test_command`, keep the json reporter.** Every workflow fails
 > the build when a Playwright run executes zero tests — `npx playwright test` exits
 > 0 when everything skips, so without that gate a suite that skips itself reports
@@ -124,9 +134,48 @@ All inputs have sensible defaults (`node_version`, `lint_command`, `build_comman
 > it should always have an open issue against it and be removed once real tests
 > run.
 
-> **Pin for reproducibility:** replace `@main` with a tag (e.g. `@v1`) and set the
-> matching `foundation_ref: v1` so the workflow and the shared check scripts move
-> together.
+## Versioning
+
+The foundation is tagged, and **projects pin to a tag rather than tracking `main`.**
+On `@main` every change to a reusable workflow lands in every project's CI the moment
+it merges, with no way to stage it.
+
+Two kinds of tag, following the GitHub Actions convention:
+
+- **`v1`** — a *moving* major tag. It is force-moved forward to the newest
+  backward-compatible release. This is what projects pin to: they pick up fixes and
+  compatible additions without a PR per repo.
+- **`v1.0.0`, `v1.1.0`, …** — *immutable* release tags. Cut once, never moved. Pin to
+  one of these when a project needs an exact, frozen snapshot (debugging a CI change,
+  or a repo that must not move on its own).
+
+A breaking change — removing or renaming a workflow input, changing a check's pass
+condition so a previously-green project fails, or a rename that changes how a caller
+must invoke a workflow — gets a new major (`v2` / `v2.0.0`) instead. `v1` is never
+moved onto it.
+
+### Cutting a release
+
+From an up-to-date `main`:
+
+```bash
+git tag -a v1.1.0 -m "v1.1.0"          # immutable release tag
+git push origin v1.1.0
+
+git tag -f -a v1 -m "v1 -> v1.1.0"     # move the major tag forward
+git push -f origin v1
+```
+
+Force-pushing `v1` is deliberate and is the only tag that is ever force-pushed.
+Because it moves, it is a convenience, not a reproducibility guarantee — pin an
+immutable `v1.x.y` when you need the run to be repeatable.
+
+### Updating a project
+
+Projects normally need no action: `@v1` follows compatible releases. A project moves
+deliberately only for a major bump — change both the `@ref` and `foundation_ref` in
+its caller workflow (`@v1` → `@v2`, `foundation_ref: v2`) and let its own CI prove
+the new major is green before merging.
 
 ## Releasing a WordPress plugin (auto-updates)
 
@@ -141,9 +190,10 @@ on:
     tags: ['v*']
 jobs:
   release:
-    uses: blueworx-io/bluegroup_core_foundation/.github/workflows/release-wordpress.yml@main
+    uses: blueworx-io/bluegroup_core_foundation/.github/workflows/release-wordpress.yml@v1
     with:
       plugin_slug: my-plugin
+      foundation_ref: v1
     permissions:
       contents: write
 ```

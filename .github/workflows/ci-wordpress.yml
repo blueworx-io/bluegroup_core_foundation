@@ -6,10 +6,11 @@ name: CI Guardrails (WordPress)
 #
 #   jobs:
 #     guardrails:
-#       uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-wordpress.yml@main
+#       uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-wordpress.yml@v1
 #       with:
 #         use_local_wordpress: true
 #         plugin_slug: my-plugin
+#         foundation_ref: v1
 #       secrets: inherit
 #
 # Tests that sign in to wp-admin need WP_ADMIN_USER and WP_ADMIN_PASS. Without

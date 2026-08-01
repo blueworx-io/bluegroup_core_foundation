@@ -5,7 +5,9 @@ name: CI Guardrails (standalone)
 #
 #   jobs:
 #     guardrails:
-#       uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-standalone.yml@main
+#       uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-standalone.yml@v1
+#       with:
+#         foundation_ref: v1
 #
 on:
   workflow_call:
