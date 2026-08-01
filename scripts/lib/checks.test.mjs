@@ -112,6 +112,8 @@ test('netlifyPreview: one context still building keeps the whole thing pending',
   const result = netlifyPreview({ statuses });
   assert.equal(result.ok, false);
   assert.equal(result.pending, true);
+});
+
 const shippable = [
   'my-plugin/my-plugin.php',
   'my-plugin/uninstall.php',
