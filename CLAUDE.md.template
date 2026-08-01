@@ -48,6 +48,8 @@ Every build or change starts from an approved GitHub Issue.
 
 - Patch bump for fixes, minor bump for new features
 - Bump automatically alongside the change, and update the changelog to match — never wait to be asked
+- The version lives in `package.json`, and for a plugin also in the header and version constant of the main `.php` — CI fails if those disagree
+- **`package-lock.json`'s own `version` field is not part of that, and is deliberately left alone.** It is already years out of date in most repos and nothing reads it: `npm ci` resolves the dependency tree, not the root version. Don't "fix" it, don't add a check for it — this was looked at and decided
 
 ## Linting
 
