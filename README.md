@@ -178,6 +178,39 @@ off entirely.
 The directory's own `README.md` is excluded: documenting the format is not a
 changelog entry.
 
+**Opting in means adding the assembly workflow too.** The check above only
+*accepts* fragments; something has to clear them, or the directory grows forever
+and `CHANGELOG.md` never moves. That is `assemble-changelog.yml`, reusable like
+the CI workflows:
+
+```yaml
+# .github/workflows/changelog.yml
+name: Assemble changelog
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  assemble:
+    uses: blueworx-io/bluegroup_core_foundation/.github/workflows/assemble-changelog.yml@v1
+    with:
+      version_source: plugin-header   # WordPress plugins; omit for package.json
+      foundation_ref: v1
+    permissions:
+      contents: write
+```
+
+It folds the pending fragments into `CHANGELOG.md` under the current version,
+deletes them, and commits to the default branch. `version_source` must match
+whatever the project's version bump check uses, or the two disagree about which
+version an entry belongs to.
+
+> **Branch protection blocks this job.** It commits straight to the default
+> branch, so a ruleset requiring pull requests rejects the push and the job
+> fails saying so. Add the GitHub Actions bot to the ruleset's bypass list.
+> Opening an assembly PR instead does not work: it changes the changelog and
+> bumps no version, so the version bump guardrail fails it every time.
+
 ## Versioning
 
 The foundation is tagged, and **projects pin to a tag rather than tracking `main`.**
@@ -272,7 +305,8 @@ and the release checklist — is in
 ## What's here
 
 - `.github/workflows/` — the three reusable guardrail workflows (`ci-*.yml`), the reusable
-  WordPress release workflow (`release-wordpress.yml`), plus this repo's own
+  WordPress release workflow (`release-wordpress.yml`), the reusable changelog assembly
+  workflow (`assemble-changelog.yml`), plus this repo's own
   `foundation-ci.yml` (runs the check-script tests on every PR; required by branch
   protection)
 - `scripts/` — the generic check scripts the workflows call (version bump, changelog,
