@@ -17,10 +17,36 @@ export function versionBumped({ current, base }) {
   return { ok: false, message: `Version not bumped: base is ${base}, current is ${current}. Bump it above the base branch.` };
 }
 
-export function changelogUpdated({ changedFiles, changelogPath }) {
+// Two accepted shapes. The historical one is "CHANGELOG.md is in the diff",
+// which forces every branch to write to the top of one shared file and so makes
+// any two open branches conflict on the same lines. A project can instead keep
+// per-change fragments in a directory, where each branch owns its own file and
+// the conflict cannot arise; a release step folds them into CHANGELOG.md.
+//
+// A project with no such directory can never match the second branch, so its
+// behaviour is unchanged.
+export function changelogUpdated({ changedFiles, changelogPath, changelogDir }) {
   if (changedFiles.includes(changelogPath)) {
     return { ok: true, message: `${changelogPath} was updated.` };
   }
+
+  if (changelogDir) {
+    const prefix = `${changelogDir.replace(/\/+$/, '')}/`;
+    // The directory's own README documents the format; editing it is not an entry.
+    const fragments = changedFiles.filter(
+      (f) => f.startsWith(prefix) && f !== `${prefix}README.md`,
+    );
+    if (fragments.length > 0) {
+      return { ok: true, message: `Changelog fragment(s) added: ${fragments.join(', ')}.` };
+    }
+    return {
+      ok: false,
+      message:
+        `Neither ${changelogPath} nor a file under ${prefix} was changed in this PR.\n` +
+        `  Add a fragment (${prefix}<branch-name>.md) or update ${changelogPath} directly.`,
+    };
+  }
+
   return { ok: false, message: `${changelogPath} was not updated in this PR. Update it alongside the version bump.` };
 }
 
