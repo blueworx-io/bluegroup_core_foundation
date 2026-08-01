@@ -108,6 +108,15 @@ on:
           the release build must agree on what ships.
         type: string
         default: ''
+      changelog_dir:
+        description: >-
+          Directory holding per-change changelog fragments. A PR satisfies the
+          changelog guardrail by adding a file here OR by editing CHANGELOG.md.
+          Each branch owning its own file is what stops two open branches
+          conflicting on the top of CHANGELOG.md. Projects without this
+          directory are unaffected — nothing can match, so the old rule applies.
+        type: string
+        default: changelog.d
       foundation_ref:
         description: Ref of the foundation repo to pull the shared check scripts from.
         type: string
@@ -243,6 +252,7 @@ jobs:
       - name: Changelog check
         env:
           BASE_REF: ${{ github.base_ref }}
+          CHANGELOG_DIR: ${{ inputs.changelog_dir }}
         run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-changelog.mjs"
 
       - name: Approved dependencies check
