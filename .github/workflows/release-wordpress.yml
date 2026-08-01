@@ -92,52 +92,16 @@ jobs:
             echo "No package.json — skipping install and build."
           fi
 
-      # Staged with rsync so the exclude list is declarative and the zip only
-      # ever contains what shipped through it.
+      # Staged through the shared script so the exclude list lives in exactly one
+      # place — scripts/plugin-zip-excludes.txt — and the tree a pull request was
+      # checked against is the tree this actually zips.
       - name: Stage clean plugin tree
         env:
           SLUG: ${{ steps.info.outputs.slug }}
           EXTRA_EXCLUDES: ${{ inputs.exclude_paths }}
         run: |
           set -euo pipefail
-          cat > /tmp/plugin-excludes.txt <<'EOF'
-          .git/
-          /.github
-          /.foundation
-          /.claude
-          /node_modules
-          /tests
-          /test-results
-          /playwright-report
-          /docs
-          /playwright.config.*
-          /package.json
-          /package-lock.json
-          /approved-deps.json
-          /.editorconfig
-          /.gitignore
-          /.gitattributes
-          /phpcs.xml
-          /phpcs.xml.dist
-          /.phpcs.xml
-          /.eslintrc*
-          /eslint.config.*
-          .env
-          .env.*
-          .npmrc
-          *.pem
-          *.key
-          # Deliberately unanchored (no leading /) so a stray zip anywhere in the
-          # tree — e.g. left over from a local build — never ships either.
-          *.zip
-          EOF
-          if [ -n "$EXTRA_EXCLUDES" ]; then
-            printf '%s\n' "$EXTRA_EXCLUDES" >> /tmp/plugin-excludes.txt
-          fi
-          echo "Excluding:"
-          sed 's/^/  /' /tmp/plugin-excludes.txt
-          mkdir -p "$RUNNER_TEMP/stage/$SLUG"
-          rsync -a --exclude-from=/tmp/plugin-excludes.txt ./ "$RUNNER_TEMP/stage/$SLUG/"
+          bash "$GITHUB_WORKSPACE/.foundation/scripts/stage-plugin-tree.sh" "$SLUG" "$RUNNER_TEMP/stage" >/dev/null
           echo "Staged tree:"
           find "$RUNNER_TEMP/stage/$SLUG" -maxdepth 1 -mindepth 1 | sed 's/^/  /'
 
@@ -176,6 +140,17 @@ jobs:
             exit 1
           fi
           echo "Zip verified: every entry under $SLUG/, main file $main_entry present."
+
+      # Shape is not content. The step above proves the archive is well-formed;
+      # this one proves nothing in it should have stayed behind — read off the
+      # built artifact, not off the intent that produced it.
+      - name: Verify zip content
+        env:
+          SLUG: ${{ steps.info.outputs.slug }}
+          PLUGIN_SLUG: ${{ steps.info.outputs.slug }}
+        run: |
+          set -euo pipefail
+          unzip -Z1 "$SLUG.zip" | node "$GITHUB_WORKSPACE/.foundation/scripts/check-plugin-zip-content.mjs"
 
       - name: Extract changelog section for this version
         id: notes

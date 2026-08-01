@@ -6,6 +6,7 @@ import {
   approvedDeps,
   pluginVersionSync,
   pluginZip,
+  pluginZipContent,
   releaseTag,
   testsExecuted,
   testsExecutedAcross,
@@ -58,6 +59,64 @@ test('pluginZip: passes for 0 or 1 matching zip, fails for more', () => {
     pluginZip({ zipFiles: ['my-plugin.zip', 'my-plugin-1.0.0.zip'], slug: 'my-plugin' }).ok,
     false,
   );
+});
+
+const shippable = [
+  'my-plugin/my-plugin.php',
+  'my-plugin/uninstall.php',
+  'my-plugin/readme.txt',
+  'my-plugin/CHANGELOG.md',
+  'my-plugin/includes/admin.php',
+  'my-plugin/assets/app.js',
+  'my-plugin/plugin-update-checker/plugin-update-checker.php',
+];
+
+test('pluginZipContent: passes a clean tree', () => {
+  const result = pluginZipContent({ entries: shippable, slug: 'my-plugin' });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.offenders, []);
+});
+
+test('pluginZipContent: fails an empty tree rather than calling it clean', () => {
+  assert.equal(pluginZipContent({ entries: [], slug: 'my-plugin' }).ok, false);
+});
+
+test('pluginZipContent: catches a forbidden directory nested inside a shipped one', () => {
+  // The case a top-level exclude cannot see, and the reason this check exists.
+  const result = pluginZipContent({
+    entries: [...shippable, 'my-plugin/includes/preview/index.php'],
+    slug: 'my-plugin',
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.offenders.join('\n'), /includes\/preview\/index\.php/);
+});
+
+test('pluginZipContent: catches forbidden files by basename glob', () => {
+  for (const entry of [
+    'my-plugin/composer.json',
+    'my-plugin/CLAUDE.md',
+    'my-plugin/includes/thing.spec.js',
+    'my-plugin/assets/deploy.pem',
+    'my-plugin/my-plugin.zip',
+    'my-plugin/includes/.env.local',
+  ]) {
+    const result = pluginZipContent({ entries: [...shippable, entry], slug: 'my-plugin' });
+    assert.equal(result.ok, false, `${entry} should not be shippable`);
+  }
+});
+
+test('pluginZipContent: fails entries that escape the slug directory', () => {
+  const result = pluginZipContent({ entries: [...shippable, 'stray.php'], slug: 'my-plugin' });
+  assert.equal(result.ok, false);
+  assert.match(result.offenders.join('\n'), /outside my-plugin\//);
+});
+
+test('pluginZipContent: a shipped name that merely contains a forbidden word is fine', () => {
+  const result = pluginZipContent({
+    entries: [...shippable, 'my-plugin/includes/preview-card.php', 'my-plugin/assets/tests-page.css'],
+    slug: 'my-plugin',
+  });
+  assert.equal(result.ok, true);
 });
 
 test('testsExecuted: passes when tests ran, from the stats block', () => {

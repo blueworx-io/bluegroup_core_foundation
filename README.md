@@ -121,6 +121,13 @@ All inputs have sensible defaults (`node_version`, `lint_command`, `build_comman
 > default apart — `foundation_ref` defaults to `main` — so calling `@v1` without it
 > runs the v1 workflow against whatever is on `main` today.
 
+> **What ships in a plugin zip is decided in one place**, `scripts/plugin-zip-excludes.txt`.
+> Every PR stages the tree the release would zip and fails if anything that must never
+> reach a live site survives — a `preview/` harness that bootstraps its own `ABSPATH`,
+> test specs, `composer.json`, `CLAUDE.md`, keys. Project-specific additions go in the
+> `exclude_paths` input; set it identically on the CI and release callers, or the check
+> and the build disagree about what ships.
+
 > **If you override `test_command`, keep the json reporter.** Every workflow fails
 > the build when a Playwright run executes zero tests — `npx playwright test` exits
 > 0 when everything skips, so without that gate a suite that skips itself reports
@@ -232,9 +239,10 @@ and the release checklist — is in
   `foundation-ci.yml` (runs the check-script tests on every PR; required by branch
   protection)
 - `scripts/` — the generic check scripts the workflows call (version bump, changelog,
-  approved deps, plugin version-sync, plugin zip, tests-actually-ran, release-tag match)
-  plus their tested cores in `scripts/lib/`, the `plugin-info` resolver, and
-  `wp-test-env.mjs`, the local WordPress harness
+  approved deps, plugin version-sync, plugin zip, plugin zip content, tests-actually-ran,
+  release-tag match) plus their tested cores in `scripts/lib/`, the `plugin-info`
+  resolver, `stage-plugin-tree.sh` + `plugin-zip-excludes.txt` (what ships in a plugin
+  zip, in one place), and `wp-test-env.mjs`, the local WordPress harness
 - `templates/` — `approved-deps.json` (the empty allow-list starter) and
   `plugin-update-checker-bootstrap.php` (paste-in auto-update wiring for plugins)
 - `.github/` PR + issue templates
