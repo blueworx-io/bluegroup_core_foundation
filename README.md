@@ -248,7 +248,8 @@ and the release checklist — is in
 - `.github/` PR + issue templates
 - `.claude/settings.json` — shared Claude Code permissions and approved skills
 - `CLAUDE.md.template` — condensed global rules every project carries as its `CLAUDE.md`
-- `docs/` — the design spec, implementation plan, the local WordPress test harness
-  guide, and the saved prompts (setup + headless framework starter)
+- `docs/` — the [Recipe Book](docs/recipe-book.md) (the standard approach to problems
+  we keep solving), the design spec, implementation plan, the local WordPress test
+  harness guide, and the saved prompts (setup + headless framework starter)
 
 _The Team Guidelines doc (the other reference) lives in ClickUp._

@@ -1,6 +1,6 @@
 # Global CLAUDE.md
 
-Global rules that apply to every project. Lives at `~/.claude/CLAUDE.md`. Full detail, all copy-paste prompts, and the complete Recipe Book live in the `bluegroup_core_foundation` repo and the Team Guidelines doc — this file is the condensed version Claude Code needs every session, and should never contradict them.
+Global rules that apply to every project. Lives at `~/.claude/CLAUDE.md`. Full detail and all copy-paste prompts live in the `bluegroup_core_foundation` repo and the Team Guidelines doc — this file is the condensed version Claude Code needs every session, and should never contradict them. The Recipe Book is `docs/recipe-book.md` in that repo.
 
 ## How Projects Are Structured
 
@@ -128,7 +128,9 @@ These skills load automatically from the shared `bluegroup_core_foundation` sett
 
 ## Recipe Book
 
-Before building anything that solves a common, recurring problem (contact form, login, file upload, payment, search, error/loading states, WordPress shortcodes on a headless site), check the Recipe Book in the Team Guidelines doc first and follow the standard approach if one exists. Propose new recipes for Luke's approval rather than reinventing an approach per project.
+Before building anything that solves a common, recurring problem (contact form, login, file upload, payment, search, error/loading states, WordPress shortcodes on a headless site), check the Recipe Book first and follow the standard approach if one exists. It lives at [`docs/recipe-book.md`](https://github.com/blueworx-io/bluegroup_core_foundation/blob/main/docs/recipe-book.md) in `bluegroup_core_foundation`. Most topics are still unwritten — an unwritten topic means propose a recipe for Luke's approval, not invent one per project.
+
+The one written recipe carries standing guidance worth knowing before a project starts: **if a site leans on third-party WordPress shortcodes, that is an argument against headless.**
 
 ## Secrets
 
