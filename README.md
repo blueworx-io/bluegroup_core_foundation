@@ -26,6 +26,11 @@ curl -o CLAUDE.md \
   https://raw.githubusercontent.com/blueworx-io/bluegroup_core_foundation/main/CLAUDE.md.template
 ```
 
+The **WordPress plugin** Starter Prompt is saved here:
+[`docs/starter-prompt-wordpress-plugin.md`](docs/starter-prompt-wordpress-plugin.md).
+Paste it into Claude Code in the new, empty plugin repo — it is self-contained, and
+following it produces a repo that passes `ci-wordpress.yml` on its first pull request.
+
 For **headless** projects there is a saved follow-on prompt,
 [`docs/starter-prompt-headless-framework.md`](docs/starter-prompt-headless-framework.md),
 that scaffolds the standard framework — Next.js (App Router) + TypeScript — on top
@@ -241,6 +246,7 @@ and the release checklist — is in
 - `.claude/settings.json` — shared Claude Code permissions and approved skills
 - `CLAUDE.md.template` — condensed global rules every project carries as its `CLAUDE.md`
 - `docs/` — the design spec, implementation plan, the local WordPress test harness
-  guide, and the saved prompts (setup + headless framework starter)
+  guide, and the saved prompts (setup, WordPress plugin starter, headless framework
+  starter)
 
 _The Team Guidelines doc (the other reference) lives in ClickUp._
