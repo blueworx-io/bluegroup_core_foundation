@@ -52,9 +52,10 @@ on:
     tags: ['v*']
 jobs:
   release:
-    uses: blueworx-io/bluegroup_core_foundation/.github/workflows/release-wordpress.yml@main
+    uses: blueworx-io/bluegroup_core_foundation/.github/workflows/release-wordpress.yml@v1
     with:
       plugin_slug: my-plugin
+      foundation_ref: v1
     permissions:
       contents: write
 ```

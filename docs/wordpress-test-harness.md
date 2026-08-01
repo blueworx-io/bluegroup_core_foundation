@@ -46,10 +46,11 @@ Set one input. `preview_url` becomes unnecessary:
 ```yaml
 jobs:
   guardrails:
-    uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-wordpress.yml@main
+    uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-wordpress.yml@v1
     with:
       plugin_slug: my-plugin
       use_local_wordpress: true
+      foundation_ref: v1
     secrets: inherit
 ```
 
