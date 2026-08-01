@@ -26,10 +26,13 @@ curl -o CLAUDE.md \
   https://raw.githubusercontent.com/blueworx-io/bluegroup_core_foundation/main/CLAUDE.md.template
 ```
 
-The **WordPress plugin** Starter Prompt is saved here:
-[`docs/starter-prompt-wordpress-plugin.md`](docs/starter-prompt-wordpress-plugin.md).
-Paste it into Claude Code in the new, empty plugin repo — it is self-contained, and
-following it produces a repo that passes `ci-wordpress.yml` on its first pull request.
+All three are saved here, and each is self-contained — paste the matching one into
+Claude Code in the new, empty repo and the result passes its CI workflow on the first
+pull request:
+
+- [`docs/starter-prompt-standalone.md`](docs/starter-prompt-standalone.md)
+- [`docs/starter-prompt-wordpress-plugin.md`](docs/starter-prompt-wordpress-plugin.md)
+- headless — the initial setup, then the framework prompt below
 
 For **headless** projects there is a saved follow-on prompt,
 [`docs/starter-prompt-headless-framework.md`](docs/starter-prompt-headless-framework.md),
@@ -287,7 +290,7 @@ and the release checklist — is in
 - `CLAUDE.md.template` — condensed global rules every project carries as its `CLAUDE.md`
 - `docs/` — the [Recipe Book](docs/recipe-book.md) (the standard approach to problems
   we keep solving), the design spec, implementation plan, the local WordPress test
-  harness guide, and the saved prompts (setup, WordPress plugin starter, headless
-  framework starter)
+  harness guide, and the saved prompts (setup, standalone starter, WordPress plugin
+  starter, headless framework starter)
 
 _The Team Guidelines doc (the other reference) lives in ClickUp._
