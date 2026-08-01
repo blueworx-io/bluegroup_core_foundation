@@ -66,6 +66,85 @@ export function pluginZip({ zipFiles, slug }) {
   };
 }
 
+// What must never reach a live site, checked against the staged tree rather
+// than against the intent that produced it. The exclude list is a denylist of
+// top-level paths; this is the second line, and it is the one that catches the
+// case a human misses — a dev directory nested inside a shipped one, which no
+// top-level exclude touches.
+//
+// Segments match a whole path component anywhere in the tree. Files match a
+// basename, with * matching within one component.
+const FORBIDDEN_SEGMENTS = [
+  '.git', '.github', '.foundation', '.claude', '.superpowers',
+  'node_modules', 'preview', 'tests', 'test-results', 'playwright-report',
+];
+const FORBIDDEN_FILES = [
+  '*.spec.js', '*.spec.ts', '*.test.js', '*.test.mjs',
+  'playwright.config.*', 'package.json', 'package-lock.json',
+  'composer.json', 'composer.lock', 'approved-deps.json',
+  'phpunit.xml', 'phpunit.xml.dist', 'phpcs.xml', 'phpcs.xml.dist', '.phpcs.xml',
+  'CLAUDE.md', 'AGENTS.md', '.env', '.env.*', '.npmrc', '*.pem', '*.key', '*.zip',
+];
+
+// `entries` are archive-style paths, each expected to start "<slug>/". Passing
+// the zip's own entry list (unzip -Z1) and passing a staged tree's relative
+// paths are the same input, which is why one function serves both callers.
+export function pluginZipContent({ entries, slug }) {
+  const paths = (entries ?? []).map((e) => String(e).replace(/\/+$/, '')).filter(Boolean);
+
+  if (paths.length === 0) {
+    return { ok: false, offenders: [], message: 'The staged plugin tree is empty — nothing would ship.' };
+  }
+
+  const offenders = [];
+  const outside = paths.filter((p) => !p.startsWith(`${slug}/`) && p !== slug);
+  for (const p of outside) offenders.push(`${p} (outside ${slug}/)`);
+
+  for (const p of paths) {
+    const parts = p.split('/').slice(1); // drop the leading <slug>
+    const dirs = parts.slice(0, -1);
+    const base = parts[parts.length - 1];
+    if (!base) continue;
+
+    const segment = dirs.find((d) => FORBIDDEN_SEGMENTS.includes(d));
+    if (segment) {
+      offenders.push(`${p} (inside a "${segment}" directory)`);
+      continue;
+    }
+    if (parts.length === 1 && FORBIDDEN_SEGMENTS.includes(base)) {
+      offenders.push(`${p} (a "${base}" directory)`);
+      continue;
+    }
+    const pattern = FORBIDDEN_FILES.find((f) => globMatches(f, base));
+    if (pattern) offenders.push(`${p} (matches "${pattern}")`);
+  }
+
+  const unique = [...new Set(offenders)];
+  if (unique.length > 0) {
+    return {
+      ok: false,
+      offenders: unique,
+      message:
+        'These would ship to a live site and must not:\n  ' + unique.join('\n  ') +
+        '\n  Add the path to scripts/plugin-zip-excludes.txt, or to the exclude_paths input if it is project-specific.',
+    };
+  }
+
+  const mainFile = paths.some((p) => p === `${slug}/${slug}.php`);
+  return {
+    ok: true,
+    offenders: [],
+    message:
+      `${paths.length} entries would ship, none forbidden` +
+      (mainFile ? `, and ${slug}/${slug}.php is present.` : '.'),
+  };
+}
+
+function globMatches(pattern, value) {
+  const rx = new RegExp('^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*') + '$');
+  return rx.test(value);
+}
+
 // A tag whose version disagrees with the plugin header publishes a Release that
 // looks healthy but is never offered to sites: the update checker reads the
 // header from the plugin's main file at the tagged ref, compares it to what's
@@ -100,6 +179,65 @@ export function releaseTag({ tag, headerVersion, pluginFile }) {
     };
   }
   return { ok: true, message: `Release tag ${tag} matches the plugin header version in ${pluginFile}.` };
+}
+
+// Headless projects deploy every PR to a Netlify preview, and that preview is a
+// required check: merging a headless PR whose preview never built means merging
+// something nobody has seen running.
+//
+// Netlify reports the deploy as a commit status on the PR head, context
+// "netlify/<site>/deploy-preview". GitHub keeps every status ever posted for a
+// commit, so a context that was pending and then succeeded appears twice —
+// latest-per-context is the only reading that reflects reality.
+//
+// A commit with no Netlify status at all is deliberately *pending*, not failed:
+// the caller polls, and only a timeout turns "never reported" into a failure.
+// Treating it as failed immediately would fail every PR in the seconds before
+// Netlify first posts.
+export function netlifyPreview({ statuses }) {
+  const netlify = (statuses ?? []).filter((s) => String(s?.context ?? '').startsWith('netlify/'));
+
+  if (netlify.length === 0) {
+    return { ok: false, pending: true, url: null, message: 'No Netlify status posted for this commit yet.' };
+  }
+
+  const latest = new Map();
+  for (const s of netlify) {
+    const seen = latest.get(s.context);
+    if (!seen || String(s.updated_at ?? '') >= String(seen.updated_at ?? '')) latest.set(s.context, s);
+  }
+  const current = [...latest.values()];
+
+  const failed = current.filter((s) => s.state === 'failure' || s.state === 'error');
+  if (failed.length > 0) {
+    return {
+      ok: false,
+      pending: false,
+      url: failed[0].target_url ?? null,
+      message:
+        'The Netlify preview deploy failed:\n  ' +
+        failed.map((s) => `${s.context}: ${s.state}${s.target_url ? ` — ${s.target_url}` : ''}`).join('\n  ') +
+        '\n  A headless PR cannot be merged on a preview nobody can open.',
+    };
+  }
+
+  const waiting = current.filter((s) => s.state !== 'success');
+  if (waiting.length > 0) {
+    return {
+      ok: false,
+      pending: true,
+      url: null,
+      message: 'Waiting on: ' + waiting.map((s) => `${s.context} (${s.state})`).join(', '),
+    };
+  }
+
+  const deploy = current.find((s) => s.context.endsWith('/deploy-preview')) ?? current[0];
+  return {
+    ok: true,
+    pending: false,
+    url: deploy.target_url ?? null,
+    message: `Netlify preview deployed: ${current.map((s) => s.context).join(', ')}.`,
+  };
 }
 
 // A Playwright run that executes nothing still exits 0, so a suite that skips

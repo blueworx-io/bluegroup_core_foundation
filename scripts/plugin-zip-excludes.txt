@@ -1,0 +1,68 @@
+# Canonical rsync exclude list for the deployable WordPress plugin zip.
+#
+# One source of truth, read by two places so they cannot drift:
+#   - release-wordpress.yml stages the tree through it before zipping
+#   - ci-wordpress.yml stages the same tree on every PR, so a file that would
+#     have leaked into a release is caught at review time rather than at tag time
+#
+# This is the denylist. check-plugin-zip-content.mjs then inspects the result
+# against a separate forbidden list — belt and braces, because the case that
+# actually bites is a dev directory nested inside a shipped one, which no
+# top-level exclude catches.
+#
+# A leading / anchors to the repo root. No leading / matches at any depth.
+
+.git/
+/.github
+/.foundation
+/.claude
+/.superpowers
+/node_modules
+
+# Test and tooling trees. `scripts` is deliberately NOT here — plenty of plugins
+# keep runtime JS under it. `preview` is here because a preview harness that
+# bootstraps its own ABSPATH renders a full page without WordPress — shipped to
+# a live site, it is reachable unauthenticated.
+/preview
+/tests
+/test-results
+/playwright-report
+/docs
+/bin
+
+# Repo tooling config. None of it is read at runtime by WordPress.
+/playwright.config.*
+/package.json
+/package-lock.json
+/approved-deps.json
+/composer.json
+/composer.lock
+/phpunit.xml
+/phpunit.xml.dist
+/phpcs.xml
+/phpcs.xml.dist
+/.phpcs.xml
+/.editorconfig
+/.gitignore
+/.gitattributes
+/.nvmrc
+/.eslintrc*
+/eslint.config.*
+
+# Project instructions and working notes, not plugin content. readme.txt and
+# CHANGELOG.md deliberately ship: WordPress reads the first, and the release
+# workflow quotes the second as the release notes.
+/CLAUDE.md
+/AGENTS.md
+/IMPLEMENTATION_PLAN.md
+
+# Secrets and keys, at any depth.
+.env
+.env.*
+.npmrc
+*.pem
+*.key
+
+# Deliberately unanchored (no leading /) so a stray zip anywhere in the tree —
+# e.g. left over from a local build — never ships either.
+*.zip

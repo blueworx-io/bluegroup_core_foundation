@@ -6,6 +6,8 @@ import {
   approvedDeps,
   pluginVersionSync,
   pluginZip,
+  netlifyPreview,
+  pluginZipContent,
   releaseTag,
   testsExecuted,
   testsExecutedAcross,
@@ -58,6 +60,116 @@ test('pluginZip: passes for 0 or 1 matching zip, fails for more', () => {
     pluginZip({ zipFiles: ['my-plugin.zip', 'my-plugin-1.0.0.zip'], slug: 'my-plugin' }).ok,
     false,
   );
+});
+
+const preview = (state, updated_at, target_url = 'https://deploy-preview-7--site.netlify.app') => ({
+  context: 'netlify/site/deploy-preview',
+  state,
+  updated_at,
+  target_url,
+});
+
+test('netlifyPreview: no Netlify status is pending, not failed', () => {
+  // Every PR has a window before Netlify posts anything. Failing there would
+  // fail every PR in that window.
+  const result = netlifyPreview({ statuses: [{ context: 'ci/other', state: 'success' }] });
+  assert.equal(result.ok, false);
+  assert.equal(result.pending, true);
+});
+
+test('netlifyPreview: passes on success and hands back the preview URL', () => {
+  const result = netlifyPreview({ statuses: [preview('success', '2026-08-01T10:00:00Z')] });
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://deploy-preview-7--site.netlify.app');
+});
+
+test('netlifyPreview: reads the latest status per context, not the first', () => {
+  // GitHub keeps every status ever posted, so pending-then-success appears twice.
+  const statuses = [preview('pending', '2026-08-01T10:00:00Z'), preview('success', '2026-08-01T10:04:00Z')];
+  assert.equal(netlifyPreview({ statuses }).ok, true);
+  assert.equal(netlifyPreview({ statuses: [...statuses].reverse() }).ok, true);
+
+  // …and a success later superseded by a failure is a failure.
+  const regressed = [preview('success', '2026-08-01T10:00:00Z'), preview('failure', '2026-08-01T10:06:00Z')];
+  const result = netlifyPreview({ statuses: regressed });
+  assert.equal(result.ok, false);
+  assert.equal(result.pending, false);
+});
+
+test('netlifyPreview: a failed or errored deploy fails outright, never pends', () => {
+  for (const state of ['failure', 'error']) {
+    const result = netlifyPreview({ statuses: [preview(state, '2026-08-01T10:00:00Z')] });
+    assert.equal(result.ok, false);
+    assert.equal(result.pending, false);
+  }
+});
+
+test('netlifyPreview: one context still building keeps the whole thing pending', () => {
+  const statuses = [
+    preview('success', '2026-08-01T10:00:00Z'),
+    { context: 'netlify/site/deploy-preview-headers', state: 'pending', updated_at: '2026-08-01T10:01:00Z' },
+  ];
+  const result = netlifyPreview({ statuses });
+  assert.equal(result.ok, false);
+  assert.equal(result.pending, true);
+});
+
+const shippable = [
+  'my-plugin/my-plugin.php',
+  'my-plugin/uninstall.php',
+  'my-plugin/readme.txt',
+  'my-plugin/CHANGELOG.md',
+  'my-plugin/includes/admin.php',
+  'my-plugin/assets/app.js',
+  'my-plugin/plugin-update-checker/plugin-update-checker.php',
+];
+
+test('pluginZipContent: passes a clean tree', () => {
+  const result = pluginZipContent({ entries: shippable, slug: 'my-plugin' });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.offenders, []);
+});
+
+test('pluginZipContent: fails an empty tree rather than calling it clean', () => {
+  assert.equal(pluginZipContent({ entries: [], slug: 'my-plugin' }).ok, false);
+});
+
+test('pluginZipContent: catches a forbidden directory nested inside a shipped one', () => {
+  // The case a top-level exclude cannot see, and the reason this check exists.
+  const result = pluginZipContent({
+    entries: [...shippable, 'my-plugin/includes/preview/index.php'],
+    slug: 'my-plugin',
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.offenders.join('\n'), /includes\/preview\/index\.php/);
+});
+
+test('pluginZipContent: catches forbidden files by basename glob', () => {
+  for (const entry of [
+    'my-plugin/composer.json',
+    'my-plugin/CLAUDE.md',
+    'my-plugin/includes/thing.spec.js',
+    'my-plugin/assets/deploy.pem',
+    'my-plugin/my-plugin.zip',
+    'my-plugin/includes/.env.local',
+  ]) {
+    const result = pluginZipContent({ entries: [...shippable, entry], slug: 'my-plugin' });
+    assert.equal(result.ok, false, `${entry} should not be shippable`);
+  }
+});
+
+test('pluginZipContent: fails entries that escape the slug directory', () => {
+  const result = pluginZipContent({ entries: [...shippable, 'stray.php'], slug: 'my-plugin' });
+  assert.equal(result.ok, false);
+  assert.match(result.offenders.join('\n'), /outside my-plugin\//);
+});
+
+test('pluginZipContent: a shipped name that merely contains a forbidden word is fine', () => {
+  const result = pluginZipContent({
+    entries: [...shippable, 'my-plugin/includes/preview-card.php', 'my-plugin/assets/tests-page.css'],
+    slug: 'my-plugin',
+  });
+  assert.equal(result.ok, true);
 });
 
 test('testsExecuted: passes when tests ran, from the stats block', () => {

@@ -78,6 +78,14 @@ jobs:
       foundation_ref: v1
 ```
 
+> **The Netlify deploy preview is a required check on headless projects**, and it is
+> the only thing that makes headless different from standalone. The workflow waits
+> for Netlify's `deploy-preview` commit status on the PR head, fails if it failed or
+> never arrived, then fails again if the preview URL doesn't answer — a green status
+> on a site that 404s behind deploy protection is not a preview anyone can review.
+> Connect the repo to Netlify, or set `require_netlify_preview: false` and say in the
+> caller workflow why this project has no preview.
+
 **WordPress plugin** (Playwright runs against a disposable WordPress the run
 provisions itself — PHP + SQLite, no Docker, no hosting):
 
@@ -125,6 +133,13 @@ All inputs have sensible defaults (`node_version`, `lint_command`, `build_comman
 > workflow; `foundation_ref` picks the check scripts the workflow checks out. They
 > default apart — `foundation_ref` defaults to `main` — so calling `@v1` without it
 > runs the v1 workflow against whatever is on `main` today.
+
+> **What ships in a plugin zip is decided in one place**, `scripts/plugin-zip-excludes.txt`.
+> Every PR stages the tree the release would zip and fails if anything that must never
+> reach a live site survives — a `preview/` harness that bootstraps its own `ABSPATH`,
+> test specs, `composer.json`, `CLAUDE.md`, keys. Project-specific additions go in the
+> `exclude_paths` input; set it identically on the CI and release callers, or the check
+> and the build disagree about what ships.
 
 > **If you override `test_command`, keep the json reporter.** Every workflow fails
 > the build when a Playwright run executes zero tests — `npx playwright test` exits
@@ -237,16 +252,18 @@ and the release checklist — is in
   `foundation-ci.yml` (runs the check-script tests on every PR; required by branch
   protection)
 - `scripts/` — the generic check scripts the workflows call (version bump, changelog,
-  approved deps, plugin version-sync, plugin zip, tests-actually-ran, release-tag match)
-  plus their tested cores in `scripts/lib/`, the `plugin-info` resolver, and
-  `wp-test-env.mjs`, the local WordPress harness
+  approved deps, plugin version-sync, plugin zip, plugin zip content, tests-actually-ran,
+  release-tag match, Netlify preview) plus their tested cores in `scripts/lib/`, the
+  `plugin-info` resolver, `stage-plugin-tree.sh` + `plugin-zip-excludes.txt` (what ships
+  in a plugin zip, in one place), and `wp-test-env.mjs`, the local WordPress harness
 - `templates/` — `approved-deps.json` (the empty allow-list starter) and
   `plugin-update-checker-bootstrap.php` (paste-in auto-update wiring for plugins)
 - `.github/` PR + issue templates
 - `.claude/settings.json` — shared Claude Code permissions and approved skills
 - `CLAUDE.md.template` — condensed global rules every project carries as its `CLAUDE.md`
-- `docs/` — the design spec, implementation plan, the local WordPress test harness
-  guide, and the saved prompts (setup, WordPress plugin starter, headless framework
-  starter)
+- `docs/` — the [Recipe Book](docs/recipe-book.md) (the standard approach to problems
+  we keep solving), the design spec, implementation plan, the local WordPress test
+  harness guide, and the saved prompts (setup, WordPress plugin starter, headless
+  framework starter)
 
 _The Team Guidelines doc (the other reference) lives in ClickUp._

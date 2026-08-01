@@ -100,6 +100,14 @@ on:
         description: Path to the WordPress login screen, if the project moves it off /wp-login.php.
         type: string
         default: ''
+      exclude_paths:
+        description: >-
+          Extra rsync patterns, one per line, excluded from the deployable plugin
+          zip on top of scripts/plugin-zip-excludes.txt. Keep this identical to the
+          release workflow's input of the same name — the PR-time content check and
+          the release build must agree on what ships.
+        type: string
+        default: ''
       foundation_ref:
         description: Ref of the foundation repo to pull the shared check scripts from.
         type: string
@@ -247,6 +255,21 @@ jobs:
         env:
           PLUGIN_SLUG: ${{ inputs.plugin_slug }}
         run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-plugin-zip.mjs"
+
+      # Stages the tree the release workflow would zip and fails if anything
+      # that must never reach a live site survives the exclude list. Run here,
+      # on every PR, because at tag time the only fix is another tag — and
+      # because the leak that matters is a dev directory nested inside a shipped
+      # one, which no amount of care over the top level catches.
+      - name: Plugin zip content check (what would ship)
+        env:
+          PLUGIN_SLUG: ${{ inputs.plugin_slug }}
+          EXTRA_EXCLUDES: ${{ inputs.exclude_paths }}
+        run: |
+          set -euo pipefail
+          slug="${PLUGIN_SLUG:-$(node "$GITHUB_WORKSPACE/.foundation/scripts/plugin-info.mjs" | sed -n 's/^slug=//p')}"
+          bash "$GITHUB_WORKSPACE/.foundation/scripts/stage-plugin-tree.sh" "$slug" "$RUNNER_TEMP/stage" \
+            | node "$GITHUB_WORKSPACE/.foundation/scripts/check-plugin-zip-content.mjs"
 
   tests:
     needs: prep
