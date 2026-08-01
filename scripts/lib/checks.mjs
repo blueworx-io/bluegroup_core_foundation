@@ -181,6 +181,65 @@ export function releaseTag({ tag, headerVersion, pluginFile }) {
   return { ok: true, message: `Release tag ${tag} matches the plugin header version in ${pluginFile}.` };
 }
 
+// Headless projects deploy every PR to a Netlify preview, and that preview is a
+// required check: merging a headless PR whose preview never built means merging
+// something nobody has seen running.
+//
+// Netlify reports the deploy as a commit status on the PR head, context
+// "netlify/<site>/deploy-preview". GitHub keeps every status ever posted for a
+// commit, so a context that was pending and then succeeded appears twice —
+// latest-per-context is the only reading that reflects reality.
+//
+// A commit with no Netlify status at all is deliberately *pending*, not failed:
+// the caller polls, and only a timeout turns "never reported" into a failure.
+// Treating it as failed immediately would fail every PR in the seconds before
+// Netlify first posts.
+export function netlifyPreview({ statuses }) {
+  const netlify = (statuses ?? []).filter((s) => String(s?.context ?? '').startsWith('netlify/'));
+
+  if (netlify.length === 0) {
+    return { ok: false, pending: true, url: null, message: 'No Netlify status posted for this commit yet.' };
+  }
+
+  const latest = new Map();
+  for (const s of netlify) {
+    const seen = latest.get(s.context);
+    if (!seen || String(s.updated_at ?? '') >= String(seen.updated_at ?? '')) latest.set(s.context, s);
+  }
+  const current = [...latest.values()];
+
+  const failed = current.filter((s) => s.state === 'failure' || s.state === 'error');
+  if (failed.length > 0) {
+    return {
+      ok: false,
+      pending: false,
+      url: failed[0].target_url ?? null,
+      message:
+        'The Netlify preview deploy failed:\n  ' +
+        failed.map((s) => `${s.context}: ${s.state}${s.target_url ? ` — ${s.target_url}` : ''}`).join('\n  ') +
+        '\n  A headless PR cannot be merged on a preview nobody can open.',
+    };
+  }
+
+  const waiting = current.filter((s) => s.state !== 'success');
+  if (waiting.length > 0) {
+    return {
+      ok: false,
+      pending: true,
+      url: null,
+      message: 'Waiting on: ' + waiting.map((s) => `${s.context} (${s.state})`).join(', '),
+    };
+  }
+
+  const deploy = current.find((s) => s.context.endsWith('/deploy-preview')) ?? current[0];
+  return {
+    ok: true,
+    pending: false,
+    url: deploy.target_url ?? null,
+    message: `Netlify preview deployed: ${current.map((s) => s.context).join(', ')}.`,
+  };
+}
+
 // A Playwright run that executes nothing still exits 0, so a suite that skips
 // itself wholesale reports green having asserted nothing. Skipped tests do not
 // count as executed — that is the failure mode this exists to catch.

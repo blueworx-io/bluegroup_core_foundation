@@ -37,15 +37,33 @@ on:
         type: string
         default: main
       netlify_preview_url:
-        description: Reserved for the headless-only Netlify preview required check (see below).
+        description: >-
+          Preview URL to verify instead of the one Netlify reports. Leave empty to
+          use the deploy-preview status's own target_url, which is per-PR and
+          therefore what you almost always want.
         type: string
         default: ''
+      require_netlify_preview:
+        description: >-
+          Whether a healthy Netlify deploy preview is required. True by default —
+          this is the check that makes headless its own project type. Set it false
+          only for a headless project that genuinely has no Netlify site, and say
+          why in the caller workflow.
+        type: boolean
+        default: true
+      netlify_preview_timeout:
+        description: Seconds to wait for Netlify to report its deploy-preview status.
+        type: number
+        default: 600
 
 jobs:
   guardrails:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # Netlify posts its deploy result as a commit status, which is what the
+      # preview check below reads.
+      statuses: read
     steps:
       - name: Checkout PR code
         uses: actions/checkout@v4
@@ -107,9 +125,21 @@ jobs:
           PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-report.json
         run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-tests-ran.mjs"
 
-      # ── Headless-only extension point: Netlify preview required check ─────────
-      # For headless projects the Netlify preview deploy is a REQUIRED check.
-      # When wired up, add a step here that waits for / verifies the Netlify
-      # preview for this PR (e.g. poll the Netlify deploy status or the
-      # `netlify_preview_url` input) and fails if it isn't ready and healthy.
-      # Left as a documented placeholder for now — see the design spec.
+      # ── Headless-only: the Netlify preview is a required check ────────────────
+      # This is what makes headless its own project type rather than a copy of
+      # standalone. Merging a headless PR whose preview never built means merging
+      # something nobody has seen running.
+      #
+      # Two assertions, because either alone is satisfiable by a lie: the
+      # deploy-preview commit status must be success *for this commit* (a stale
+      # preview from an earlier push answers requests perfectly well), and the URL
+      # must actually respond (a status can say success while the site sits behind
+      # deploy protection or a broken redirect).
+      - name: Netlify preview required check
+        if: inputs.require_netlify_preview && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+          PREVIEW_URL: ${{ inputs.netlify_preview_url }}
+          TIMEOUT_SECONDS: ${{ inputs.netlify_preview_timeout }}
+        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-netlify-preview.mjs"

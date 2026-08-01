@@ -73,6 +73,14 @@ jobs:
       foundation_ref: v1
 ```
 
+> **The Netlify deploy preview is a required check on headless projects**, and it is
+> the only thing that makes headless different from standalone. The workflow waits
+> for Netlify's `deploy-preview` commit status on the PR head, fails if it failed or
+> never arrived, then fails again if the preview URL doesn't answer — a green status
+> on a site that 404s behind deploy protection is not a preview anyone can review.
+> Connect the repo to Netlify, or set `require_netlify_preview: false` and say in the
+> caller workflow why this project has no preview.
+
 **WordPress plugin** (Playwright runs against a disposable WordPress the run
 provisions itself — PHP + SQLite, no Docker, no hosting):
 
@@ -240,9 +248,9 @@ and the release checklist — is in
   protection)
 - `scripts/` — the generic check scripts the workflows call (version bump, changelog,
   approved deps, plugin version-sync, plugin zip, plugin zip content, tests-actually-ran,
-  release-tag match) plus their tested cores in `scripts/lib/`, the `plugin-info`
-  resolver, `stage-plugin-tree.sh` + `plugin-zip-excludes.txt` (what ships in a plugin
-  zip, in one place), and `wp-test-env.mjs`, the local WordPress harness
+  release-tag match, Netlify preview) plus their tested cores in `scripts/lib/`, the
+  `plugin-info` resolver, `stage-plugin-tree.sh` + `plugin-zip-excludes.txt` (what ships
+  in a plugin zip, in one place), and `wp-test-env.mjs`, the local WordPress harness
 - `templates/` — `approved-deps.json` (the empty allow-list starter) and
   `plugin-update-checker-bootstrap.php` (paste-in auto-update wiring for plugins)
 - `.github/` PR + issue templates
