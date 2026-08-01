@@ -1,0 +1,116 @@
+name: Assemble changelog
+
+# Reusable changelog-assembly workflow. The other half of the fragment option in
+# the changelog guardrail: PRs add their own file under changelog.d/ so two open
+# branches never conflict on the top of CHANGELOG.md, and this folds those files
+# in on the default branch, where nothing is running in parallel.
+#
+#   # .github/workflows/changelog.yml
+#   name: Assemble changelog
+#   on:
+#     push:
+#       branches: [main]
+#     workflow_dispatch:
+#   jobs:
+#     assemble:
+#       uses: blueworx-io/bluegroup_core_foundation/.github/workflows/assemble-changelog.yml@v1
+#       with:
+#         version_source: plugin-header   # WordPress plugins; omit for package.json
+#         foundation_ref: v1
+#       permissions:
+#         contents: write
+#
+# `permissions: contents: write` belongs in the caller — a reusable workflow
+# cannot widen the permissions it is given. Without it, the push 403s.
+#
+# BRANCH PROTECTION: this job commits straight to the default branch. If that
+# branch requires pull requests, the push is rejected and the job fails with a
+# message saying so. Add the GitHub Actions bot to the ruleset's bypass list, or
+# run this by hand from the Actions tab (workflow_dispatch) and merge the result
+# yourself. Note that an assembly-only PR cannot pass a version-bump guardrail —
+# it changes the changelog and bumps nothing — so the bypass is the practical
+# route.
+on:
+  workflow_call:
+    inputs:
+      changelog_dir:
+        description: Directory holding the fragments.
+        type: string
+        default: changelog.d
+      changelog_path:
+        description: The changelog the fragments are folded into.
+        type: string
+        default: CHANGELOG.md
+      version_source:
+        description: >-
+          Where the version heading comes from — `package` reads package.json,
+          `plugin-header` reads the WordPress plugin header. Match whatever the
+          project's version bump check uses, or the two disagree about what
+          version the entry belongs to.
+        type: string
+        default: package
+      node_version:
+        description: Node.js version.
+        type: string
+        default: '20'
+      foundation_ref:
+        description: Ref of the foundation repo to pull the shared scripts from.
+        type: string
+        default: main
+
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Checkout foundation (shared scripts)
+        uses: actions/checkout@v4
+        with:
+          repository: blueworx-io/bluegroup_core_foundation
+          ref: ${{ inputs.foundation_ref }}
+          path: .foundation
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Assemble fragments
+        env:
+          CHANGELOG_DIR: ${{ inputs.changelog_dir }}
+          CHANGELOG_PATH: ${{ inputs.changelog_path }}
+          VERSION_SOURCE: ${{ inputs.version_source }}
+        run: node "$GITHUB_WORKSPACE/.foundation/scripts/assemble-changelog.mjs"
+
+      # A push here re-triggers this workflow in the caller. That run finds an
+      # empty fragment directory, the script exits before writing, and this step
+      # commits nothing — so it settles after one extra no-op run.
+      - name: Commit if anything changed
+        env:
+          CHANGELOG_DIR: ${{ inputs.changelog_dir }}
+          CHANGELOG_PATH: ${{ inputs.changelog_path }}
+        run: |
+          set -uo pipefail
+          if git diff --quiet -- "$CHANGELOG_PATH" "$CHANGELOG_DIR"; then
+            echo "No fragments were assembled — nothing to commit."
+            exit 0
+          fi
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$CHANGELOG_PATH" "$CHANGELOG_DIR"
+          git commit -m "docs: assemble changelog fragments"
+
+          if git push; then
+            echo "Changelog assembled and pushed."
+            exit 0
+          fi
+
+          echo "::error::Assembled the fragments but could not push to the default branch."
+          echo "The most likely cause is branch protection requiring pull requests."
+          echo "Add the GitHub Actions bot to the ruleset's bypass list for this branch."
+          echo "An assembly-only PR is not a workaround: it bumps no version, so a"
+          echo "version-bump guardrail will always fail it."
+          exit 1
