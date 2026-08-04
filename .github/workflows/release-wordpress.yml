@@ -88,6 +88,17 @@ jobs:
           PLUGIN_FILE: ${{ steps.info.outputs.plugin_file }}
         run: node "$RUNNER_TEMP/foundation/scripts/check-release-tag.mjs"
 
+      # The asset filename carries the version so a downloaded zip says which
+      # release it is. The folder inside the zip stays <slug>/ — WordPress uses
+      # that as the install directory, so versioning it would install a second
+      # copy of the plugin on every update instead of replacing the first.
+      - name: Resolve zip filename
+        id: zip
+        env:
+          SLUG: ${{ steps.info.outputs.slug }}
+          TAG: ${{ github.ref_name }}
+        run: echo "name=$SLUG-${TAG#v}.zip" >> "$GITHUB_OUTPUT"
+
       - name: Setup Node
         if: hashFiles('package.json') != ''
         uses: actions/setup-node@v4
@@ -121,20 +132,22 @@ jobs:
       - name: Build zip
         env:
           SLUG: ${{ steps.info.outputs.slug }}
+          ZIP: ${{ steps.zip.outputs.name }}
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/stage"
-          zip -r -q "$GITHUB_WORKSPACE/$SLUG.zip" "$SLUG"
-          ls -lh "$GITHUB_WORKSPACE/$SLUG.zip"
+          zip -r -q "$GITHUB_WORKSPACE/$ZIP" "$SLUG"
+          ls -lh "$GITHUB_WORKSPACE/$ZIP"
 
       - name: Verify zip shape
         env:
           SLUG: ${{ steps.info.outputs.slug }}
+          ZIP: ${{ steps.zip.outputs.name }}
           PLUGIN_FILE: ${{ steps.info.outputs.plugin_file }}
         run: |
           set -euo pipefail
-          unzip -l "$SLUG.zip"
-          entries=$(unzip -Z1 "$SLUG.zip")
+          unzip -l "$ZIP"
+          entries=$(unzip -Z1 "$ZIP")
           stray=$(printf '%s\n' "$entries" | awk -v s="$SLUG/" 'index($0, s) != 1' || true)
           if [ -n "$stray" ]; then
             echo "::error title=Malformed plugin zip::Entries outside $SLUG/ — the archive must nest exactly one level:"
@@ -159,9 +172,10 @@ jobs:
         env:
           SLUG: ${{ steps.info.outputs.slug }}
           PLUGIN_SLUG: ${{ steps.info.outputs.slug }}
+          ZIP: ${{ steps.zip.outputs.name }}
         run: |
           set -euo pipefail
-          unzip -Z1 "$SLUG.zip" | node "$RUNNER_TEMP/foundation/scripts/check-plugin-zip-content.mjs"
+          unzip -Z1 "$ZIP" | node "$RUNNER_TEMP/foundation/scripts/check-plugin-zip-content.mjs"
 
       - name: Extract changelog section for this version
         id: notes
@@ -201,13 +215,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-          SLUG: ${{ steps.info.outputs.slug }}
+          ZIP: ${{ steps.zip.outputs.name }}
           NOTES_FOUND: ${{ steps.notes.outputs.found }}
         run: |
           set -euo pipefail
           if [ "$NOTES_FOUND" = "true" ]; then
-            gh release create "$TAG" "$SLUG.zip" --title "$TAG" --notes-file /tmp/release-notes.md
+            gh release create "$TAG" "$ZIP" --title "$TAG" --notes-file /tmp/release-notes.md
           else
-            gh release create "$TAG" "$SLUG.zip" --title "$TAG" --generate-notes
+            gh release create "$TAG" "$ZIP" --title "$TAG" --generate-notes
           fi
-          echo "Published $TAG with $SLUG.zip attached."
+          echo "Published $TAG with $ZIP attached."

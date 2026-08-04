@@ -200,6 +200,10 @@ plugin folder from an **explicit allowlist** and verifies the artifact it just b
 
 - Allowlist, not denylist: a new development directory should be excluded because
   nobody added it, rather than shipped because nobody remembered to exclude it.
+- Name the artifact `<slug>-<version>.zip`, taking the version from the plugin header,
+  so the file on disk says which build it is. The folder **inside** the archive stays
+  `<slug>/` with no version — WordPress installs to that folder name, and versioning it
+  would install a second copy of the plugin on every update.
 - Verify the result, not the intent — list the built archive and assert every entry
   reads `<slug>/…` with forward slashes, nested exactly one level, with
   `<slug>/<slug>.php` directly inside.
