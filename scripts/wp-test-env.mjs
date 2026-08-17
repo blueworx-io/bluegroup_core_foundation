@@ -253,10 +253,28 @@ async function waitForServer() {
   for (let i = 0; i < 30; i += 1) {
     try {
       const res = await fetch(baseUrl, { redirect: 'manual' });
+
+      // Release the connection before moving on. An unread body leaves undici
+      // holding the socket, and `php -S` is single-threaded, so it closes that
+      // idle connection as soon as the next request arrives — on Node 22+
+      // undici then trips an internal assertion (`assert(!this.paused)`) from
+      // the socket's own 'end' handler. That fires on a later tick, outside
+      // this try/catch and outside any await, so it is unhandleable and takes
+      // the process down with it.
+      //
+      // The damage is quiet rather than obvious: the server has already
+      // started by then, so the site is up and looks fine, while everything
+      // after this point — installing WordPress, setting pretty permalinks,
+      // activating the plugin — never runs. That leaves an environment where
+      // /wp-json/ returns HTML and the plugin under test is switched off.
+      await res.body?.cancel();
+
       if (res.status) return;
     } catch {
-      await sleep(1000);
+      // Not listening yet, or the connection was refused mid-boot.
     }
+
+    await sleep(1000);
   }
   fail(`PHP server did not come up on ${baseUrl}. See ${join(dir, 'php-server.log')}.`);
 }
