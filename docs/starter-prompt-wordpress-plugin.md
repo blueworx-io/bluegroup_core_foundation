@@ -48,6 +48,12 @@ hold regardless of whose machine opens it. Do not edit it to suit this project.
   shares one PHP process with every other plugin on the site.
 - Escape on output, sanitise on input, nonce every form and admin-post action, and
   capability-check every admin screen and REST route.
+- **Admin screens come from the shared WordPress Admin Design System**, which lives in
+  Claude Design and is the single source of truth for wp-admin UI. Get the pattern from
+  there before writing any settings page, tab, table, notice or form, and keep the
+  plugin's exported copy of its markup and CSS in `assets/`. If a pattern is missing,
+  add it to the design system first rather than inventing a one-off here. This governs
+  wp-admin only — the plugin's front-end design stays its own.
 
 ## 3. Versioning files
 
