@@ -6,7 +6,7 @@ Global rules that apply to every project. Lives at `~/.claude/CLAUDE.md`. Full d
 
 - Every project is its own standalone repo — there is no monorepo
 - Every project points at `bluegroup_core_foundation` for shared CI guardrails, permissions, and skills — never repeat those rules inside a project repo
-- Projects don't have to share components or look alike — only the process is shared, not the design. **One exception: WordPress plugin admin screens**, which all come from the shared WordPress Admin Design System (see Approved Tools & Styles)
+- Projects don't have to share components or look alike — only the process is shared, not the design. **One exception: WordPress plugin admin screens**, which all come from the shared `blueworx-admin-design` system (see Approved Tools & Styles)
 - New projects are set up by pasting the matching Starter Prompt (standalone / WordPress plugin / headless) into Claude Code — there are no starter template repos to create from. All three live in `docs/` in `bluegroup_core_foundation`
 - **Standalone means the content is the code.** If a non-developer edits the content, it is not standalone — it wants WordPress, so it is a plugin or a headless project
 
@@ -82,16 +82,18 @@ Do this proactively at the end of any session with deployable changes — never 
 - Design tokens: styles.refero.design
 - Animation: tailwindcss-animate for simple cases, GSAP for complex cases, across every project type including WordPress
 - Inspiration only, never copied directly: 21st.dev
-- WordPress plugin admin screens: the **WordPress Admin Design System** in Claude Design — see below
+- WordPress plugin admin screens: the **blueworx-admin-design** skill — see below
 - No page builders (Elementor etc.) — WordPress sites are built as a plugin, in code, never straight into WordPress core or a loose theme
 
 ### WordPress admin screens come from the design system
 
-Every plugin's admin UI — settings pages, tabs, tables, notices, forms, buttons, empty states — is built from the shared **WordPress Admin Design System**, which lives in Claude Design (`Project | WP Admin Design System`) and is the single source of truth for it. The point is that nobody redesigns a settings page again, and every plugin looks like the same product.
+Every plugin's admin UI — settings pages, tabs, tables, notices, forms, buttons, empty states — is built from the shared **blueworx-admin-design** system. The point is that nobody redesigns a settings page again, and every plugin looks like the same product.
 
-- **Before building or changing any admin screen, get the pattern from the design system first.** Say "Using the WordPress Admin Design System for [screen]" so the choice is visible.
-- Plugins carry their own copy of the exported markup and CSS in `assets/` — there is no shared runtime package to depend on, because two of our plugins on one site can be at different versions.
-- Hand-rolling admin markup is a last resort. If the pattern you need isn't in the design system, **add it there first**, export, then build — don't invent a one-off in the plugin and leave the system behind.
+- It ships as a Claude Code skill, committed in `bluegroup_core_foundation` at `.claude/skills/blueworx-admin-design/`, and each plugin copies that folder to the same path in its own repo. The committed folder is what you read — never work from a stale download.
+- **Before building or changing any admin screen, invoke the skill**: "Using the blueworx-admin-design skill for [screen]". It carries the tokens, component prompts and `styles.css`.
+- The plugin also **ships** the design system's `styles.css` in its own `assets/` and enqueues it on its admin pages. There is no shared runtime package, because two of our plugins on one site can be at different versions.
+- Hand-rolling admin markup is a last resort. If the pattern you need isn't in the system, **add it to the system first**, re-export, commit, then build — don't invent a one-off in the plugin and leave the system behind.
+- Authoring happens in Claude Design; the committed folder is an export. Don't hand-edit it in a plugin repo — the change will be overwritten on the next sync.
 - Front-end output is unaffected: this governs wp-admin only, and each project's public design stays its own.
 
 ## Skill Usage Policy
@@ -108,7 +110,7 @@ These skills load automatically from the shared `bluegroup_core_foundation` sett
 | About to claim work is done / before any commit or PR | verification-before-completion | Run `superpowers:verification-before-completion` and show real command output — evidence before claims |
 | Work complete, before merge | requesting-code-review → finishing-a-development-branch | Get review via `superpowers:requesting-code-review`, then integrate with `superpowers:finishing-a-development-branch` |
 | Any question about this codebase's architecture, file relationships, or content | graphify | Treat it as a graph query first (see below) |
-| Building or changing any WordPress admin screen | WordPress Admin Design System | Take the pattern from the design system before writing markup — see Approved Tools & Styles |
+| Building or changing any WordPress admin screen | blueworx-admin-design | Invoke the skill and take the pattern from it before writing markup — see Approved Tools & Styles |
 | A brand-new repo that has no `CLAUDE.md` yet | init | Generate the project's `CLAUDE.md` with `init` |
 | Repeated permission prompts for safe, read-only commands | fewer-permission-prompts | Run `fewer-permission-prompts` to add a scoped allowlist to the project's `.claude/settings.json` |
 

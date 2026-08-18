@@ -32,6 +32,18 @@ curl -o .github/ISSUE_TEMPLATE/task.md https://raw.githubusercontent.com/bluewor
 curl -o .claude/settings.json https://raw.githubusercontent.com/blueworx-io/bluegroup_core_foundation/main/.claude/settings.json
 ```
 
+Then pull in the shared admin design system, which is a Claude Code skill folder rather
+than a single file:
+
+```bash
+mkdir -p .claude/skills
+curl -sL https://github.com/blueworx-io/bluegroup_core_foundation/archive/refs/heads/main.tar.gz \
+  | tar -xz --strip-components=3 -C .claude/skills \
+    bluegroup_core_foundation-main/.claude/skills/blueworx-admin-design
+```
+
+Re-run that command to take a later version of the design system.
+
 `CLAUDE.md` is the condensed global rules, carried into the repo so the guardrails
 hold regardless of whose machine opens it. Do not edit it to suit this project.
 
@@ -48,12 +60,14 @@ hold regardless of whose machine opens it. Do not edit it to suit this project.
   shares one PHP process with every other plugin on the site.
 - Escape on output, sanitise on input, nonce every form and admin-post action, and
   capability-check every admin screen and REST route.
-- **Admin screens come from the shared WordPress Admin Design System**, which lives in
-  Claude Design and is the single source of truth for wp-admin UI. Get the pattern from
-  there before writing any settings page, tab, table, notice or form, and keep the
-  plugin's exported copy of its markup and CSS in `assets/`. If a pattern is missing,
-  add it to the design system first rather than inventing a one-off here. This governs
-  wp-admin only — the plugin's front-end design stays its own.
+- **Admin screens come from the shared `blueworx-admin-design` system**, not from
+  hand-written markup. It is a Claude Code skill committed in `bluegroup_core_foundation`
+  at `.claude/skills/blueworx-admin-design/`; copy that folder to the same path in this
+  repo (step 1 above) and invoke the skill before writing any settings page, tab, table,
+  notice or form. Also copy its `styles.css` into `assets/` and enqueue it on the
+  plugin's admin pages — nothing is loaded from a shared package at runtime. If a
+  pattern is missing, add it to the design system rather than inventing a one-off here.
+  This governs wp-admin only — the plugin's front-end design stays its own.
 
 ## 3. Versioning files
 

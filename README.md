@@ -6,8 +6,9 @@ rules per repo.
 
 Each project is its own standalone repo and points at this foundation for shared
 CI guardrails, permissions, and skills. Only the *process* is shared — not the
-design, with one exception: **WordPress plugin admin screens**, which all come from
-the shared WordPress Admin Design System in Claude Design.
+design, with one exception: **WordPress plugin admin screens**, which all come from the
+shared `blueworx-admin-design` system committed here at
+[`.claude/skills/blueworx-admin-design/`](.claude/skills/blueworx-admin-design/).
 
 ## Starter Prompt
 
