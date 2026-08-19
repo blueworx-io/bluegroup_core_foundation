@@ -11,6 +11,7 @@ import {
   releaseTag,
   testsExecuted,
   testsExecutedAcross,
+  designSystemSync,
 } from './checks.mjs';
 
 test('versionBumped: passes on first build (no base)', () => {
@@ -376,4 +377,128 @@ test('testsExecutedAcross: a single report behaves exactly like testsExecuted', 
     testsExecutedAcross({ reports: [report] }).counts,
     testsExecuted({ report }).counts,
   );
+});
+
+const CSS = 'assets/blueworx-admin-design.css';
+
+// Small helper so the cases below read as intent, not as Map plumbing.
+const tree = (obj) => new Map(Object.entries(obj));
+const inSync = {
+  foundationFiles: tree({ 'SKILL.md': 'a', 'styles.css': 'b' }),
+  pluginFiles: tree({ 'SKILL.md': 'a', 'styles.css': 'b' }),
+  canonicalCss: 'b',
+  shippedCss: 'b',
+  canonicalFonts: tree({ 'sora-400.woff2': 'f1', 'inter-400.woff2': 'f2' }),
+  shippedFonts: tree({ 'sora-400.woff2': 'f1', 'inter-400.woff2': 'f2' }),
+};
+
+test('designSystemSync: passes when the foundation has no design system yet', () => {
+  const r = designSystemSync({ ...inSync, foundationFiles: null });
+  assert.equal(r.ok, true);
+  assert.match(r.message, /not in the foundation yet/);
+});
+
+test('designSystemSync: passes when the plugin has not adopted it', () => {
+  const r = designSystemSync({ ...inSync, pluginFiles: null });
+  assert.equal(r.ok, true);
+  assert.match(r.message, /not adopted/);
+});
+
+test('designSystemSync: passes when both copies and the shipped CSS match', () => {
+  const r = designSystemSync(inSync);
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.problems, []);
+});
+
+test('designSystemSync: fails when a file differs', () => {
+  const r = designSystemSync({
+    ...inSync,
+    pluginFiles: tree({ 'SKILL.md': 'CHANGED', 'styles.css': 'b' }),
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.problems.length, 1);
+  assert.match(r.problems[0], /SKILL\.md/);
+  assert.match(r.problems[0], /differs/);
+});
+
+test('designSystemSync: fails when the plugin is missing a file', () => {
+  const r = designSystemSync({ ...inSync, pluginFiles: tree({ 'SKILL.md': 'a' }) });
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join('\n'), /styles\.css — missing from this plugin/);
+});
+
+test('designSystemSync: fails on a file the design system does not have', () => {
+  const r = designSystemSync({
+    ...inSync,
+    pluginFiles: tree({ 'SKILL.md': 'a', 'styles.css': 'b', 'local-hack.md': 'x' }),
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join('\n'), /local-hack\.md/);
+});
+
+test('designSystemSync: fails when the shipped stylesheet is missing', () => {
+  const r = designSystemSync({ ...inSync, shippedCss: null });
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join('\n'), /assets\/blueworx-admin-design\.css — missing/);
+});
+
+test('designSystemSync: fails when the shipped stylesheet is stale', () => {
+  const r = designSystemSync({ ...inSync, shippedCss: 'OLD' });
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join('\n'), /differs from/);
+});
+
+test('designSystemSync: failure message names the files and the fix', () => {
+  const r = designSystemSync({ ...inSync, shippedCss: 'OLD' });
+  assert.ok(r.message.includes(CSS));
+  assert.match(r.message, /curl/);
+  assert.match(r.message, /cp .*styles\.css/);
+});
+
+test('designSystemSync: reports every problem, not just the first', () => {
+  const r = designSystemSync({
+    ...inSync,
+    pluginFiles: tree({ 'SKILL.md': 'CHANGED' }),
+    shippedCss: 'OLD',
+  });
+  assert.equal(r.problems.length, 3);
+});
+
+test('designSystemSync: fails when the shipped webfonts are missing', () => {
+  const r = designSystemSync({ ...inSync, shippedFonts: null });
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join('\n'), /assets\/fonts — missing/);
+});
+
+test('designSystemSync: fails when one webfont is absent or stale', () => {
+  const absent = designSystemSync({ ...inSync, shippedFonts: tree({ 'sora-400.woff2': 'f1' }) });
+  assert.equal(absent.ok, false);
+  assert.match(absent.problems.join('\n'), /inter-400\.woff2 — missing/);
+
+  const stale = designSystemSync({
+    ...inSync,
+    shippedFonts: tree({ 'sora-400.woff2': 'f1', 'inter-400.woff2': 'OLD' }),
+  });
+  assert.equal(stale.ok, false);
+  assert.match(stale.problems.join('\n'), /inter-400\.woff2 — differs/);
+});
+
+// assets/fonts is the plugin's own directory, not ours exclusively — a plugin
+// may legitimately keep its own front-end webfonts alongside the brand ones.
+test('designSystemSync: allows extra fonts the plugin keeps of its own', () => {
+  const r = designSystemSync({
+    ...inSync,
+    shippedFonts: tree({ 'sora-400.woff2': 'f1', 'inter-400.woff2': 'f2', 'client-brand.woff2': 'x' }),
+  });
+  assert.equal(r.ok, true);
+});
+
+test('designSystemSync: skips the font check when the design system ships none', () => {
+  const r = designSystemSync({ ...inSync, canonicalFonts: null, shippedFonts: null });
+  assert.equal(r.ok, true);
+});
+
+test('designSystemSync: fix instructions cover the fonts too', () => {
+  const r = designSystemSync({ ...inSync, shippedFonts: null });
+  assert.match(r.message, /assets\/fonts/);
 });

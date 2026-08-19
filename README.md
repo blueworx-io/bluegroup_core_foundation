@@ -6,7 +6,9 @@ rules per repo.
 
 Each project is its own standalone repo and points at this foundation for shared
 CI guardrails, permissions, and skills. Only the *process* is shared — not the
-design.
+design, with one exception: **WordPress plugin admin screens**, which all come from the
+shared `blueworx-admin-design` system committed here at
+[`.claude/skills/blueworx-admin-design/`](.claude/skills/blueworx-admin-design/).
 
 ## Starter Prompt
 
@@ -53,7 +55,8 @@ of the initial setup.
 Instead of repeating the rules per repo, a project adds one small caller workflow
 that points at the reusable workflow for its type. On every pull request the shared
 workflow installs + lints, builds, checks the version bump, checks the changelog,
-checks dependencies against the project's `approved-deps.json`, runs PHPCS and
+checks dependencies against the project's `approved-deps.json`, checks a WordPress
+plugin's copy of the shared admin design system is current, runs PHPCS and
 PHPUnit when their configs are present, and runs Playwright.
 
 **Standalone**

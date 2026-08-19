@@ -117,6 +117,15 @@ on:
           directory are unaffected — nothing can match, so the old rule applies.
         type: string
         default: changelog.d
+      design_system_sync:
+        description: >-
+          Whether a plugin whose copy of the shared blueworx-admin-design system
+          has drifted fails the run. `error` (default) fails, `warn` prints the
+          report and passes, `off` skips the check. Use `warn` only while a
+          plugin catches up mid-feature — a plugin left on it is quietly
+          shipping a different admin UI from every other plugin.
+        type: string
+        default: error
       foundation_ref:
         description: Ref of the foundation repo to pull the shared check scripts from.
         type: string
@@ -260,6 +269,16 @@ jobs:
 
       - name: Plugin version sync (header vs package.json)
         run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-plugin-version-sync.mjs"
+
+      # Both copies of the shared admin design system — the skill folder Claude
+      # Code reads, and the stylesheet the plugin enqueues — must match the
+      # foundation's. The foundation is already checked out above, so this is a
+      # local comparison. A plugin that has not adopted it yet passes.
+      - name: Design system sync (shared admin UI)
+        env:
+          DESIGN_SYSTEM_SYNC: ${{ inputs.design_system_sync }}
+          FOUNDATION_DIR: .foundation
+        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-design-system-sync.mjs"
 
       - name: Plugin zip check (only one <slug> zip)
         env:
