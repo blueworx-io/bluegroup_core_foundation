@@ -55,7 +55,8 @@ of the initial setup.
 Instead of repeating the rules per repo, a project adds one small caller workflow
 that points at the reusable workflow for its type. On every pull request the shared
 workflow installs + lints, builds, checks the version bump, checks the changelog,
-checks dependencies against the project's `approved-deps.json`, runs PHPCS and
+checks dependencies against the project's `approved-deps.json`, checks a WordPress
+plugin's copy of the shared admin design system is current, runs PHPCS and
 PHPUnit when their configs are present, and runs Playwright.
 
 **Standalone**
