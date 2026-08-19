@@ -380,3 +380,69 @@ function toNameSet(allow) {
   if (allow && typeof allow === 'object') return new Set(Object.keys(allow));
   return new Set();
 }
+
+// The design system is copied into each plugin twice, and the two copies drift
+// independently: the skill folder is what Claude Code reads when building an
+// admin screen, and assets/blueworx-admin-design.css is what the plugin
+// actually enqueues on the page. Comparing content hashes both ways catches a
+// plugin that has fallen behind AND a file hand-edited inside a plugin.
+//
+// Absence is deliberately not a failure on either side. The check ships before
+// the design system does, and existing plugins adopt it one at a time — a
+// guardrail that broke every repo on day one would just get switched off.
+export function designSystemSync({
+  foundationFiles,
+  pluginFiles,
+  canonicalCss,
+  shippedCss,
+  skillPath = '.claude/skills/blueworx-admin-design',
+  cssPath = 'assets/blueworx-admin-design.css',
+}) {
+  if (foundationFiles === null) {
+    return { ok: true, problems: [], message: `Design system sync: ${skillPath} is not in the foundation yet — nothing to compare.` };
+  }
+  if (pluginFiles === null) {
+    return { ok: true, problems: [], message: `Design system sync: this plugin has no ${skillPath} — design system not adopted, skipping.` };
+  }
+
+  const problems = [];
+  const names = new Set([...foundationFiles.keys(), ...pluginFiles.keys()]);
+  for (const name of [...names].sort()) {
+    const want = foundationFiles.get(name);
+    const got = pluginFiles.get(name);
+    if (got === undefined) problems.push(`${skillPath}/${name} — missing from this plugin`);
+    else if (want === undefined) problems.push(`${skillPath}/${name} — not part of the design system; delete it`);
+    else if (want !== got) problems.push(`${skillPath}/${name} — differs from the design system`);
+  }
+
+  if (canonicalCss === null) {
+    problems.push(`${skillPath}/styles.css — missing from the design system itself; fix it in the foundation`);
+  } else if (shippedCss === null) {
+    problems.push(`${cssPath} — missing; the plugin must ship the stylesheet it enqueues`);
+  } else if (shippedCss !== canonicalCss) {
+    problems.push(`${cssPath} — differs from ${skillPath}/styles.css`);
+  }
+
+  if (problems.length === 0) {
+    return { ok: true, problems, message: `Design system sync: ${skillPath} and ${cssPath} match the foundation.` };
+  }
+
+  const fix = [
+    'Fix by re-pulling the design system and re-copying the stylesheet:',
+    '',
+    '  mkdir -p .claude/skills',
+    `  rm -rf ${skillPath}`,
+    '  curl -sL https://github.com/blueworx-io/bluegroup_core_foundation/archive/refs/heads/main.tar.gz \\',
+    '    | tar -xz --strip-components=3 -C .claude/skills \\',
+    `      bluegroup_core_foundation-main/${skillPath}`,
+    `  cp ${skillPath}/styles.css ${cssPath}`,
+    '',
+    'Authoring happens in Claude Design — do not hand-edit either copy here.',
+  ].join('\n');
+
+  return {
+    ok: false,
+    problems,
+    message: [`Design system out of sync (${problems.length} problem(s)):`, ...problems.map((p) => `  - ${p}`), '', fix].join('\n'),
+  };
+}
