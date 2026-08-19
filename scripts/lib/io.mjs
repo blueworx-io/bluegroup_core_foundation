@@ -2,6 +2,7 @@
 // Kept deliberately small; the pure logic lives in checks.mjs / semver.mjs.
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
 
@@ -101,4 +102,40 @@ function walk(dir, predicate, maxDepth, depth = 0, acc = []) {
 
 function normalize(p) {
   return p.replace(/\\/g, '/').replace(/^\.\//, '');
+}
+
+// Text extensions get CRLF-normalised before hashing. Without this a Windows
+// working tree reads as drift against the same bytes checked out on the Linux
+// runner, and the guardrail cries wolf on every PR.
+const TEXT_EXTENSIONS = new Set(['.md', '.css', '.json', '.txt', '.js', '.mjs', '.svg', '.html', '.yml', '.yaml']);
+
+export function hashFile(path) {
+  if (!existsSync(path)) return null;
+  const name = basename(path);
+  const dot = name.lastIndexOf('.');
+  const ext = dot === -1 ? '' : name.slice(dot).toLowerCase();
+  let bytes = readFileSync(path);
+  if (TEXT_EXTENSIONS.has(ext)) {
+    bytes = Buffer.from(bytes.toString('utf8').split('\r\n').join('\n'), 'utf8');
+  }
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+// Map of path-relative-to-dir (forward slashes, so the two platforms agree)
+// -> content hash. null when the directory is absent, which callers treat as
+// "not present" rather than as an error.
+export function hashTree(dir) {
+  if (!existsSync(dir)) return null;
+  const out = new Map();
+  const walk = (abs, rel) => {
+    const entries = readdirSync(abs, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      const childAbs = join(abs, entry.name);
+      const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(childAbs, childRel);
+      else if (entry.isFile()) out.set(childRel, hashFile(childAbs));
+    }
+  };
+  walk(dir, '');
+  return out;
 }
