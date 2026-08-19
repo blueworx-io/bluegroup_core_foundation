@@ -20,14 +20,18 @@ if (mode === 'off') {
 const foundationDir = process.env.FOUNDATION_DIR || '.foundation';
 const skillPath = process.env.SKILL_PATH || '.claude/skills/blueworx-admin-design';
 const cssPath = process.env.CSS_PATH || 'assets/blueworx-admin-design.css';
+const fontsPath = process.env.FONTS_PATH || 'assets/fonts';
 
 const result = designSystemSync({
   foundationFiles: hashTree(join(foundationDir, skillPath)),
   pluginFiles: hashTree(skillPath),
   canonicalCss: hashFile(join(foundationDir, skillPath, 'styles.css')),
   shippedCss: hashFile(cssPath),
+  canonicalFonts: hashTree(join(foundationDir, skillPath, 'fonts')),
+  shippedFonts: hashTree(fontsPath),
   skillPath,
   cssPath,
+  fontsPath,
 });
 
 console.log(result.message);

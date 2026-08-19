@@ -388,6 +388,8 @@ const inSync = {
   pluginFiles: tree({ 'SKILL.md': 'a', 'styles.css': 'b' }),
   canonicalCss: 'b',
   shippedCss: 'b',
+  canonicalFonts: tree({ 'sora-400.woff2': 'f1', 'inter-400.woff2': 'f2' }),
+  shippedFonts: tree({ 'sora-400.woff2': 'f1', 'inter-400.woff2': 'f2' }),
 };
 
 test('designSystemSync: passes when the foundation has no design system yet', () => {
@@ -460,4 +462,43 @@ test('designSystemSync: reports every problem, not just the first', () => {
     shippedCss: 'OLD',
   });
   assert.equal(r.problems.length, 3);
+});
+
+test('designSystemSync: fails when the shipped webfonts are missing', () => {
+  const r = designSystemSync({ ...inSync, shippedFonts: null });
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join('\n'), /assets\/fonts — missing/);
+});
+
+test('designSystemSync: fails when one webfont is absent or stale', () => {
+  const absent = designSystemSync({ ...inSync, shippedFonts: tree({ 'sora-400.woff2': 'f1' }) });
+  assert.equal(absent.ok, false);
+  assert.match(absent.problems.join('\n'), /inter-400\.woff2 — missing/);
+
+  const stale = designSystemSync({
+    ...inSync,
+    shippedFonts: tree({ 'sora-400.woff2': 'f1', 'inter-400.woff2': 'OLD' }),
+  });
+  assert.equal(stale.ok, false);
+  assert.match(stale.problems.join('\n'), /inter-400\.woff2 — differs/);
+});
+
+// assets/fonts is the plugin's own directory, not ours exclusively — a plugin
+// may legitimately keep its own front-end webfonts alongside the brand ones.
+test('designSystemSync: allows extra fonts the plugin keeps of its own', () => {
+  const r = designSystemSync({
+    ...inSync,
+    shippedFonts: tree({ 'sora-400.woff2': 'f1', 'inter-400.woff2': 'f2', 'client-brand.woff2': 'x' }),
+  });
+  assert.equal(r.ok, true);
+});
+
+test('designSystemSync: skips the font check when the design system ships none', () => {
+  const r = designSystemSync({ ...inSync, canonicalFonts: null, shippedFonts: null });
+  assert.equal(r.ok, true);
+});
+
+test('designSystemSync: fix instructions cover the fonts too', () => {
+  const r = designSystemSync({ ...inSync, shippedFonts: null });
+  assert.match(r.message, /assets\/fonts/);
 });

@@ -64,9 +64,11 @@ hold regardless of whose machine opens it. Do not edit it to suit this project.
   hand-written markup. It is a Claude Code skill committed in `bluegroup_core_foundation`
   at `.claude/skills/blueworx-admin-design/`; copy that folder to the same path in this
   repo (step 1 above) and invoke the skill before writing any settings page, tab, table,
-  notice or form. Also copy its `styles.css` to `assets/blueworx-admin-design.css` —
-  that exact path — and enqueue it on the plugin's admin pages; nothing is loaded
-  from a shared package at runtime. CI compares both copies against the foundation
+  notice or form. Also copy its `styles.css` to `assets/blueworx-admin-design.css`
+  and its `fonts/` to `assets/fonts/` — those exact paths, since the stylesheet
+  loads the webfonts from beside itself — and enqueue the stylesheet on the
+  plugin's admin pages; nothing is loaded from a shared package at runtime.
+  CI compares those copies against the foundation
   on every pull request and fails the run if either has drifted, so keep them
   verbatim: no minifying, no local tweaks. If a pattern is missing, add it to the
   design system rather than inventing a one-off here. This governs wp-admin only —

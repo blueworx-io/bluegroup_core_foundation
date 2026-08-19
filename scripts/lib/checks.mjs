@@ -395,8 +395,11 @@ export function designSystemSync({
   pluginFiles,
   canonicalCss,
   shippedCss,
+  canonicalFonts = null,
+  shippedFonts = null,
   skillPath = '.claude/skills/blueworx-admin-design',
   cssPath = 'assets/blueworx-admin-design.css',
+  fontsPath = 'assets/fonts',
 }) {
   if (foundationFiles === null) {
     return { ok: true, problems: [], message: `Design system sync: ${skillPath} is not in the foundation yet — nothing to compare.` };
@@ -423,6 +426,22 @@ export function designSystemSync({
     problems.push(`${cssPath} — differs from ${skillPath}/styles.css`);
   }
 
+  // styles.css loads its webfonts with url("fonts/…"), relative to itself, so a
+  // plugin needs them beside the stylesheet or the brand type silently falls
+  // back. Unlike the skill folder, extra files here are fine: assets/fonts is
+  // the plugin's own directory and may hold its front-end faces too.
+  if (canonicalFonts !== null && canonicalFonts.size > 0) {
+    if (shippedFonts === null) {
+      problems.push(`${fontsPath} — missing; styles.css loads its webfonts from beside itself`);
+    } else {
+      for (const [name, want] of [...canonicalFonts.entries()].sort()) {
+        const got = shippedFonts.get(name);
+        if (got === undefined) problems.push(`${fontsPath}/${name} — missing from this plugin`);
+        else if (got !== want) problems.push(`${fontsPath}/${name} — differs from the design system`);
+      }
+    }
+  }
+
   if (problems.length === 0) {
     return { ok: true, problems, message: `Design system sync: ${skillPath} and ${cssPath} match the foundation.` };
   }
@@ -436,6 +455,7 @@ export function designSystemSync({
     '    | tar -xz --strip-components=3 -C .claude/skills \\',
     `      bluegroup_core_foundation-main/${skillPath}`,
     `  cp ${skillPath}/styles.css ${cssPath}`,
+    `  mkdir -p ${fontsPath} && cp ${skillPath}/fonts/* ${fontsPath}/`,
     '',
     'Authoring happens in Claude Design — do not hand-edit either copy here.',
   ].join('\n');

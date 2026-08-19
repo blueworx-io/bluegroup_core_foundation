@@ -91,7 +91,7 @@ Every plugin's admin UI — settings pages, tabs, tables, notices, forms, button
 
 - It ships as a Claude Code skill, committed in `bluegroup_core_foundation` at `.claude/skills/blueworx-admin-design/`, and each plugin copies that folder to the same path in its own repo. The committed folder is what you read — never work from a stale download.
 - **Before building or changing any admin screen, invoke the skill**: "Using the blueworx-admin-design skill for [screen]". It carries the tokens, component prompts and `styles.css`.
-- The plugin also **ships** the design system's `styles.css` as `assets/blueworx-admin-design.css` — that exact path — and enqueues it on its admin pages. There is no shared runtime package, because two of our plugins on one site can be at different versions.
+- The plugin also **ships** the design system's `styles.css` as `assets/blueworx-admin-design.css` — that exact path — plus its `fonts/` as `assets/fonts/`, and enqueues the stylesheet on its admin pages. The stylesheet loads the webfonts from beside itself, so the two travel together or the brand type silently falls back. There is no shared runtime package, because two of our plugins on one site can be at different versions.
 - **CI fails the PR if either copy has drifted** from the foundation. The fix is always to re-pull, never to edit the copy here — the failure message prints the commands.
 - Hand-rolling admin markup is a last resort. If the pattern you need isn't in the system, **add it to the system first**, re-export, commit, then build — don't invent a one-off in the plugin and leave the system behind.
 - Authoring happens in Claude Design; the committed folder is an export. Don't hand-edit it in a plugin repo — the change will be overwritten on the next sync.
