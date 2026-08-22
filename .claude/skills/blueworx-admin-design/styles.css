@@ -403,6 +403,12 @@
 .bw-repeater{display:flex;flex-direction:column;gap:var(--bw-space-5)}
 .bw-repeater__row{display:flex;align-items:center;gap:var(--bw-space-5);padding:var(--bw-space-5);border:1px solid var(--bw-border);border-radius:var(--bw-radius-md);background:var(--bw-surface-card)}
 .bw-repeater__grip{color:var(--bw-text-faint);cursor:grab;flex:none}
+/* Reordering states. The system draws the grip and these two states; the
+   behaviour — HTML5 drag, keyboard arrows, whatever the screen needs — stays
+   with the screen, because what a reorder means differs every time. */
+.bw-repeater__row.is-dragging{opacity:var(--bw-disabled-opacity)}
+.bw-repeater__row.is-dragging .bw-repeater__grip{cursor:grabbing}
+.bw-repeater.is-drop-target{outline:2px dashed var(--bw-focus-color);outline-offset:var(--bw-space-3);border-radius:var(--bw-radius-md)}
 .bw-repeater__fields{display:flex;gap:var(--bw-space-5);flex:1 1 auto;min-width:0;flex-wrap:wrap}
 .bw-repeater__fields>*{flex:1 1 160px;min-width:0}
 .bw-repeater__foot{display:flex;justify-content:space-between;align-items:center;gap:var(--bw-space-6)}
