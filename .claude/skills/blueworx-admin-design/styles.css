@@ -621,7 +621,10 @@
 .bw-admin{font-family:var(--bw-font-body);font-size:var(--bw-size-body);line-height:var(--bw-lh-body);color:var(--bw-text-body);background:var(--bw-surface-page);-webkit-font-smoothing:antialiased}
 .bw-admin *,.bw-admin *::before,.bw-admin *::after{box-sizing:border-box}
 .bw-admin h1,.bw-admin h2,.bw-admin h3{font-family:var(--bw-font-display);color:var(--bw-text-heading);line-height:var(--bw-lh-heading);margin:0}
-.bw-admin a{color:var(--bw-text-link);text-decoration:underline;text-underline-offset:2px;transition:color var(--bw-dur) var(--bw-ease)}
-.bw-admin a:hover{color:var(--bw-text-link-hover)}
+/* :where() so this is a default, not a winner. A plain .bw-admin a beats
+   .bw-tab, .bw-secnav__item, .bw-menu__item and .bw-btn on specificity, which
+   underlines every tab, nav row and button rendered as an anchor. */
+:where(.bw-admin) a{color:var(--bw-text-link);text-decoration:underline;text-underline-offset:2px;transition:color var(--bw-dur) var(--bw-ease)}
+:where(.bw-admin) a:hover{color:var(--bw-text-link-hover)}
 .bw-admin a:focus-visible,.bw-admin button:focus-visible,.bw-admin input:focus-visible,.bw-admin select:focus-visible,.bw-admin textarea:focus-visible{outline:var(--bw-focus-width) solid var(--bw-focus-color);outline-offset:var(--bw-focus-offset)}
 .bw-admin code,.bw-admin kbd{font-family:var(--bw-font-mono);font-size:var(--bw-size-code)}
