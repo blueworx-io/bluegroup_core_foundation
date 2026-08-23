@@ -124,8 +124,8 @@ These skills load automatically from the shared `bluegroup_core_foundation` sett
 
 ### Enforced vs model-driven — know the difference
 
-- **Deterministic (enforced every time by CI):** lint, build, version bump, changelog, approved-deps, Playwright test — the Hard Guardrails above. Never bypass these; the triggers below never override them.
-- **Model-driven (this policy + each skill's own description):** every trigger in the table. Strong, but they fire on *your* judgement, not a guarantee — which is exactly why the "say it out loud" rule exists. There are deliberately no per-*skill* hooks: those triggers fire on the kind of change (a bug, a security-sensitive edit, a feature), which a tool event cannot detect without misfiring. There is one hook, and it is not a skill trigger — it refuses a Write or Edit that would put non-design-system markup into an admin screen, which is a plain fact about the file's contents.
+- **Deterministic (enforced every time by CI):** lint, build, version bump, changelog, approved-deps, Playwright test, admin UI adherence — the Hard Guardrails above. Never bypass these; the triggers below never override them.
+- **Model-driven (this policy + each skill's own description):** every trigger in the table. Strong, but they fire on *your* judgement, not a guarantee — which is why the "say it out loud" rule exists. There are deliberately no per-*skill* hooks: those triggers fire on the kind of change, which a tool event can't detect without misfiring. There is one hook, not a skill trigger — it refuses a Write or Edit that puts non-design-system markup into an admin screen.
 
 ## Model Guidance
 

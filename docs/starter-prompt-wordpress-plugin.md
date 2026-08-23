@@ -79,11 +79,11 @@ hold regardless of whose machine opens it. Do not edit it to suit this project.
   CI compares those copies against the foundation
   on every pull request and fails the run if either has drifted, so keep them
   verbatim: no minifying, no local tweaks. CI and the hook also refuse a
-  hand-written colour, size, font, shadow or icon, an inline style, WordPress
-  core's own admin classes, a second admin stylesheet, or a `bw-` class the
-  system doesn't define. If a pattern is missing, add it to the design system
-  rather than inventing a one-off here. This governs wp-admin only — the
-  plugin's front-end design stays its own.
+  colour, size, font or shadow written by hand, a hand-drawn icon, an inline
+  style, WordPress core's own admin classes, a second admin stylesheet, or a
+  `bw-` class the system doesn't define. If a pattern is missing, add it to
+  the design system rather than inventing a one-off here. This governs
+  wp-admin only — the plugin's front-end design stays its own.
 
 ## 3. Versioning files
 
