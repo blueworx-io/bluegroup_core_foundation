@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { hashFile, hashTree } from './io.mjs';
+import { hashFile, hashTree, readTextFiles } from './io.mjs';
 
 const scratch = () => mkdtempSync(join(tmpdir(), 'io-test-'));
 
@@ -49,4 +49,16 @@ test('hashTree: two identical trees hash identically', () => {
     writeFileSync(join(dir, 'components', 'button.md'), 'button');
   }
   assert.deepEqual([...hashTree(one).entries()], [...hashTree(two).entries()]);
+});
+
+test('readTextFiles: returns repo-relative paths and skips vendored trees', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'io-test-'));
+  mkdirSync(join(dir, 'includes'), { recursive: true });
+  mkdirSync(join(dir, 'node_modules', 'x'), { recursive: true });
+  writeFileSync(join(dir, 'includes', 'admin.php'), '<?php // admin');
+  writeFileSync(join(dir, 'node_modules', 'x', 'ignore.php'), '<?php // vendored');
+
+  const files = readTextFiles(dir, ['.php']);
+  assert.deepEqual(files.map((f) => f.path), ['includes/admin.php']);
+  assert.match(files[0].content, /admin/);
 });
