@@ -118,6 +118,10 @@ test('findViolations: WordPress core classes fail and name the replacement', () 
   assert.match(scan('<div class="notice notice-error"><p>No</p></div>').find((p) => p.rule === 'wp-core-class').message, /Notice/);
 });
 
+test('findViolations: wp-core-class matches a whole class name, not a substring', () => {
+  assert.equal(rules(scan('<div class="primary-nav-tab-container">')).includes('wp-core-class'), false);
+});
+
 test('findViolations: an invented bw- class fails, a real one passes', () => {
   assert.equal(rules(scan('<div class="bw-card">')).includes('unknown-bw-class'), false);
   assert.equal(rules(scan('<div class="bw-superpanel">')).includes('unknown-bw-class'), true);
@@ -130,4 +134,9 @@ test('findViolations: a class built from a variable is left alone', () => {
 test('findViolations: every problem carries a line number a person can open', () => {
   const problems = scan('<div class="bw-card">\n<table class="form-table">');
   assert.equal(problems.find((p) => p.rule === 'wp-core-class').line, 2);
+});
+
+test('findViolations: a token on one declaration does not excuse a hand-written value on another', () => {
+  assert.equal(rules(scan('.bw-x{ color: var(--bw-brand); padding: 24px; }', 'css')).includes('raw-size'), true);
+  assert.equal(rules(scan('.bw-x{ padding: var(--bw-space-6); color: #4F46E5; }', 'css')).includes('raw-color'), true);
 });

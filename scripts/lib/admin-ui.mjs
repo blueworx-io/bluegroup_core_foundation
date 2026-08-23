@@ -104,32 +104,43 @@ export function findViolations({ path, kind, content, vocab, whole = true }) {
     // is the only sensible way to write one.
     const inBreakpoint = /@media\b/.test(line);
 
-    if (HEX_COLOUR.test(line) || (FUNCTION_COLOUR.test(line) && !USES_TOKEN.test(line))) {
-      add(i, 'raw-color', 'error', 'You have written a colour by hand — use a design system colour token, such as var(--bw-brand).');
-    }
-    if (!inBreakpoint && RAW_PX.test(line) && !USES_TOKEN.test(line)) {
-      add(i, 'raw-size', 'error', 'You have written a size by hand — use a design system spacing or control token.');
+    // A token on one declaration must not excuse a hand-written value on the
+    // next declaration in the same line, so raw-color/raw-size/raw-shadow are
+    // checked per declaration, split on `;`. raw-font already tests for its
+    // own specific token and does not need this.
+    for (const decl of line.split(';')) {
+      if (HEX_COLOUR.test(decl) || (FUNCTION_COLOUR.test(decl) && !USES_TOKEN.test(decl))) {
+        add(i, 'raw-color', 'error', 'You have written a colour by hand — use a design system colour token, such as var(--bw-brand).');
+      }
+      if (!inBreakpoint && RAW_PX.test(decl) && !USES_TOKEN.test(decl)) {
+        add(i, 'raw-size', 'error', 'You have written a size by hand — use a design system spacing or control token.');
+      }
+      if (/box-shadow\s*:/.test(decl) && !USES_TOKEN.test(decl) && !/box-shadow\s*:\s*none/.test(decl)) {
+        add(i, 'raw-shadow', 'error', 'You have written a shadow by hand — use a design system shadow token.');
+      }
     }
     if (/font-family\s*:/.test(line) && !/var\(\s*--bw-font/.test(line)) {
       add(i, 'raw-font', 'error', 'You have set a font by hand — the system provides Sora and Inter through var(--bw-font-…).');
     }
-    if (/box-shadow\s*:/.test(line) && !USES_TOKEN.test(line) && !/box-shadow\s*:\s*none/.test(line)) {
-      add(i, 'raw-shadow', 'error', 'You have written a shadow by hand — use a design system shadow token.');
-    }
     if (/\bstyle\s*=\s*["']/.test(line) || /\bstyle\s*=\s*\{\{/.test(line)) {
-      add(i, 'inline-style', 'error', 'This element carries an inline style — put the styling on a design system class instead.');
+      add(i, 'inline-style', 'error', 'You have put an inline style on this element — move the styling onto a design system class.');
     }
     if (/<svg\b/i.test(line)) {
-      add(i, 'hand-svg', 'error', 'This is a hand-drawn icon — use the Icon component in React, or an i element with class bw-icon and a data-lucide name in PHP.');
+      add(i, 'hand-svg', 'error', 'You have drawn this icon by hand — use the Icon component in React, or an i element with class bw-icon and a data-lucide name in PHP.');
     }
-    for (const [wpClass, component] of Object.entries(WP_CORE_CLASSES)) {
-      if (new RegExp(`\\b${wpClass}\\b`).test(line)) {
-        add(i, 'wp-core-class', 'error', `This uses the WordPress core class "${wpClass}" — use the design system's ${component} instead.`);
+
+    // Classes only count when written literally in a class=/className= attribute,
+    // and only as a whole token — never a substring, or an unrelated class like
+    // "primary-nav-tab-container" would trip the nav-tab rule. This misses a
+    // class assembled in PHP (`$classes[] = 'form-table';`); that is a miss, not
+    // a false failure, and Task 4's catch-all still covers a screen built
+    // entirely off-system.
+    for (const cls of classesOn(line)) {
+      if (cls.startsWith('bw-') && !vocab.classes.has(cls)) {
+        add(i, 'unknown-bw-class', 'error', `You have used "${cls}", which is not a class in the design system — add the pattern to the system first, then use it here.`);
       }
-    }
-    for (const cls of literalBwClasses(line)) {
-      if (!vocab.classes.has(cls)) {
-        add(i, 'unknown-bw-class', 'error', `"${cls}" is not a class in the design system — add the pattern to the system first, then use it here.`);
+      if (Object.prototype.hasOwnProperty.call(WP_CORE_CLASSES, cls)) {
+        add(i, 'wp-core-class', 'error', `You have used the WordPress core class "${cls}" — use the design system's ${WP_CORE_CLASSES[cls]} instead.`);
       }
     }
   });
@@ -137,13 +148,14 @@ export function findViolations({ path, kind, content, vocab, whole = true }) {
   return problems;
 }
 
-// Only classes written out in full. A class assembled from a variable cannot be
-// checked against the vocabulary, and guessing at it would fail good code.
-function literalBwClasses(line) {
+// Every class token written out in full in a class=/className= attribute. A
+// class assembled from a variable cannot be checked against the vocabulary or
+// looked up by name, and guessing at it would fail good code.
+function classesOn(line) {
   const out = [];
   for (const m of line.matchAll(/class(?:Name)?\s*=\s*["']([^"']*)["']/g)) {
     for (const cls of m[1].split(/\s+/)) {
-      if (cls.startsWith('bw-') && !/[${}<>]/.test(cls)) out.push(cls);
+      if (cls && !/[${}<>]/.test(cls)) out.push(cls);
     }
   }
   return out;
