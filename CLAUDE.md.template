@@ -24,6 +24,7 @@ Every build or change starts from an approved GitHub Issue.
 - Changelog updated alongside the version bump
 - No new dependency without prior approval (`approved-deps.json`)
 - New functionality or a real bug fix has a Playwright test
+- WordPress plugin admin screens this PR touches are built from the shared design system
 
 ## Testing (WordPress plugins)
 
@@ -111,7 +112,7 @@ These skills load automatically from the shared `bluegroup_core_foundation` sett
 | About to claim work is done / before any commit or PR | verification-before-completion | Run `superpowers:verification-before-completion` and show real command output — evidence before claims |
 | Work complete, before merge | requesting-code-review → finishing-a-development-branch | Get review via `superpowers:requesting-code-review`, then integrate with `superpowers:finishing-a-development-branch` |
 | Any question about this codebase's architecture, file relationships, or content | graphify | Treat it as a graph query first (see below) |
-| Building or changing any WordPress admin screen | blueworx-admin-design | Invoke the skill and take the pattern from it before writing markup — see Approved Tools & Styles |
+| Building or changing any WordPress admin screen | blueworx-admin-design | Invoke the skill and take the pattern from it before writing markup — see Approved Tools & Styles. CI and a Write/Edit hook both refuse a screen that isn't built from it |
 | A brand-new repo that has no `CLAUDE.md` yet | init | Generate the project's `CLAUDE.md` with `init` |
 | Repeated permission prompts for safe, read-only commands | fewer-permission-prompts | Run `fewer-permission-prompts` to add a scoped allowlist to the project's `.claude/settings.json` |
 
@@ -124,7 +125,7 @@ These skills load automatically from the shared `bluegroup_core_foundation` sett
 ### Enforced vs model-driven — know the difference
 
 - **Deterministic (enforced every time by CI):** lint, build, version bump, changelog, approved-deps, Playwright test — the Hard Guardrails above. Never bypass these; the triggers below never override them.
-- **Model-driven (this policy + each skill's own description):** every trigger in the table. Strong, but they fire on *your* judgement, not a guarantee — which is exactly why the "say it out loud" rule exists. There are deliberately no per-skill hooks: these skills fire on the *kind* of change (a bug, a security-sensitive edit, a feature), which a tool/event hook can't detect without misfiring, and the truly must-happen-every-time checks already live in CI.
+- **Model-driven (this policy + each skill's own description):** every trigger in the table. Strong, but they fire on *your* judgement, not a guarantee — which is exactly why the "say it out loud" rule exists. There are deliberately no per-*skill* hooks: those triggers fire on the kind of change (a bug, a security-sensitive edit, a feature), which a tool event cannot detect without misfiring. There is one hook, and it is not a skill trigger — it refuses a Write or Edit that would put non-design-system markup into an admin screen, which is a plain fact about the file's contents.
 
 ## Model Guidance
 

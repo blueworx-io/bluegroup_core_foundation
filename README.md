@@ -316,8 +316,9 @@ and the release checklist — is in
   `foundation-ci.yml` (runs the check-script tests on every PR; required by branch
   protection)
 - `scripts/` — the generic check scripts the workflows call (version bump, changelog,
-  approved deps, plugin version-sync, plugin zip, plugin zip content, tests-actually-ran,
-  release-tag match, Netlify preview) plus their tested cores in `scripts/lib/`, the
+  approved deps, plugin version-sync, design system sync, admin UI adherence, plugin zip,
+  plugin zip content, tests-actually-ran, release-tag match, Netlify preview) plus their
+  tested cores in `scripts/lib/`, the
   `plugin-info` resolver, `stage-plugin-tree.sh` + `plugin-zip-excludes.txt` (what ships
   in a plugin zip, in one place), and `wp-test-env.mjs`, the local WordPress harness
 - `templates/` — `approved-deps.json` (the empty allow-list starter) and
