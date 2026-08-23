@@ -116,6 +116,25 @@ test('findViolations: a JSX style object with a hard-coded literal still fails',
   assert.equal(rules(scan("<div style={{ color: '#333' }} />", 'jsx')).includes('inline-style'), true);
 });
 
+test('findViolations: a quoted hex colour in a JSX style object fails as a colour, not just an inline style', () => {
+  const problems = scan('<div style={{ color: "#F04438" }} />', 'jsx');
+  assert.equal(rules(problems).includes('raw-color'), true);
+  assert.equal(rules(problems).includes('inline-style'), true);
+});
+
+test('findViolations: a hard-coded colour hiding in a JSX ternary still fails', () => {
+  const problems = scan('<div style={{ color: isErr ? "#F04438" : "var(--bw-brand)" }} />', 'jsx');
+  assert.equal(rules(problems).includes('raw-color'), true);
+  assert.equal(rules(problems).includes('inline-style'), true);
+});
+
+test('findViolations: a hard-coded length hiding in a JSX ternary still fails', () => {
+  assert.equal(
+    rules(scan('<div style={{ width: big ? "100px" : "50px" }} />', 'jsx')).includes('inline-style'),
+    true,
+  );
+});
+
 test('findViolations: a hand-drawn icon fails', () => {
   assert.equal(rules(scan('<div class="bw-card"><svg viewBox="0 0 24 24"></svg></div>')).includes('hand-svg'), true);
   assert.equal(rules(scan('<i class="bw-icon" data-lucide="settings"></i>')).includes('hand-svg'), false);

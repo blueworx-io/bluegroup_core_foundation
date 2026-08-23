@@ -133,12 +133,15 @@ const WP_CORE_CLASSES = {
 };
 
 // Three, six or eight hex digits, sitting where a CSS *value* would: at the
-// start of the fragment, or preceded by whitespace, `:`, `(` or `,`. A URL
-// fragment — `href="#abc"`, `https://example.com/help#add-new`, or the same
-// inside a comment — never sits after one of those, so it is never mistaken
-// for a colour even though a hex-shaped run of letters (e.g. `#add`) can
-// follow the `#`.
-const HEX_COLOUR = /(?<=^|[\s:(,])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/;
+// start of the fragment, or preceded by whitespace, `:`, `(`, `,`, `'` or `"`
+// — the last two so a quoted literal (`"#F04438"`, e.g. inside a JSX
+// ternary) still counts as a colour written by hand. A URL fragment —
+// `https://example.com/help#add-new`, or the same inside a comment — never
+// sits after one of those, so it is never mistaken for a colour even though a
+// hex-shaped run of letters (e.g. `#add`) can follow the `#`. `href="#abc"`
+// would otherwise now qualify too, since a quote is one of the allowed
+// preceding characters, so that specific shape is still excluded by name.
+const HEX_COLOUR = /(?<!href\s*=\s*["'])(?<=^|[\s:(,'"])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/;
 const FUNCTION_COLOUR = /\b(?:rgba?|hsla?)\s*\(/;
 const RAW_PX = /\b\d+px\b/;
 const VAR_REF = /var\(\s*(--[a-zA-Z0-9-]+)/g;
@@ -247,61 +250,27 @@ export function findViolations({ path, kind, content, vocab, whole = true }) {
 
 // The JSX object form, `style={{ … }}`, is how the design system's own
 // screens set a value no class can express (`style={{ width: size }}`,
-// `style={{ width: pct + '%' }}`) — that must not fail. It only fails when at
-// least one value inside the object is a hard-coded literal a class-based
-// system could have carried instead: a bare number, a quoted length, or a
-// quoted colour. An identifier, a member expression, a template literal, a
-// concatenation, or a token reference (`var(--bw-…)`, quoted or not) is a
-// computed value and is left alone.
+// `style={{ width: pct + '%' }}`) — that must not fail. It only fails when
+// the object body contains a hard-coded literal a class-based system could
+// have carried instead: a colour (hex, or an rgb/rgba/hsl/hsla call), a
+// quoted length or percentage, or a bare number as a property value. This
+// deliberately does not split the body into individual key: value pairs — a
+// JSX style key is always an identifier, never a literal, and a ternary
+// inside a value (`big ? "100px" : "50px"`) carries its own `:`, which broke
+// an earlier, splitting version of this same check. An identifier, a member
+// expression, a template literal, a concatenation, or a token reference
+// (`var(--bw-…)`, quoted or not) never matches any of the three patterns, so
+// it is left alone regardless of where in the body it sits.
+const STYLE_COLOUR_LITERAL = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?)\s*\(/;
+const STYLE_QUOTED_LENGTH = /(['"])-?\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|vmin|vmax|pt|ch|ex|cm|mm|in|pc)\1/;
+const STYLE_BARE_NUMBER_VALUE = /:\s*-?\d+(?:\.\d+)?\s*(?:,|$)/;
+
 function hasHardcodedStyleValue(objectText) {
-  return splitTopLevel(objectText, ',').some((entry) => {
-    const i = entry.indexOf(':');
-    if (i === -1) return false;
-    return isHardcodedStyleValue(entry.slice(i + 1));
-  });
-}
-
-function isHardcodedStyleValue(rawValue) {
-  const value = rawValue.trim();
-  if (/^-?\d+(?:\.\d+)?$/.test(value)) return true; // a bare number, e.g. `8`
-  const quoted = value.match(/^(['"])([\s\S]*)\1$/);
-  if (!quoted) return false; // an identifier, member expression, template literal, or concatenation
-  const inner = quoted[2].trim();
-  if (/^#[0-9a-fA-F]{3,8}$/.test(inner)) return true; // a hard-coded hex colour
-  if (/^(?:rgba?|hsla?)\s*\(/.test(inner)) return true; // a hard-coded colour function
-  return /^-?\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|vmin|vmax|pt|ch|ex|cm|mm|in|pc)$/.test(inner); // a hard-coded length
-}
-
-// Splits on `sep` at depth 0 only, so a comma inside a nested call, array, or
-// object (and one inside a quoted string) does not get mistaken for a
-// property separator.
-function splitTopLevel(text, sep) {
-  const out = [];
-  let depth = 0;
-  let quote = null;
-  let current = '';
-  for (const ch of text) {
-    if (quote) {
-      current += ch;
-      if (ch === quote) quote = null;
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === '`') {
-      quote = ch;
-      current += ch;
-      continue;
-    }
-    if (ch === '(' || ch === '[' || ch === '{') depth += 1;
-    if (ch === ')' || ch === ']' || ch === '}') depth -= 1;
-    if (ch === sep && depth === 0) {
-      out.push(current);
-      current = '';
-      continue;
-    }
-    current += ch;
-  }
-  if (current.trim()) out.push(current);
-  return out;
+  return (
+    STYLE_COLOUR_LITERAL.test(objectText) ||
+    STYLE_QUOTED_LENGTH.test(objectText) ||
+    STYLE_BARE_NUMBER_VALUE.test(objectText)
+  );
 }
 
 // Every class token written out in full in a class=/className= attribute. A
