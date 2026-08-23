@@ -12,6 +12,17 @@ const BW_CLASS = /\bbw-[a-z]/;
 const SKILL_DIR = '.claude/skills/blueworx-admin-design/';
 const SHIPPED_CSS = 'assets/blueworx-admin-design.css';
 
+// The only styling a plugin may keep of its own: the chrome overrides the
+// system's readme documents for a full-bleed screen. Anything else in an admin
+// stylesheet is a second design system growing beside the first.
+const ALLOWED_ADMIN_SELECTORS = [
+  /\.wrap\b/,
+  /#wpcontent\b/,
+  /#wpbody-content\b/,
+  /#wpfooter\b/,
+  /#wpadminbar\b/,
+];
+
 export function normalisePath(path) {
   return path.replace(/\\/g, '/').replace(/^\.\//, '');
 }
@@ -153,6 +164,24 @@ export function findViolations({ path, kind, content, vocab, whole = true }) {
       }
     }
   });
+
+  if (kind === 'css') {
+    lines.forEach((line, i) => {
+      const selector = line.match(/^([^{}]+)\{/);
+      if (!selector) return;
+      const text = selector[1].trim();
+      if (!text || text.startsWith('@') || text.startsWith('/*')) return;
+      if (ALLOWED_ADMIN_SELECTORS.some((re) => re.test(text))) return;
+      add(i, 'stray-admin-css', 'error', `You have styled "${text}" in a plugin stylesheet — that belongs in the design system, since the only styling a plugin keeps of its own is the documented full-bleed chrome overrides.`);
+    });
+  }
+
+  // The catch-all for a screen built from scratch. It is the one rule that
+  // reasons about a whole file rather than a line, so it never runs on an edit
+  // fragment, and it is a warning until it has proved itself on a real plugin.
+  if (whole && kind !== 'css' && /class(?:Name)?\s*=/.test(content) && !BW_CLASS.test(content)) {
+    add(0, 'no-bw-class', 'warn', 'You have built this admin screen without the design system — use its components rather than starting from scratch.');
+  }
 
   return problems;
 }

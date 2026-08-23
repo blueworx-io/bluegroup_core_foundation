@@ -155,3 +155,48 @@ test('findViolations: a colour shown as text is not a colour being used', () => 
 test('findViolations: a URL fragment in a declaration-shaped line is not a colour', () => {
   assert.equal(rules(scan('<a class="bw-btn" href="https://example.com/#abc">Docs</a>')).includes('raw-color'), false);
 });
+
+test('findViolations: a plugin admin stylesheet may only hold the documented chrome overrides', () => {
+  const allowed = [
+    '.wrap.bw-wrap { margin: 0; }',
+    'body.toplevel_page_x #wpcontent { padding-left: 0; }',
+    'body.toplevel_page_x #wpbody-content { padding-bottom: 0; }',
+    'body.toplevel_page_x #wpfooter { display: none; }',
+  ].join('\n');
+  assert.equal(
+    rules(findViolations({ path: 'assets/css/admin.css', kind: 'css', content: allowed, vocab: VOCAB })).includes('stray-admin-css'),
+    false,
+  );
+  assert.equal(
+    rules(findViolations({ path: 'assets/css/admin.css', kind: 'css', content: '.my-settings-panel { border: 0; }', vocab: VOCAB })).includes('stray-admin-css'),
+    true,
+  );
+});
+
+test('findViolations: a screen with no design system classes at all is a warning', () => {
+  const problems = findViolations({ path: 'includes/screen.php', kind: 'php', content: '<div class="settings"><table class="widefat"></table></div>', vocab: VOCAB });
+  const bare = problems.find((p) => p.rule === 'no-bw-class');
+  assert.ok(bare);
+  assert.equal(bare.severity, 'warn');
+});
+
+test('findViolations: a screen that uses the system does not warn', () => {
+  assert.equal(
+    rules(findViolations({ path: 'includes/screen.php', kind: 'php', content: '<div class="bw-card"></div>', vocab: VOCAB })).includes('no-bw-class'),
+    false,
+  );
+});
+
+test('findViolations: no-bw-class never fires on an edit fragment', () => {
+  assert.equal(
+    rules(findViolations({ path: 'includes/screen.php', kind: 'php', content: '<div class="settings">', vocab: VOCAB, whole: false })).includes('no-bw-class'),
+    false,
+  );
+});
+
+test('findViolations: markup with no classes at all does not warn', () => {
+  assert.equal(
+    rules(findViolations({ path: 'includes/menu.php', kind: 'php', content: "add_menu_page( 'X', 'X', 'manage_options', 'x', 'render' );", vocab: VOCAB })).includes('no-bw-class'),
+    false,
+  );
+});
