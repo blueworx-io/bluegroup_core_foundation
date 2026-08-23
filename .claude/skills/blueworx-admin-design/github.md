@@ -2,14 +2,16 @@ repo: blueworx-io/bluegroup_core_foundation
 branch: main
 path: .claude/skills/blueworx-admin-design/
 
-## Export contract
+## Sync contract
 
-This design system IS the skill folder committed at the `path` above. Every export
-must satisfy all of the following — CI compares the whole committed tree, so a
-partial export fails the check.
+This design system IS the skill folder committed at the `path` above. That folder is the
+source; the Claude Design project mirrors it, never the reverse.
 
-- **Whole folder, every time.** Export the complete tree, never a patch or a
-  changed-files subset. It replaces the committed folder wholesale.
+- **Code → design.** Pushes go from the committed folder to the design project, one
+  component at a time. Never a wholesale replace of the design project.
+- **Nothing is deleted in the design project** unless the exact files to delete are named.
+- **Design → code only for a component that doesn't exist in code yet**, and only when
+  explicitly asked for. Once a component exists in code, it stays code-owned.
 - **`SKILL.md` at the folder root.**
 - **`styles.css` at the folder root** — that exact filename and location. Each
   plugin copies it to `assets/blueworx-admin-design.css` and CI compares the two
