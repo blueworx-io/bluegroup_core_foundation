@@ -3,6 +3,7 @@
 // gather inputs (git/fs) and pass them in, which keeps these unit-testable.
 
 import { compareSemver, parseSemver } from './semver.mjs';
+import { classifyAdminFile, findViolations } from './admin-ui.mjs';
 
 export function versionBumped({ current, base }) {
   if (base === null || base === undefined) {
@@ -465,4 +466,53 @@ export function designSystemSync({
     problems,
     message: [`Design system out of sync (${problems.length} problem(s)):`, ...problems.map((p) => `  - ${p}`), '', fix].join('\n'),
   };
+}
+
+// Fails when an admin screen this PR touches is not built from the shared
+// blueworx-admin-design system. Only the files in the diff are judged, so a
+// plugin adopts the system screen by screen and an untouched legacy screen is
+// left alone until somebody works on it.
+export function adminUiAdherence({ files, vocab, adminAssets = new Set(), promoteWarnings = false }) {
+  if (!vocab) {
+    return { ok: true, problems: [], message: 'Admin UI adherence: this plugin has no blueworx-admin-design system — skipping.' };
+  }
+
+  const problems = [];
+  let screens = 0;
+  for (const { path, content } of files) {
+    const kind = classifyAdminFile({ path, content, adminAssets });
+    if (!kind) continue;
+    screens += 1;
+    problems.push(...findViolations({ path, kind, content, vocab }));
+  }
+
+  const errors = problems.filter((p) => p.severity === 'error' || promoteWarnings);
+  const warnings = promoteWarnings ? [] : problems.filter((p) => p.severity === 'warn');
+
+  if (errors.length === 0 && warnings.length === 0) {
+    return {
+      ok: true,
+      problems,
+      message: `Admin UI adherence: ${screens} admin screen(s) changed, all built from the design system.`,
+    };
+  }
+
+  const lines = [];
+  if (errors.length > 0) {
+    lines.push(`Admin UI adherence: ${errors.length} problem(s) in the admin screens this PR changes.`, '');
+    for (const p of errors) lines.push(`  ${p.path}:${p.line} — ${p.message}`);
+  }
+  if (warnings.length > 0) {
+    lines.push('', `${warnings.length} warning(s):`);
+    for (const p of warnings) lines.push(`  ${p.path}:${p.line} — ${p.message}`);
+  }
+  lines.push(
+    '',
+    'Every admin screen is built from the shared design system. Invoke the',
+    'blueworx-admin-design skill and take the pattern from there. If the system',
+    'has no pattern for what you need, add it to the system in the foundation',
+    'first, then build the screen on it.',
+  );
+
+  return { ok: errors.length === 0, problems, message: lines.join('\n') };
 }
