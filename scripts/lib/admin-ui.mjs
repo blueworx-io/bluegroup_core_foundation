@@ -69,3 +69,82 @@ export function classifyAdminFile({ path, content, adminAssets = new Set() }) {
   }
   return null;
 }
+
+// WordPress core classes the design system exists to replace, and what to use
+// instead. Deliberately specific — a bare `button` is far too common in real
+// markup to flag, but `button-primary` is unambiguous.
+const WP_CORE_CLASSES = {
+  'button-primary': 'Button',
+  'button-secondary': 'Button',
+  'form-table': 'FormRow',
+  'wp-list-table': 'DataTable',
+  postbox: 'Card',
+  'nav-tab': 'Tabs',
+  'notice-success': 'Notice',
+  'notice-error': 'Notice',
+  'notice-warning': 'Notice',
+  'notice-info': 'Notice',
+};
+
+// Three, six or eight hex digits, and not the fragment part of a link.
+const HEX_COLOUR = /(?<!href\s*=\s*["'])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/;
+const FUNCTION_COLOUR = /\b(?:rgba?|hsla?)\s*\(/;
+const RAW_PX = /\b\d+px\b/;
+const USES_TOKEN = /var\(\s*--/;
+
+export function findViolations({ path, kind, content, vocab, whole = true }) {
+  const p = normalisePath(path);
+  const problems = [];
+  const lines = content.split(/\r?\n/);
+  const add = (index, rule, severity, message) =>
+    problems.push({ path: p, line: index + 1, rule, severity, message });
+
+  lines.forEach((line, i) => {
+    // A breakpoint is a fact about the viewport, not a design decision, so px
+    // is the only sensible way to write one.
+    const inBreakpoint = /@media\b/.test(line);
+
+    if (HEX_COLOUR.test(line) || (FUNCTION_COLOUR.test(line) && !USES_TOKEN.test(line))) {
+      add(i, 'raw-color', 'error', 'You have written a colour by hand — use a design system colour token, such as var(--bw-brand).');
+    }
+    if (!inBreakpoint && RAW_PX.test(line) && !USES_TOKEN.test(line)) {
+      add(i, 'raw-size', 'error', 'You have written a size by hand — use a design system spacing or control token.');
+    }
+    if (/font-family\s*:/.test(line) && !/var\(\s*--bw-font/.test(line)) {
+      add(i, 'raw-font', 'error', 'You have set a font by hand — the system provides Sora and Inter through var(--bw-font-…).');
+    }
+    if (/box-shadow\s*:/.test(line) && !USES_TOKEN.test(line) && !/box-shadow\s*:\s*none/.test(line)) {
+      add(i, 'raw-shadow', 'error', 'You have written a shadow by hand — use a design system shadow token.');
+    }
+    if (/\bstyle\s*=\s*["']/.test(line) || /\bstyle\s*=\s*\{\{/.test(line)) {
+      add(i, 'inline-style', 'error', 'This element carries an inline style — put the styling on a design system class instead.');
+    }
+    if (/<svg\b/i.test(line)) {
+      add(i, 'hand-svg', 'error', 'This is a hand-drawn icon — use the Icon component in React, or an i element with class bw-icon and a data-lucide name in PHP.');
+    }
+    for (const [wpClass, component] of Object.entries(WP_CORE_CLASSES)) {
+      if (new RegExp(`\\b${wpClass}\\b`).test(line)) {
+        add(i, 'wp-core-class', 'error', `This uses the WordPress core class "${wpClass}" — use the design system's ${component} instead.`);
+      }
+    }
+    for (const cls of literalBwClasses(line)) {
+      if (!vocab.classes.has(cls)) {
+        add(i, 'unknown-bw-class', 'error', `"${cls}" is not a class in the design system — add the pattern to the system first, then use it here.`);
+      }
+    }
+  });
+
+  return problems;
+}
+
+// Only classes written out in full. A class assembled from a variable cannot be
+// checked against the vocabulary, and guessing at it would fail good code.
+function literalBwClasses(line) {
+  const out = [];
+  for (const m of line.matchAll(/class(?:Name)?\s*=\s*["']([^"']*)["']/g)) {
+    for (const cls of m[1].split(/\s+/)) {
+      if (cls.startsWith('bw-') && !/[${}<>]/.test(cls)) out.push(cls);
+    }
+  }
+  return out;
+}
