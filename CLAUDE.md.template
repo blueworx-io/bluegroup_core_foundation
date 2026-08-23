@@ -100,9 +100,7 @@ Every plugin's admin UI — settings pages, tabs, tables, notices, forms, button
 
 ## Claude Design ↔ code sync rules
 
-Mandatory, every session, every repo, no exceptions. These land verbatim in
-`CLAUDE.md.template` as their own section, so every project inherits them, and they govern the
-design system folder this check is built around.
+Mandatory, every session, every repo, no exceptions.
 
 ### Source of truth
 

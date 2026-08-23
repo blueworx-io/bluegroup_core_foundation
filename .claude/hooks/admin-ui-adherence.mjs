@@ -85,10 +85,17 @@ try {
     .filter((p) => p.severity === 'error');
   if (problems.length === 0) process.exit(0);
 
+  // findViolations scans whatever text it is given. For a Write that is the
+  // whole file, so its line numbers are real. For an Edit it is only the
+  // replacement fragment, so a "line 5 in the real file" problem gets reported
+  // as line 1 of the fragment — a wrong number, which is worse than none. Name
+  // just the file for a fragment rather than print a line that misleads.
+  const location = (p) => (isWrite ? `${p.path}:${p.line}` : p.path);
+
   console.error([
     'This admin screen is not built from the blueworx-admin-design system:',
     '',
-    ...problems.map((p) => `  ${p.path}:${p.line} — ${p.message}`),
+    ...problems.map((p) => `  ${location(p)} — ${p.message}`),
     '',
     'Invoke the blueworx-admin-design skill and take the pattern from there. If',
     'the system has no pattern for what you need, add it to the system in the',

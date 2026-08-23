@@ -132,13 +132,26 @@ const WP_CORE_CLASSES = {
   'notice-info': 'Notice',
 };
 
-// Three, six or eight hex digits, and not the fragment part of a link — either
-// an href attribute's own fragment, or a fragment on a URL sitting elsewhere
-// in a declaration-shaped line (e.g. an anchor inside a style attribute).
-const HEX_COLOUR = /(?<!href\s*=\s*["'])(?<!\/)#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/;
+// Three, six or eight hex digits, sitting where a CSS *value* would: at the
+// start of the fragment, or preceded by whitespace, `:`, `(` or `,`. A URL
+// fragment — `href="#abc"`, `https://example.com/help#add-new`, or the same
+// inside a comment — never sits after one of those, so it is never mistaken
+// for a colour even though a hex-shaped run of letters (e.g. `#add`) can
+// follow the `#`.
+const HEX_COLOUR = /(?<=^|[\s:(,])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/;
 const FUNCTION_COLOUR = /\b(?:rgba?|hsla?)\s*\(/;
 const RAW_PX = /\b\d+px\b/;
-const USES_TOKEN = /var\(\s*--/;
+const VAR_REF = /var\(\s*(--[a-zA-Z0-9-]+)/g;
+
+// The token escape only applies to a *real* token — one the design system
+// actually declares. `var(--i-made-this-up, 13px)` must not excuse the
+// hard-coded fallback sitting right there in the same declaration.
+function usesRealToken(decl, vocab) {
+  for (const m of decl.matchAll(VAR_REF)) {
+    if (vocab.tokens.has(m[1])) return true;
+  }
+  return false;
+}
 
 export function findViolations({ path, kind, content, vocab, whole = true }) {
   const p = normalisePath(path);
@@ -164,20 +177,23 @@ export function findViolations({ path, kind, content, vocab, whole = true }) {
     // is not the same as using it as a style.
     for (const decl of line.split(';')) {
       if (!decl.includes(':')) continue;
-      if (HEX_COLOUR.test(decl) || (FUNCTION_COLOUR.test(decl) && !USES_TOKEN.test(decl))) {
+      const escaped = usesRealToken(decl, vocab);
+      if (HEX_COLOUR.test(decl) || (FUNCTION_COLOUR.test(decl) && !escaped)) {
         add(i, 'raw-color', 'error', 'You have written a colour by hand — use a design system colour token, such as var(--bw-brand).');
       }
-      if (!inBreakpoint && RAW_PX.test(decl) && !USES_TOKEN.test(decl)) {
+      if (!inBreakpoint && RAW_PX.test(decl) && !escaped) {
         add(i, 'raw-size', 'error', 'You have written a size by hand — use a design system spacing or control token.');
       }
-      if (/box-shadow\s*:/.test(decl) && !USES_TOKEN.test(decl) && !/box-shadow\s*:\s*none/.test(decl)) {
+      if (/box-shadow\s*:/.test(decl) && !escaped && !/box-shadow\s*:\s*none/.test(decl)) {
         add(i, 'raw-shadow', 'error', 'You have written a shadow by hand — use a design system shadow token.');
       }
     }
     if (/font-family\s*:/.test(line) && !/var\(\s*--bw-font/.test(line)) {
       add(i, 'raw-font', 'error', 'You have set a font by hand — the system provides Sora and Inter through var(--bw-font-…).');
     }
-    if (/\bstyle\s*=\s*["']/.test(line) || /\bstyle\s*=\s*\{\{/.test(line)) {
+    const styleAttr = line.match(/\bstyle\s*=\s*["']/);
+    const styleObj = line.match(/\bstyle\s*=\s*\{\{([\s\S]*?)\}\}/);
+    if (styleAttr || (styleObj && hasHardcodedStyleValue(styleObj[1]))) {
       add(i, 'inline-style', 'error', 'You have put an inline style on this element — move the styling onto a design system class.');
     }
     if (/<svg\b/i.test(line)) {
@@ -227,6 +243,65 @@ export function findViolations({ path, kind, content, vocab, whole = true }) {
   }
 
   return problems;
+}
+
+// The JSX object form, `style={{ … }}`, is how the design system's own
+// screens set a value no class can express (`style={{ width: size }}`,
+// `style={{ width: pct + '%' }}`) — that must not fail. It only fails when at
+// least one value inside the object is a hard-coded literal a class-based
+// system could have carried instead: a bare number, a quoted length, or a
+// quoted colour. An identifier, a member expression, a template literal, a
+// concatenation, or a token reference (`var(--bw-…)`, quoted or not) is a
+// computed value and is left alone.
+function hasHardcodedStyleValue(objectText) {
+  return splitTopLevel(objectText, ',').some((entry) => {
+    const i = entry.indexOf(':');
+    if (i === -1) return false;
+    return isHardcodedStyleValue(entry.slice(i + 1));
+  });
+}
+
+function isHardcodedStyleValue(rawValue) {
+  const value = rawValue.trim();
+  if (/^-?\d+(?:\.\d+)?$/.test(value)) return true; // a bare number, e.g. `8`
+  const quoted = value.match(/^(['"])([\s\S]*)\1$/);
+  if (!quoted) return false; // an identifier, member expression, template literal, or concatenation
+  const inner = quoted[2].trim();
+  if (/^#[0-9a-fA-F]{3,8}$/.test(inner)) return true; // a hard-coded hex colour
+  if (/^(?:rgba?|hsla?)\s*\(/.test(inner)) return true; // a hard-coded colour function
+  return /^-?\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|vmin|vmax|pt|ch|ex|cm|mm|in|pc)$/.test(inner); // a hard-coded length
+}
+
+// Splits on `sep` at depth 0 only, so a comma inside a nested call, array, or
+// object (and one inside a quoted string) does not get mistaken for a
+// property separator.
+function splitTopLevel(text, sep) {
+  const out = [];
+  let depth = 0;
+  let quote = null;
+  let current = '';
+  for (const ch of text) {
+    if (quote) {
+      current += ch;
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === '(' || ch === '[' || ch === '{') depth += 1;
+    if (ch === ')' || ch === ']' || ch === '}') depth -= 1;
+    if (ch === sep && depth === 0) {
+      out.push(current);
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) out.push(current);
+  return out;
 }
 
 // Every class token written out in full in a class=/className= attribute. A

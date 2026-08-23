@@ -105,6 +105,17 @@ test('findViolations: inline style fails in markup and in JSX', () => {
   assert.equal(rules(scan('<div className="bw-card" style={{ marginTop: 8 }} />', 'jsx')).includes('inline-style'), true);
 });
 
+test('findViolations: a JSX style object holding only computed values does not fail', () => {
+  assert.equal(rules(scan('<div style={{ width: size }} />', 'jsx')).includes('inline-style'), false);
+  assert.equal(rules(scan("<div style={{ width: pct + '%' }} />", 'jsx')).includes('inline-style'), false);
+  assert.equal(rules(scan("<div style={{ color: 'var(--bw-brand)' }} />", 'jsx')).includes('inline-style'), false);
+});
+
+test('findViolations: a JSX style object with a hard-coded literal still fails', () => {
+  assert.equal(rules(scan("<div style={{ width: '10px' }} />", 'jsx')).includes('inline-style'), true);
+  assert.equal(rules(scan("<div style={{ color: '#333' }} />", 'jsx')).includes('inline-style'), true);
+});
+
 test('findViolations: a hand-drawn icon fails', () => {
   assert.equal(rules(scan('<div class="bw-card"><svg viewBox="0 0 24 24"></svg></div>')).includes('hand-svg'), true);
   assert.equal(rules(scan('<i class="bw-icon" data-lucide="settings"></i>')).includes('hand-svg'), false);
@@ -141,6 +152,16 @@ test('findViolations: a token on one declaration does not excuse a hand-written 
   assert.equal(rules(scan('.bw-x{ padding: var(--bw-space-6); color: #4F46E5; }', 'css')).includes('raw-color'), true);
 });
 
+test('findViolations: a real token excuses a value, an invented one does not', () => {
+  assert.equal(rules(scan('.bw-x{ padding: var(--bw-brand, 13px); }', 'css')).includes('raw-size'), false);
+  assert.equal(rules(scan('.bw-x{ padding: var(--i-made-this-up, 13px); }', 'css')).includes('raw-size'), true);
+});
+
+test('findViolations: an invented token with a hard-coded fallback fires on the fallback', () => {
+  const problems = scan('.bw-x{ padding: var(--i-made-this-up, 13px); }', 'css');
+  assert.match(problems.find((p) => p.rule === 'raw-size').message, /size by hand/);
+});
+
 test('findViolations: an HTML entity is not a declaration separator', () => {
   assert.equal(
     rules(scan('<p style="padding: var(--bw-space-4)">Fee&nbsp;is 24px annually</p>')).includes('raw-size'),
@@ -154,6 +175,27 @@ test('findViolations: a colour shown as text is not a colour being used', () => 
 
 test('findViolations: a URL fragment in a declaration-shaped line is not a colour', () => {
   assert.equal(rules(scan('<a class="bw-btn" href="https://example.com/#abc">Docs</a>')).includes('raw-color'), false);
+});
+
+test('findViolations: a hex-shaped URL fragment on an ordinary link does not fail', () => {
+  assert.equal(
+    rules(scan('<a class="bw-btn" href="https://example.com/help#add-new">Add</a>')).includes('raw-color'),
+    false,
+  );
+  assert.equal(
+    rules(scan('// see https://example.com/help#add-new for details')).includes('raw-color'),
+    false,
+  );
+});
+
+test('findViolations: a hex-shaped fragment glued inside a longer word does not fail', () => {
+  assert.equal(rules(scan("content: 'word#fff';", 'css')).includes('raw-color'), false);
+});
+
+test('findViolations: real colour declarations still fail after the fragment fix', () => {
+  assert.equal(rules(scan('.bw-x{ color: #4F46E5; }', 'css')).includes('raw-color'), true);
+  assert.equal(rules(scan('.bw-x{ color:#333; }', 'css')).includes('raw-color'), true);
+  assert.equal(rules(scan('.bw-x{ border: 1px solid #ECEDF3; }', 'css')).includes('raw-color'), true);
 });
 
 test('findViolations: a plugin admin stylesheet may only hold the documented chrome overrides', () => {

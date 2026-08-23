@@ -29,7 +29,7 @@ exported: complete folder (219 files) — SKILL.md + styles.css at root, LF, unm
 
 ### Updated in this project
 - Retargeted this project at `bluegroup_core_foundation` · `.claude/skills/blueworx-admin-design/`
-  and recorded the export contract above.
+  and recorded the sync contract above.
 - Flattened the stylesheet: the 19 `tokens/` and `components/**` partials are merged
   into a single self-contained `styles.css` (630 lines, unminified, LF) and deleted, so
   a plugin copying that one file gets the whole system and no duplicate CSS ships.

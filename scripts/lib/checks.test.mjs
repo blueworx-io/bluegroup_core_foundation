@@ -546,6 +546,24 @@ test('adminUiAdherence: warnings print but do not fail, unless promoted', () => 
   assert.equal(adminUiAdherence({ files, vocab: DS_VOCAB, promoteWarnings: true }).ok, false);
 });
 
+test('adminUiAdherence: a warnings-only run does not print the failure-shaped footer', () => {
+  const files = [{ path: 'includes/screen.php', content: `${SCREEN}\n<div class="plain">Hi</div>` }];
+  const soft = adminUiAdherence({ files, vocab: DS_VOCAB });
+  assert.equal(soft.ok, true);
+  assert.doesNotMatch(soft.message, /Invoke the/);
+});
+
+test('adminUiAdherence: an errored run prints the footer, with the warn-mode escape hatch', () => {
+  const r = adminUiAdherence({
+    files: [{ path: 'includes/screen.php', content: `${SCREEN}\n<div class="bw-card" style="color:#333">Hi</div>` }],
+    vocab: DS_VOCAB,
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /Invoke the/);
+  assert.match(r.message, /admin_ui_adherence/);
+  assert.match(r.message, /warn/);
+});
+
 test('adminUiAdherence: an empty diff passes', () => {
   assert.equal(adminUiAdherence({ files: [], vocab: DS_VOCAB }).ok, true);
 });

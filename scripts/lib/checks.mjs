@@ -458,7 +458,7 @@ export function designSystemSync({
     `  cp ${skillPath}/styles.css ${cssPath}`,
     `  mkdir -p ${fontsPath} && cp ${skillPath}/fonts/* ${fontsPath}/`,
     '',
-    'Authoring happens in Claude Design — do not hand-edit either copy here.',
+    'The committed folder in the foundation is the source — do not hand-edit either copy here.',
   ].join('\n');
 
   return {
@@ -506,13 +506,20 @@ export function adminUiAdherence({ files, vocab, adminAssets = new Set(), promot
     lines.push('', `${warnings.length} warning(s):`);
     for (const p of warnings) lines.push(`  ${p.path}:${p.line} — ${p.message}`);
   }
-  lines.push(
-    '',
-    'Every admin screen is built from the shared design system. Invoke the',
-    'blueworx-admin-design skill and take the pattern from there. If the system',
-    'has no pattern for what you need, add it to the system in the foundation',
-    'first, then build the screen on it.',
-  );
+  // Printed only on an actual failure — a warnings-only run is ok:true, and this
+  // failure-shaped block on a green run reads as a failure to anyone scanning CI
+  // output.
+  if (errors.length > 0) {
+    lines.push(
+      '',
+      'Every admin screen is built from the shared design system. Invoke the',
+      'blueworx-admin-design skill and take the pattern from there. If the system',
+      'has no pattern for what you need, add it to the system in the foundation',
+      'first, then build the screen on it. A plugin catching up mid-feature can set',
+      "the workflow's admin_ui_adherence input to warn to report without failing,",
+      'and should take it off again once it is caught up.',
+    );
+  }
 
   return { ok: errors.length === 0, problems, message: lines.join('\n') };
 }

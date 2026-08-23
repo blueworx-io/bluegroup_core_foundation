@@ -303,6 +303,10 @@ and the release checklist — is in
   [`.github/ISSUE_TEMPLATE/task.md`](.github/ISSUE_TEMPLATE/task.md)
 - [`.claude/settings.json`](.claude/settings.json) — shared permissions + approved-skill
   enablement
+- [`.claude/hooks/admin-ui-adherence.mjs`](.claude/hooks/admin-ui-adherence.mjs) — the
+  Write/Edit hook `.claude/settings.json` wires up. It self-disables on a repo with no
+  design system, so it is harmless to carry into every project, but without this file
+  present `.claude/settings.json` alone makes it fail on every Write and Edit.
 - WordPress plugins only:
   [`templates/plugin-update-checker-bootstrap.php`](templates/plugin-update-checker-bootstrap.php)
   → pasted into the plugin's main file (see
