@@ -24,6 +24,22 @@ test('adminAssetPaths: collects assets enqueued beside an admin hook', () => {
   assert.equal(paths.has('assets/css/public.css'), false);
 });
 
+test('adminAssetPaths: collects admin-named assets from any wp_enqueue_* call', () => {
+  const paths = adminAssetPaths([
+    {
+      path: 'includes/class-admin.php',
+      content: [
+        "wp_enqueue_style( 'admin-styles', PLUGIN_URL . 'assets/css/admin.css' );",
+        "wp_enqueue_style( 'public-styles', PLUGIN_URL . 'assets/css/public.css' );",
+        "wp_enqueue_script( 'admin-logic', PLUGIN_URL . 'assets/js/admin-panel.js' );",
+      ].join('\n'),
+    },
+  ]);
+  assert.equal(paths.has('assets/css/admin.css'), true);
+  assert.equal(paths.has('assets/js/admin-panel.js'), true);
+  assert.equal(paths.has('assets/css/public.css'), false);
+});
+
 test('classifyAdminFile: PHP that registers or renders an admin page', () => {
   assert.equal(classifyAdminFile({ path: 'includes/menu.php', content: "add_menu_page( 'X', 'X', 'manage_options', 'x', 'render' );" }), 'php');
   assert.equal(classifyAdminFile({ path: 'views/screen.php', content: '<div class="wrap bw-wrap">' }), 'php');
