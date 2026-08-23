@@ -86,8 +86,10 @@ const WP_CORE_CLASSES = {
   'notice-info': 'Notice',
 };
 
-// Three, six or eight hex digits, and not the fragment part of a link.
-const HEX_COLOUR = /(?<!href\s*=\s*["'])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/;
+// Three, six or eight hex digits, and not the fragment part of a link — either
+// an href attribute's own fragment, or a fragment on a URL sitting elsewhere
+// in a declaration-shaped line (e.g. an anchor inside a style attribute).
+const HEX_COLOUR = /(?<!href\s*=\s*["'])(?<!\/)#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/;
 const FUNCTION_COLOUR = /\b(?:rgba?|hsla?)\s*\(/;
 const RAW_PX = /\b\d+px\b/;
 const USES_TOKEN = /var\(\s*--/;
@@ -108,7 +110,14 @@ export function findViolations({ path, kind, content, vocab, whole = true }) {
     // next declaration in the same line, so raw-color/raw-size/raw-shadow are
     // checked per declaration, split on `;`. raw-font already tests for its
     // own specific token and does not need this.
+    //
+    // A `;` is not always a declaration separator — an HTML entity (`&nbsp;`)
+    // or a quoted CSS `content` string can contain one too, stranding ordinary
+    // prose into its own fragment. A real declaration is `property: value`, so
+    // a fragment with no colon is never examined: displaying a value in text
+    // is not the same as using it as a style.
     for (const decl of line.split(';')) {
+      if (!decl.includes(':')) continue;
       if (HEX_COLOUR.test(decl) || (FUNCTION_COLOUR.test(decl) && !USES_TOKEN.test(decl))) {
         add(i, 'raw-color', 'error', 'You have written a colour by hand — use a design system colour token, such as var(--bw-brand).');
       }

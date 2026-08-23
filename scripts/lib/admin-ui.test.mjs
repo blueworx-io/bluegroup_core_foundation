@@ -140,3 +140,18 @@ test('findViolations: a token on one declaration does not excuse a hand-written 
   assert.equal(rules(scan('.bw-x{ color: var(--bw-brand); padding: 24px; }', 'css')).includes('raw-size'), true);
   assert.equal(rules(scan('.bw-x{ padding: var(--bw-space-6); color: #4F46E5; }', 'css')).includes('raw-color'), true);
 });
+
+test('findViolations: an HTML entity is not a declaration separator', () => {
+  assert.equal(
+    rules(scan('<p style="padding: var(--bw-space-4)">Fee&nbsp;is 24px annually</p>')).includes('raw-size'),
+    false,
+  );
+});
+
+test('findViolations: a colour shown as text is not a colour being used', () => {
+  assert.equal(rules(scan('<span>#4F46E5</span>')).includes('raw-color'), false);
+});
+
+test('findViolations: a URL fragment in a declaration-shaped line is not a colour', () => {
+  assert.equal(rules(scan('<a class="bw-btn" href="https://example.com/#abc">Docs</a>')).includes('raw-color'), false);
+});
