@@ -36,10 +36,31 @@ export function parseComponents(manifest) {
   return out;
 }
 
-export function vocabulary({ css, manifest }) {
+// The system documents two kinds of `bw-` class: ones it declares rules for in
+// styles.css, and hook classes it only ever names in the readme's copy-paste
+// markup, for a plugin's own chrome override to attach to (e.g. `bw-wrap`,
+// paired with `.wrap.bw-wrap { margin: 0; }`). Both are part of the system's
+// vocabulary — only the second kind has no CSS rule of its own — so a
+// `bw-`-prefixed class named in the readme's markup counts as known even
+// though styles.css never declares it. Reuses classesOn's guard against a
+// templated class (containing `${}<>`) so a code sample is never absorbed
+// into the allowlist.
+function parseMarkupClasses(markup) {
+  const out = new Set();
+  for (const m of markup.matchAll(/class(?:Name)?\s*=\s*["']([^"']*)["']/g)) {
+    for (const cls of m[1].split(/\s+/)) {
+      if (cls && cls.startsWith('bw-') && !/[${}<>]/.test(cls)) out.add(cls);
+    }
+  }
+  return out;
+}
+
+export function vocabulary({ css, manifest, markup = '' }) {
+  const classes = parseClasses(css);
+  for (const cls of parseMarkupClasses(markup)) classes.add(cls);
   return {
     tokens: parseTokens(css),
-    classes: parseClasses(css),
+    classes,
     components: parseComponents(manifest),
   };
 }

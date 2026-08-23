@@ -30,8 +30,13 @@ if (!baseRef) {
 
 const skillPath = process.env.SKILL_PATH || '.claude/skills/blueworx-admin-design';
 const cssFile = join(skillPath, 'styles.css');
+const readmeFile = join(skillPath, 'readme.md');
 const vocab = existsSync(cssFile)
-  ? vocabulary({ css: readFileSync(cssFile, 'utf8'), manifest: readJson(join(skillPath, '_ds_manifest.json')) })
+  ? vocabulary({
+      css: readFileSync(cssFile, 'utf8'),
+      manifest: readJson(join(skillPath, '_ds_manifest.json')),
+      markup: existsSync(readmeFile) ? readFileSync(readmeFile, 'utf8') : '',
+    })
   : null;
 
 const changed = gitChangedFiles(baseRef);

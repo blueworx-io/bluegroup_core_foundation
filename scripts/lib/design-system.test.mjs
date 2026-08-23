@@ -57,3 +57,26 @@ test('parseTokens and parseClasses: ignore content inside CSS comments', () => {
   assert.equal(classes.has('bw-btn'), true);
   assert.equal(classes.has('bw-legacy-class'), false);
 });
+
+test('vocabulary: a bw- class named only in the markup lands in classes', () => {
+  const v = vocabulary({ css: CSS, manifest: null, markup: '<div class="wrap bw-wrap">' });
+  assert.equal(v.classes.has('bw-wrap'), true);
+});
+
+test('vocabulary: a markup class that is not bw--prefixed is not absorbed', () => {
+  const v = vocabulary({ css: CSS, manifest: null, markup: '<div class="wrap other-class">' });
+  assert.equal(v.classes.has('other-class'), false);
+});
+
+test('vocabulary: a templated markup class is not absorbed', () => {
+  const v = vocabulary({ css: CSS, manifest: null, markup: '<div class="bw-${variant}">' });
+  assert.equal(v.classes.has('bw-${variant}'), false);
+  assert.equal([...v.classes].some((c) => c.startsWith('bw-$')), false);
+});
+
+test('vocabulary: no markup argument behaves exactly as before', () => {
+  const v = vocabulary({ css: CSS, manifest: { components: [{ name: 'Button' }] } });
+  assert.equal(v.tokens.has('--bw-brand'), true);
+  assert.equal(v.classes.has('bw-btn'), true);
+  assert.equal(v.components.has('Button'), true);
+});
