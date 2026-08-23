@@ -73,7 +73,7 @@ test('classifyAdminFile: Windows paths are normalised', () => {
   assert.equal(classifyAdminFile({ path: 'includes\\menu.php', content: 'add_menu_page(' }), 'php');
 });
 
-const VOCAB = { tokens: new Set(['--bw-brand']), classes: new Set(['bw-btn', 'bw-card', 'bw-wrap', 'bw-icon']), components: new Set(['Button']) };
+const VOCAB = { tokens: new Set(['--bw-brand']), classes: new Set(['bw-btn', 'bw-card', 'bw-wrap', 'bw-icon']), components: new Set(['Button', 'Card']) };
 const rules = (problems) => problems.map((p) => p.rule);
 const scan = (content, kind = 'php') => findViolations({ path: 'includes/screen.php', kind, content, vocab: VOCAB });
 
@@ -197,6 +197,53 @@ test('findViolations: no-bw-class never fires on an edit fragment', () => {
 test('findViolations: markup with no classes at all does not warn', () => {
   assert.equal(
     rules(findViolations({ path: 'includes/menu.php', kind: 'php', content: "add_menu_page( 'X', 'X', 'manage_options', 'x', 'render' );", vocab: VOCAB })).includes('no-bw-class'),
+    false,
+  );
+});
+
+test('findViolations: nesting under .wrap does not launder stray CSS as an allowed override', () => {
+  assert.equal(
+    rules(findViolations({ path: 'assets/css/admin.css', kind: 'css', content: '.wrap .my-settings-panel { color: red; }', vocab: VOCAB })).includes('stray-admin-css'),
+    true,
+  );
+  assert.equal(
+    rules(findViolations({ path: 'assets/css/admin.css', kind: 'css', content: 'body.toplevel_page_x #wpcontent { padding-left: 0; }', vocab: VOCAB })).includes('stray-admin-css'),
+    false,
+  );
+});
+
+test('findViolations: a keyframe block does not fail as a stray selector', () => {
+  const css = [
+    '@keyframes bw-spin {',
+    '0% { transform: rotate(0deg); }',
+    '50% { transform: rotate(180deg); }',
+    'to { transform: rotate(360deg); }',
+    '}',
+  ].join('\n');
+  assert.equal(
+    rules(findViolations({ path: 'assets/css/admin.css', kind: 'css', content: css, vocab: VOCAB })).includes('stray-admin-css'),
+    false,
+  );
+});
+
+test('findViolations: a screen importing the design system does not warn, even with a plain wrapper class', () => {
+  const content = [
+    "import { Button } from '../.claude/skills/blueworx-admin-design/components/core/index.js';",
+    '<div className="settings-wrapper"><Button className="save-btn">Save</Button></div>',
+  ].join('\n');
+  assert.equal(
+    rules(findViolations({ path: 'src/Settings.jsx', kind: 'jsx', content, vocab: VOCAB })).includes('no-bw-class'),
+    false,
+  );
+});
+
+test('findViolations: a screen rendering a design system component from a local barrel import does not warn', () => {
+  const content = [
+    "import { Card } from '../components';",
+    '<Card className="settings-wrapper"></Card>',
+  ].join('\n');
+  assert.equal(
+    rules(findViolations({ path: 'src/Panel.jsx', kind: 'jsx', content, vocab: VOCAB })).includes('no-bw-class'),
     false,
   );
 });

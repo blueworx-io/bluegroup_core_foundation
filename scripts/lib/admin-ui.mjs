@@ -23,6 +23,41 @@ const ALLOWED_ADMIN_SELECTORS = [
   /#wpadminbar\b/,
 ];
 
+// `body`/`html` scoped by an attached class or id, e.g. `body.toplevel_page_x`
+// — the shape the documented overrides use to scope a rule to one admin
+// screen. A bare `body`/`html` with nothing attached is not this shape.
+const SCOPED_BODY_OR_HTML = /^(?:body|html)(?:[.#][\w-]+)+$/;
+
+// `0%`, `50%`, `from`, `to`, alone or as a comma-separated list — a keyframe
+// step selector. It names a point in an animation, not an element on the
+// page, so the chrome-override allowlist has nothing to say about it.
+const KEYFRAME_SELECTOR_LIST = /^(?:from|to|\d+(?:\.\d+)?%)(?:\s*,\s*(?:from|to|\d+(?:\.\d+)?%))*$/;
+
+// A selector is a documented chrome override only if EVERY compound in it is.
+// Testing the selector as one string lets stray CSS launder itself through by
+// nesting under `.wrap` — the standard WordPress admin container every
+// plugin's markup already sits inside — so `.wrap .my-settings-panel` must
+// not read as allowed just because `.wrap` appears somewhere in it.
+function isAllowedAdminSelector(text) {
+  const compounds = text.split(/\s*[,>+~]\s*|\s+/).filter(Boolean);
+  return compounds.every(
+    (compound) => ALLOWED_ADMIN_SELECTORS.some((re) => re.test(compound)) || SCOPED_BODY_OR_HTML.test(compound),
+  );
+}
+
+// A screen counts as built from the design system if it imports it (the same
+// pattern classifyAdminFile uses) or renders one of its components by name.
+// A plugin re-exporting components through its own barrel file never mentions
+// the design system in an import path, so a literal `bw-` string in a class
+// attribute is not the only way to have built this the right way.
+function rendersDsComponent(content, components) {
+  if (!components) return false;
+  for (const name of components) {
+    if (new RegExp(`<${name}\\b`).test(content)) return true;
+  }
+  return false;
+}
+
 export function normalisePath(path) {
   return path.replace(/\\/g, '/').replace(/^\.\//, '');
 }
@@ -171,7 +206,8 @@ export function findViolations({ path, kind, content, vocab, whole = true }) {
       if (!selector) return;
       const text = selector[1].trim();
       if (!text || text.startsWith('@') || text.startsWith('/*')) return;
-      if (ALLOWED_ADMIN_SELECTORS.some((re) => re.test(text))) return;
+      if (KEYFRAME_SELECTOR_LIST.test(text)) return;
+      if (isAllowedAdminSelector(text)) return;
       add(i, 'stray-admin-css', 'error', `You have styled "${text}" in a plugin stylesheet — that belongs in the design system, since the only styling a plugin keeps of its own is the documented full-bleed chrome overrides.`);
     });
   }
@@ -179,7 +215,14 @@ export function findViolations({ path, kind, content, vocab, whole = true }) {
   // The catch-all for a screen built from scratch. It is the one rule that
   // reasons about a whole file rather than a line, so it never runs on an edit
   // fragment, and it is a warning until it has proved itself on a real plugin.
-  if (whole && kind !== 'css' && /class(?:Name)?\s*=/.test(content) && !BW_CLASS.test(content)) {
+  if (
+    whole &&
+    kind !== 'css' &&
+    /class(?:Name)?\s*=/.test(content) &&
+    !BW_CLASS.test(content) &&
+    !DS_IMPORT.test(content) &&
+    !rendersDsComponent(content, vocab.components)
+  ) {
     add(0, 'no-bw-class', 'warn', 'You have built this admin screen without the design system — use its components rather than starting from scratch.');
   }
 
