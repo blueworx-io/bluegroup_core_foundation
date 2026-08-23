@@ -126,6 +126,15 @@ on:
           shipping a different admin UI from every other plugin.
         type: string
         default: error
+      admin_ui_adherence:
+        description: >-
+          Whether an admin screen this PR touches that is not built from the
+          shared blueworx-admin-design system fails the run. `error` (default)
+          fails, `warn` prints the report and passes, `off` skips the check.
+          Use `warn` only while a plugin catches up mid-feature — a plugin left
+          on it is quietly shipping a hand-rolled admin UI.
+        type: string
+        default: error
       foundation_ref:
         description: Ref of the foundation repo to pull the shared check scripts from.
         type: string
@@ -279,6 +288,15 @@ jobs:
           DESIGN_SYSTEM_SYNC: ${{ inputs.design_system_sync }}
           FOUNDATION_DIR: .foundation
         run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-design-system-sync.mjs"
+
+      # The sync check above proves the plugin carries the design system. This
+      # one proves the screens are built from it. Only files in the diff are
+      # judged, so a plugin adopts the system screen by screen.
+      - name: Admin UI adherence (screens built from the system)
+        env:
+          ADMIN_UI_ADHERENCE: ${{ inputs.admin_ui_adherence }}
+          BASE_REF: ${{ github.base_ref }}
+        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-admin-ui-adherence.mjs"
 
       - name: Plugin zip check (only one <slug> zip)
         env:
