@@ -3,11 +3,19 @@
 // tokens: the system gains components over time, and a hand-copied list goes
 // stale without anyone noticing. Pure — the CLI does the reading.
 
+// Strip CSS comments before parsing so class-like or token-like text inside
+// comments does not widen the allowlist. A comment naming a deprecated class
+// (e.g. `/* old: .bw-legacy */`) must not let that class pass the check.
+function stripCssComments(css) {
+  return css.replace(/\/\*[\s\S]*?\*\//g, '');
+}
+
 // `--bw-brand: #4F46E5;` -> '--bw-brand'. Declarations only; a var() use is
 // not a declaration and must not widen the allowlist.
 export function parseTokens(css) {
   const out = new Set();
-  for (const m of css.matchAll(/(--[a-zA-Z0-9-]+)\s*:/g)) out.add(m[1]);
+  const cleaned = stripCssComments(css);
+  for (const m of cleaned.matchAll(/(--[a-zA-Z0-9-]+)\s*:/g)) out.add(m[1]);
   return out;
 }
 
@@ -15,7 +23,8 @@ export function parseTokens(css) {
 // after the dot, so `.05` and `.2s` in a value are not read as classes.
 export function parseClasses(css) {
   const out = new Set();
-  for (const m of css.matchAll(/\.([a-zA-Z_][a-zA-Z0-9_-]*)/g)) out.add(m[1]);
+  const cleaned = stripCssComments(css);
+  for (const m of cleaned.matchAll(/\.([a-zA-Z_][a-zA-Z0-9_-]*)/g)) out.add(m[1]);
   return out;
 }
 

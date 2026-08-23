@@ -43,3 +43,17 @@ test('vocabulary: bundles all three', () => {
   assert.equal(v.classes.has('bw-btn'), true);
   assert.equal(v.components.has('Button'), true);
 });
+
+test('parseTokens and parseClasses: ignore content inside CSS comments', () => {
+  const cssWithComments = [
+    '.bw-btn{ color: blue; }',
+    '/* old: --bw-legacy-token and .bw-legacy-class */',
+    '--bw-real: #fff;',
+  ].join('\n');
+  const tokens = parseTokens(cssWithComments);
+  const classes = parseClasses(cssWithComments);
+  assert.equal(tokens.has('--bw-real'), true);
+  assert.equal(tokens.has('--bw-legacy-token'), false);
+  assert.equal(classes.has('bw-btn'), true);
+  assert.equal(classes.has('bw-legacy-class'), false);
+});
