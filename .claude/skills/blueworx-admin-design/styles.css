@@ -446,7 +446,7 @@
 .bw-secnav__item.is-active{background:linear-gradient(90deg,var(--bw-brand-wash),color-mix(in oklab,var(--bw-brand-wash) 45%,var(--bw-surface-card)));color:var(--bw-text-accent);border-color:var(--bw-brand);font-weight:var(--bw-weight-medium)}
 .bw-secnav__item.is-active:hover{border-color:var(--bw-brand);color:var(--bw-text-accent)}
 .bw-secnav__meta{font-size:var(--bw-size-xs);opacity:.7}
-@media (max-width:782px){.bw-secnav{flex-direction:row;flex-wrap:wrap;width:100%}}
+@media (max-width:782px){.bw-page__body{flex-direction:column;align-items:stretch}.bw-secnav{flex:0 0 auto;flex-direction:row;flex-wrap:wrap;width:100%}}
 
 .bw-tabs{display:flex;gap:var(--bw-space-3);padding:14px var(--bw-pad) 0;border-bottom:1px solid var(--bw-border);overflow-x:auto;background:var(--bw-surface-card)}
 .bw-tabs--inset{padding-left:0;padding-right:0;background:none}
