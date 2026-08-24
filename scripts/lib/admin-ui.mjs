@@ -62,26 +62,30 @@ export function normalisePath(path) {
   return path.replace(/\\/g, '/').replace(/^\.\//, '');
 }
 
-// A plugin's admin CSS and JS is whatever it enqueues from a file that also
-// wires up an admin hook (same-file rule). Tracing the actual callback would need
-// a PHP parser; same-file is close enough, and it errs towards checking more
-// rather than less.
+// A plugin's admin CSS and JS is whatever it enqueues from a file that wires up
+// an admin hook and nothing else (same-file rule). Tracing the actual callback
+// would need a PHP parser, so the file is the unit.
 //
-// A second route catches Boilerplate-style layouts where the hook is registered
-// in one file and assets are enqueued in another (e.g., Admin class). We collect
-// any enqueued asset path whose own text contains "admin" from any file that calls
-// wp_enqueue_style, wp_enqueue_script, or wp_enqueue_script_module. This catches
-// assets/css/admin.css without false-positiving on assets/css/public.css.
+// The same-file rule only applies when the file is unambiguously about admin.
+// Plenty of plugins register both hooks in one main class, and sweeping up every
+// asset path there would classify the plugin's front-end stylesheet as admin —
+// failing a build over a plugin's own colours on pages this system does not
+// govern. So a file that also registers the front-end hook is left to the second
+// route alone.
 //
-// We do not broaden to "any enqueue call" without the admin-in-path check. That
-// would classify front-end stylesheets as admin, causing false failures on code
-// this system has no business judging. A missed admin stylesheet is recoverable;
-// a false failure blocks a merge.
+// That second route catches Boilerplate-style layouts, where the hook is
+// registered in one file and the assets are enqueued in another: any enqueued
+// path whose own text contains "admin", from any file that calls
+// wp_enqueue_style, wp_enqueue_script or wp_enqueue_script_module. It picks up
+// assets/css/admin.css and can never pick up assets/css/public.css.
+//
+// We do not broaden the second route to every enqueue call. A missed admin
+// stylesheet is recoverable; a false failure blocks a merge.
 export function adminAssetPaths(phpFiles) {
   const out = new Set();
   for (const { content } of phpFiles) {
-    // First route: admin_enqueue_scripts hook in the same file
-    if (/admin_enqueue_scripts/.test(content)) {
+    // First route: an admin-only file — the admin hook, and no front-end hook.
+    if (/\badmin_enqueue_scripts\b/.test(content) && !/\bwp_enqueue_scripts\b/.test(content)) {
       for (const m of content.matchAll(/["']([^"']+\.(?:css|jsx?|tsx?))["']/g)) {
         out.add(normalisePath(m[1]));
       }

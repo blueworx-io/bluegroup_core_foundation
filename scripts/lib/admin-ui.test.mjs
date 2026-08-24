@@ -40,6 +40,40 @@ test('adminAssetPaths: collects admin-named assets from any wp_enqueue_* call', 
   assert.equal(paths.has('assets/css/public.css'), false);
 });
 
+// Plenty of plugins register both hooks in one main class. Sweeping up every
+// asset path there would judge the plugin's front-end stylesheet as admin and
+// fail a build over its own colours, on pages this system does not govern.
+test('adminAssetPaths: a file registering both hooks does not surrender its front-end assets', () => {
+  const paths = adminAssetPaths([
+    {
+      path: 'my-plugin.php',
+      content: [
+        "add_action( 'admin_enqueue_scripts', [ $this, 'admin_assets' ] );",
+        "wp_enqueue_style( 'mine-admin', PLUGIN_URL . 'assets/css/admin.css' );",
+        "add_action( 'wp_enqueue_scripts', [ $this, 'public_assets' ] );",
+        "wp_enqueue_style( 'mine-public', PLUGIN_URL . 'assets/css/public.css' );",
+      ].join('\n'),
+    },
+  ]);
+  assert.equal(paths.has('assets/css/admin.css'), true);
+  assert.equal(paths.has('assets/css/public.css'), false);
+});
+
+// The same-file rule still earns its keep on a file that is only ever about
+// admin: there, an admin stylesheet named anything at all is picked up.
+test('adminAssetPaths: an admin-only file surrenders assets whatever they are named', () => {
+  const paths = adminAssetPaths([
+    {
+      path: 'includes/class-admin.php',
+      content: [
+        "add_action( 'admin_enqueue_scripts', [ $this, 'assets' ] );",
+        "wp_enqueue_style( 'mine', PLUGIN_URL . 'assets/css/settings.css' );",
+      ].join('\n'),
+    },
+  ]);
+  assert.equal(paths.has('assets/css/settings.css'), true);
+});
+
 test('classifyAdminFile: PHP that registers or renders an admin page', () => {
   assert.equal(classifyAdminFile({ path: 'includes/menu.php', content: "add_menu_page( 'X', 'X', 'manage_options', 'x', 'render' );" }), 'php');
   assert.equal(classifyAdminFile({ path: 'views/screen.php', content: '<div class="wrap bw-wrap">' }), 'php');
