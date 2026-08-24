@@ -303,6 +303,10 @@ and the release checklist — is in
   [`.github/ISSUE_TEMPLATE/task.md`](.github/ISSUE_TEMPLATE/task.md)
 - [`.claude/settings.json`](.claude/settings.json) — shared permissions + approved-skill
   enablement
+- [`.claude/hooks/admin-ui-adherence.mjs`](.claude/hooks/admin-ui-adherence.mjs) — the
+  Write/Edit hook `.claude/settings.json` wires up. It self-disables on a repo with no
+  design system, so it is harmless to carry into every project, but without this file
+  present `.claude/settings.json` alone makes it fail on every Write and Edit.
 - WordPress plugins only:
   [`templates/plugin-update-checker-bootstrap.php`](templates/plugin-update-checker-bootstrap.php)
   → pasted into the plugin's main file (see
@@ -316,8 +320,9 @@ and the release checklist — is in
   `foundation-ci.yml` (runs the check-script tests on every PR; required by branch
   protection)
 - `scripts/` — the generic check scripts the workflows call (version bump, changelog,
-  approved deps, plugin version-sync, plugin zip, plugin zip content, tests-actually-ran,
-  release-tag match, Netlify preview) plus their tested cores in `scripts/lib/`, the
+  approved deps, plugin version-sync, design system sync, admin UI adherence, plugin zip,
+  plugin zip content, tests-actually-ran, release-tag match, Netlify preview) plus their
+  tested cores in `scripts/lib/`, the
   `plugin-info` resolver, `stage-plugin-tree.sh` + `plugin-zip-excludes.txt` (what ships
   in a plugin zip, in one place), and `wp-test-env.mjs`, the local WordPress harness
 - `templates/` — `approved-deps.json` (the empty allow-list starter) and

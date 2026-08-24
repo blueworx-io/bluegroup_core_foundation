@@ -12,6 +12,7 @@ import {
   testsExecuted,
   testsExecutedAcross,
   designSystemSync,
+  adminUiAdherence,
 } from './checks.mjs';
 
 test('versionBumped: passes on first build (no base)', () => {
@@ -501,4 +502,68 @@ test('designSystemSync: skips the font check when the design system ships none',
 test('designSystemSync: fix instructions cover the fonts too', () => {
   const r = designSystemSync({ ...inSync, shippedFonts: null });
   assert.match(r.message, /assets\/fonts/);
+});
+
+const DS_VOCAB = { tokens: new Set(['--bw-brand']), classes: new Set(['bw-card', 'bw-btn']), components: new Set(['Button']) };
+const SCREEN = 'add_menu_page( "X", "X", "manage_options", "x", "render" );';
+
+test('adminUiAdherence: a plugin with no design system is skipped', () => {
+  const r = adminUiAdherence({ files: [{ path: 'includes/screen.php', content: '<table class="form-table">' }], vocab: null });
+  assert.equal(r.ok, true);
+  assert.match(r.message, /no blueworx-admin-design/);
+});
+
+test('adminUiAdherence: a conforming screen passes', () => {
+  const r = adminUiAdherence({
+    files: [{ path: 'includes/screen.php', content: `${SCREEN}\n<div class="bw-card"><button class="bw-btn">Save changes</button></div>` }],
+    vocab: DS_VOCAB,
+  });
+  assert.equal(r.ok, true);
+});
+
+test('adminUiAdherence: a non-conforming screen fails and names file and line', () => {
+  const r = adminUiAdherence({
+    files: [{ path: 'includes/screen.php', content: `${SCREEN}\n<div class="bw-card" style="color:#333">Hi</div>` }],
+    vocab: DS_VOCAB,
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /includes\/screen\.php:2/);
+});
+
+test('adminUiAdherence: a changed file that is not an admin screen is ignored', () => {
+  const r = adminUiAdherence({
+    files: [{ path: 'includes/public.php', content: '<div class="hero" style="color:#333">Hi</div>' }],
+    vocab: DS_VOCAB,
+  });
+  assert.equal(r.ok, true);
+});
+
+test('adminUiAdherence: warnings print but do not fail, unless promoted', () => {
+  const files = [{ path: 'includes/screen.php', content: `${SCREEN}\n<div class="plain">Hi</div>` }];
+  const soft = adminUiAdherence({ files, vocab: DS_VOCAB });
+  assert.equal(soft.ok, true);
+  assert.match(soft.message, /warning/i);
+  assert.equal(adminUiAdherence({ files, vocab: DS_VOCAB, promoteWarnings: true }).ok, false);
+});
+
+test('adminUiAdherence: a warnings-only run does not print the failure-shaped footer', () => {
+  const files = [{ path: 'includes/screen.php', content: `${SCREEN}\n<div class="plain">Hi</div>` }];
+  const soft = adminUiAdherence({ files, vocab: DS_VOCAB });
+  assert.equal(soft.ok, true);
+  assert.doesNotMatch(soft.message, /Invoke the/);
+});
+
+test('adminUiAdherence: an errored run prints the footer, with the warn-mode escape hatch', () => {
+  const r = adminUiAdherence({
+    files: [{ path: 'includes/screen.php', content: `${SCREEN}\n<div class="bw-card" style="color:#333">Hi</div>` }],
+    vocab: DS_VOCAB,
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /Invoke the/);
+  assert.match(r.message, /admin_ui_adherence/);
+  assert.match(r.message, /warn/);
+});
+
+test('adminUiAdherence: an empty diff passes', () => {
+  assert.equal(adminUiAdherence({ files: [], vocab: DS_VOCAB }).ok, true);
 });

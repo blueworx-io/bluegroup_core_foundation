@@ -32,6 +32,14 @@ curl -o .github/ISSUE_TEMPLATE/task.md https://raw.githubusercontent.com/bluewor
 curl -o .claude/settings.json https://raw.githubusercontent.com/blueworx-io/bluegroup_core_foundation/main/.claude/settings.json
 ```
 
+The hook below stops a session writing an admin screen that isn't built from the design
+system, and it goes quiet on a machine with no foundation checkout beside the project.
+
+```bash
+mkdir -p .claude/hooks
+curl -o .claude/hooks/admin-ui-adherence.mjs https://raw.githubusercontent.com/blueworx-io/bluegroup_core_foundation/main/.claude/hooks/admin-ui-adherence.mjs
+```
+
 Then pull in the shared admin design system, which is a Claude Code skill folder rather
 than a single file:
 
@@ -70,9 +78,12 @@ hold regardless of whose machine opens it. Do not edit it to suit this project.
   plugin's admin pages; nothing is loaded from a shared package at runtime.
   CI compares those copies against the foundation
   on every pull request and fails the run if either has drifted, so keep them
-  verbatim: no minifying, no local tweaks. If a pattern is missing, add it to the
-  design system rather than inventing a one-off here. This governs wp-admin only —
-  the plugin's front-end design stays its own.
+  verbatim: no minifying, no local tweaks. CI and the hook also refuse a
+  colour, size, font or shadow written by hand, a hand-drawn icon, an inline
+  style, WordPress core's own admin classes, a second admin stylesheet, or a
+  `bw-` class the system doesn't define. If a pattern is missing, add it to
+  the design system rather than inventing a one-off here. This governs
+  wp-admin only — the plugin's front-end design stays its own.
 
 ## 3. Versioning files
 

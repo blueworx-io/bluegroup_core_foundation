@@ -44,6 +44,16 @@ curl -o .github/ISSUE_TEMPLATE/task.md https://raw.githubusercontent.com/bluewor
 curl -o .claude/settings.json https://raw.githubusercontent.com/blueworx-io/bluegroup_core_foundation/main/.claude/settings.json
 ```
 
+`.claude/settings.json` wires up a Write/Edit hook, so the hook file needs to travel with
+it or every Write and Edit prints a harmless but noisy error:
+
+```bash
+mkdir -p .claude/hooks
+curl -o .claude/hooks/admin-ui-adherence.mjs https://raw.githubusercontent.com/blueworx-io/bluegroup_core_foundation/main/.claude/hooks/admin-ui-adherence.mjs
+```
+
+It self-disables on a standalone project, which has no design system for it to check.
+
 `CLAUDE.md` is the condensed global rules, carried into the repo so the guardrails
 hold regardless of whose machine opens it. Do not edit it to suit this project.
 

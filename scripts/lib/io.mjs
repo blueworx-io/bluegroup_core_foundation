@@ -4,7 +4,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { join, basename, extname, relative } from 'node:path';
 
 // .wp-test holds a provisioned WordPress (see scripts/wp-test-env.mjs). It is a
 // whole WordPress tree, so walking it would find core's PHP files and any zip
@@ -68,6 +68,23 @@ export function findZips(cwd, slug) {
     const b = basename(f).toLowerCase();
     return b.endsWith('.zip') && b.startsWith(slug.toLowerCase());
   }, 4).map((f) => basename(f));
+}
+
+// Every file under `cwd` with one of `extensions`, as { path, content } with
+// repo-relative forward-slash paths. Uses the same walk — and the same skip
+// list — as findPluginMainFile, so a provisioned WordPress or a vendor tree is
+// never mistaken for the plugin's own code.
+export function readTextFiles(cwd, extensions, maxDepth = 6) {
+  const wanted = new Set(extensions.map((e) => e.toLowerCase()));
+  const out = [];
+  for (const file of walk(cwd, (f) => wanted.has(extname(f).toLowerCase()), maxDepth)) {
+    try {
+      out.push({ path: normalize(relative(cwd, file)), content: readFileSync(file, 'utf8') });
+    } catch {
+      /* unreadable — skip */
+    }
+  }
+  return out;
 }
 
 // Visits every file at the current depth before descending into any
