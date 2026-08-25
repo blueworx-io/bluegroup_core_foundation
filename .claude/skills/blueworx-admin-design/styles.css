@@ -420,6 +420,12 @@
 .bw-page__body{display:flex;align-items:flex-start;gap:var(--bw-space-9);padding:var(--bw-space-9) var(--bw-pad) 0;flex:1 1 auto}
 .bw-panels{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:var(--bw-stack-gap)}
 
+/* One column, and narrow. A screen holding a single card is unreadable stretched
+   across a wide monitor — the card's own content stops long before its right
+   edge does. Modifier rather than a separate container so the gutter, the gap
+   and the responsive behaviour stay the page body's. */
+.bw-page__body--single{max-width:calc(760px + (var(--bw-pad) * 2))}
+
 .bw-pagehead{display:flex;justify-content:space-between;align-items:flex-end;gap:var(--bw-space-9);padding:var(--bw-space-10) var(--bw-pad) var(--bw-space-8);border-bottom:1px solid var(--bw-border);background:var(--bw-surface-card)}
 .bw-pagehead__titles{display:flex;flex-direction:column;min-width:0}
 .bw-pagehead__eyebrow{font-size:var(--bw-size-xs);letter-spacing:var(--bw-track-eyebrow);text-transform:uppercase;color:var(--bw-text-accent);margin:0 0 var(--bw-space-3);font-weight:var(--bw-weight-semibold)}
