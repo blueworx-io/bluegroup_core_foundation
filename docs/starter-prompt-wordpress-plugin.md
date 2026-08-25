@@ -45,12 +45,19 @@ than a single file:
 
 ```bash
 mkdir -p .claude/skills
-curl -sL https://github.com/blueworx-io/bluegroup_core_foundation/archive/refs/heads/main.tar.gz \
-  | tar -xz --strip-components=3 -C .claude/skills \
-    bluegroup_core_foundation-main/.claude/skills/blueworx-admin-design
+git clone -q --depth 1 --branch v1 \
+  https://github.com/blueworx-io/bluegroup_core_foundation.git /tmp/bw-foundation
+cp -R /tmp/bw-foundation/.claude/skills/blueworx-admin-design .claude/skills/
+rm -rf /tmp/bw-foundation
 ```
 
-Re-run that command to take a later version of the design system.
+`v1` has to be the same ref as `foundation_ref` in this project’s CI workflow. CI
+compares the committed folder against that ref, so pulling `main` instead installs
+files newer than the baseline it compares to and fails the design system check.
+
+Taking a later design system is therefore a deliberate step, not a re-run: move the
+`@ref` and `foundation_ref` in `.github/workflows/ci.yml` and the `--branch` here
+together, in one pull request.
 
 `CLAUDE.md` is the condensed global rules, carried into the repo so the guardrails
 hold regardless of whose machine opens it. Do not edit it to suit this project.

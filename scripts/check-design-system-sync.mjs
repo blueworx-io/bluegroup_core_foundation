@@ -21,6 +21,9 @@ const foundationDir = process.env.FOUNDATION_DIR || '.foundation';
 const skillPath = process.env.SKILL_PATH || '.claude/skills/blueworx-admin-design';
 const cssPath = process.env.CSS_PATH || 'assets/blueworx-admin-design.css';
 const fontsPath = process.env.FONTS_PATH || 'assets/fonts';
+// The ref the workflow fetched the foundation at, so the printed fix pulls the
+// same thing this run compared against rather than whatever main holds today.
+const foundationRef = process.env.FOUNDATION_REF || 'main';
 
 const result = designSystemSync({
   foundationFiles: hashTree(join(foundationDir, skillPath)),
@@ -32,6 +35,7 @@ const result = designSystemSync({
   skillPath,
   cssPath,
   fontsPath,
+  foundationRef,
 });
 
 console.log(result.message);
