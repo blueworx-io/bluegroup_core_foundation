@@ -391,6 +391,8 @@ const inSync = {
   shippedCss: 'b',
   canonicalFonts: tree({ 'sora-400.woff2': 'f1', 'inter-400.woff2': 'f2' }),
   shippedFonts: tree({ 'sora-400.woff2': 'f1', 'inter-400.woff2': 'f2' }),
+  canonicalIcons: 'i1',
+  shippedIcons: 'i1',
 };
 
 test('designSystemSync: passes when the foundation has no design system yet', () => {
@@ -517,6 +519,30 @@ test('designSystemSync: skips the font check when the design system ships none',
 test('designSystemSync: fix instructions cover the fonts too', () => {
   const r = designSystemSync({ ...inSync, shippedFonts: null });
   assert.match(r.message, /assets\/fonts/);
+});
+
+// Without the shipped icon file every [data-lucide] element on a PHP screen
+// renders empty, and the system forbids hand-drawing one instead.
+test('designSystemSync: fails when the shipped icon file is missing', () => {
+  const r = designSystemSync({ ...inSync, shippedIcons: null });
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join('\n'), /blueworx-admin-icons\.js — missing/);
+});
+
+test('designSystemSync: fails when the shipped icon file is stale', () => {
+  const r = designSystemSync({ ...inSync, shippedIcons: 'OLD' });
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join('\n'), /blueworx-admin-icons\.js — differs/);
+});
+
+test('designSystemSync: skips the icon check when the design system ships none', () => {
+  const r = designSystemSync({ ...inSync, canonicalIcons: null, shippedIcons: null });
+  assert.equal(r.ok, true);
+});
+
+test('designSystemSync: fix instructions cover the icon file too', () => {
+  const r = designSystemSync({ ...inSync, shippedIcons: null });
+  assert.match(r.message, /cp .*lucide-icons\.js .*blueworx-admin-icons\.js/);
 });
 
 const DS_VOCAB = { tokens: new Set(['--bw-brand']), classes: new Set(['bw-card', 'bw-btn']), components: new Set(['Button']) };

@@ -398,9 +398,12 @@ export function designSystemSync({
   shippedCss,
   canonicalFonts = null,
   shippedFonts = null,
+  canonicalIcons = null,
+  shippedIcons = null,
   skillPath = '.claude/skills/blueworx-admin-design',
   cssPath = 'assets/blueworx-admin-design.css',
   fontsPath = 'assets/fonts',
+  iconsPath = 'assets/blueworx-admin-icons.js',
   foundationRef = 'main',
 }) {
   if (foundationFiles === null) {
@@ -444,6 +447,17 @@ export function designSystemSync({
     }
   }
 
+  // Every [data-lucide] element on a PHP-rendered screen stays empty without
+  // this file, and the system forbids hand-drawing an SVG Lucide already has.
+  // Absent from the foundation means an older design system, not a failure.
+  if (canonicalIcons !== null) {
+    if (shippedIcons === null) {
+      problems.push(`${iconsPath} — missing; a PHP-rendered screen loads the icon set from here`);
+    } else if (shippedIcons !== canonicalIcons) {
+      problems.push(`${iconsPath} — differs from ${skillPath}/assets/icons/lucide-icons.js`);
+    }
+  }
+
   if (problems.length === 0) {
     return { ok: true, problems, message: `Design system sync: ${skillPath} and ${cssPath} match the foundation at ${foundationRef}.` };
   }
@@ -464,6 +478,7 @@ export function designSystemSync({
     '  rm -rf /tmp/bw-foundation',
     `  cp ${skillPath}/styles.css ${cssPath}`,
     `  mkdir -p ${fontsPath} && cp ${skillPath}/fonts/* ${fontsPath}/`,
+    `  cp ${skillPath}/assets/icons/lucide-icons.js ${iconsPath}`,
     '',
     `Pull ${foundationRef}, not main — CI compares against ${foundationRef}, so anything newer`,
     'than that fails this same check again.',
