@@ -3,6 +3,13 @@ name: Foundation CI
 # Self-CI for this repo: runs the check-script unit tests and syntax-checks every
 # script on each PR. This is the status check that main's branch protection
 # requires. (The ci-*.yml workflows are reusable and only run in consumer repos.)
+#
+# ## Why the gate is a separate job
+#
+# `test` is the job name branch protection requires. Putting the matrix on it
+# would rename its check to `test (20)`, `test (26)`… — the required check would
+# then never report and every PR here would block forever. So the matrix runs as
+# `checks` and `test` stays a single, unmatrixed job reporting the verdict.
 
 on:
   pull_request:
@@ -10,8 +17,18 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  # Developers run current Node; pinning CI to the oldest one cannot see what
+  # they hit. wp-test-env.mjs crashed on every `up` for anyone on Node 22+ while
+  # this workflow stayed green, because the behaviour it relied on changed in a
+  # later undici.
+  checks:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest Node the reusable workflows still default consumers to, and
+        # current. Move both forward together when that default moves.
+        node: ['20', '26']
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,10 +36,28 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node }}
 
       - name: Syntax-check all scripts
         run: for f in scripts/*.mjs scripts/lib/*.mjs .claude/hooks/*.mjs; do node --check "$f"; done
 
       - name: Run unit tests
         run: node --test scripts/lib/*.test.mjs .claude/hooks/*.test.mjs
+
+  # The job branch protection requires. Keep this name.
+  test:
+    if: always()
+    needs: [checks]
+    runs-on: ubuntu-latest
+    steps:
+      # A skipped or cancelled dependency counts as a pass to branch protection,
+      # so anything that is not an explicit success has to fail here.
+      - name: Check every Node version passed
+        env:
+          CHECKS: ${{ needs.checks.result }}
+        run: |
+          echo "checks: $CHECKS"
+          if [ "$CHECKS" != "success" ]; then
+            echo "::error title=Foundation CI failed::The 'checks' matrix did not succeed (result: $CHECKS)."
+            exit 1
+          fi

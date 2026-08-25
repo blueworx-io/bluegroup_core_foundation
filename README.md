@@ -317,8 +317,8 @@ and the release checklist — is in
 - `.github/workflows/` — the three reusable guardrail workflows (`ci-*.yml`), the reusable
   WordPress release workflow (`release-wordpress.yml`), the reusable changelog assembly
   workflow (`assemble-changelog.yml`), plus this repo's own
-  `foundation-ci.yml` (runs the check-script tests on every PR; required by branch
-  protection)
+  `foundation-ci.yml` (runs the check-script tests on every PR, across an older and a
+  current Node; required by branch protection)
 - `scripts/` — the generic check scripts the workflows call (version bump, changelog,
   approved deps, plugin version-sync, design system sync, admin UI adherence, plugin zip,
   plugin zip content, tests-actually-ran, release-tag match, Netlify preview) plus their
