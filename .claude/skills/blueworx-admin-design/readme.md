@@ -139,7 +139,8 @@ and the same screen built with `lucide-react` are the same drawing.
   (`lucide-react`'s `<CircleCheck />` is `"circle-check"`). `strokeWidth` is a prop; the
   default is 2.
 - **Plain HTML:** `<i class="bw-icon" data-lucide="settings"></i>`, with
-  `assets/icons/lucide-icons.js` loaded as a module. It upgrades every `[data-lucide]`
+  `assets/icons/lucide-icons.js` loaded as a module — a plugin ships it as
+  `assets/blueworx-admin-icons.js` and enqueues that. It upgrades every `[data-lucide]`
   element in place and watches for new ones, so server-rendered PHP markup works too.
 - **Production React app:** import from `lucide-react` directly and skip both — the names
   are identical, and this file exists only so the design system's own previews and
@@ -266,8 +267,9 @@ Both use a generic sample plugin. All names, records and figures are invented.
 ```php
 // styles.css is copied verbatim from the skill folder to assets/blueworx-admin-design.css.
 wp_enqueue_style( 'bw-admin', PLUGIN_URL . 'assets/blueworx-admin-design.css', [], BW_VERSION );
+// assets/icons/lucide-icons.js is copied verbatim to assets/blueworx-admin-icons.js, beside the stylesheet.
 // Only for screens rendered as PHP/HTML rather than React — a React screen uses lucide-react.
-wp_enqueue_script_module( 'bw-icons', PLUGIN_URL . 'assets/icons/lucide-icons.js', [], BW_VERSION );
+wp_enqueue_script_module( 'bw-icons', PLUGIN_URL . 'assets/blueworx-admin-icons.js', [], BW_VERSION );
 ```
 
 ```html
