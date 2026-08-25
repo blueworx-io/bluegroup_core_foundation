@@ -125,8 +125,11 @@ What happens on its own, from the tag push:
 1. The tag is checked against the plugin header — a mismatch fails the release
    before anything is published.
 2. Assets build, if the plugin has a `package.json`.
-3. A clean `<slug>/` tree is staged and zipped, and the archive is verified to
-   nest exactly one level with the main plugin file present.
+3. A clean `<slug>/` tree is staged and zipped as `<slug>-<version>.zip`, and the
+   archive is verified to nest exactly one level with the main plugin file
+   present. The version is in the filename only — the folder inside stays
+   `<slug>/`, because WordPress installs to that folder name and a versioned one
+   would install a second copy of the plugin on every update.
 4. A GitHub Release is created for the tag with the zip attached. The body is
    the `CHANGELOG.md` section for that version, matched by heading (`## 1.2.0`
    or `## [1.2.0] ...`); if no section for the version is found, GitHub's
