@@ -25,6 +25,30 @@ bind one port and requests then route to whichever answers first) is cleaned up
 rather than left holding the port. Only `php` processes on that port are ever
 killed.
 
+## Browsing the site without signing in
+
+The admin password above is what the test suite needs. For simply looking at a
+plugin's screens it means going through wp-login every time, and for a plugin that
+gates its whole front end behind a login there is no way to click around as a
+visitor would at all.
+
+```bash
+node ../bluegroup_core_foundation/scripts/wp-test-env.mjs up --plugin . --open
+```
+
+Every request on that site is then the admin — wp-admin, the front end, and REST
+saves, which keep working because the flag signs the request in early enough for
+the nonce to be computed for the same user. (Hand-rolling this with an auth cookie
+is the version that breaks: the cookie arrives after the nonce, so every save comes
+back 403.)
+
+**Turn it off by running `up` again without `--open`** — the generated file is
+removed and the site signs in through wp-login as before. It lives in `.wp-test/`,
+never in the plugin, so it cannot reach a release.
+
+Leave it off when running the suite. Specs that assert what a signed-out visitor
+sees will pass against a site where nobody is ever signed out.
+
 ## Why this exists
 
 WordPress CI used to point Playwright at a staging URL. When that URL was a
