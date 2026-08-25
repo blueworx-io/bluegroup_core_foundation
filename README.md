@@ -259,6 +259,22 @@ Force-pushing `v1` is deliberate and is the only tag that is ever force-pushed.
 Because it moves, it is a convenience, not a reproducibility guarantee — pin an
 immutable `v1.x.y` when you need the run to be repeatable.
 
+### Merging is half the job — move `v1`
+
+Every project pins `@v1` and `foundation_ref: v1`. Nothing on `main` reaches any of
+them until `v1` is force-moved onto it, so a shared check merged and left there is
+running nowhere.
+
+That failure is quiet, which is what makes it worth a heading. A check that compares
+a project against the foundation finds nothing to compare against an older checkout
+and passes — so the guardrail looks green everywhere while being switched off
+everywhere. This happened to the design system sync check: it sat on `main` for days,
+reporting success in every plugin, having never run.
+
+**So cut the release tag and move `v1` in the same sitting as the merge**, using the
+two commands above. If a change genuinely should not reach projects yet, say so in
+the pull request — do not leave it looking done.
+
 ### Updating a project
 
 Projects normally need no action: `@v1` follows compatible releases. A project moves
