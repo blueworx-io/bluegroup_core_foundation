@@ -56,18 +56,29 @@ jobs:
       - name: Checkout tagged commit
         uses: actions/checkout@v4
 
-      - name: Checkout foundation (shared check scripts)
-        uses: actions/checkout@v4
-        with:
-          repository: blueworx-io/bluegroup_core_foundation
-          ref: ${{ inputs.foundation_ref }}
-          path: .foundation
+      # Fetched into the runner's temp dir, deliberately NOT checked out into
+      # the workspace: a project whose lint or test script walks its own tree
+      # (`eslint .`, a bare test glob) would otherwise find the foundation's
+      # scripts and fail the build on someone else's code style.
+      - name: Fetch foundation (shared check scripts)
+        env:
+          FOUNDATION_REF: ${{ inputs.foundation_ref }}
+        run: |
+          set -euo pipefail
+          # init + fetch rather than `clone --branch`, so foundation_ref can be a
+          # branch, a tag, or an exact commit SHA.
+          mkdir -p "$RUNNER_TEMP/foundation"
+          cd "$RUNNER_TEMP/foundation"
+          git init -q .
+          git remote add origin https://github.com/blueworx-io/bluegroup_core_foundation.git
+          git fetch -q --depth 1 origin "$FOUNDATION_REF"
+          git checkout -q FETCH_HEAD
 
       - name: Resolve plugin file and slug
         id: info
         env:
           PLUGIN_SLUG: ${{ inputs.plugin_slug }}
-        run: node "$GITHUB_WORKSPACE/.foundation/scripts/plugin-info.mjs" >> "$GITHUB_OUTPUT"
+        run: node "$RUNNER_TEMP/foundation/scripts/plugin-info.mjs" >> "$GITHUB_OUTPUT"
 
       # The guardrail that matters most: a tag that disagrees with the header
       # publishes a Release no site is ever offered.
@@ -75,7 +86,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
           PLUGIN_FILE: ${{ steps.info.outputs.plugin_file }}
-        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-release-tag.mjs"
+        run: node "$RUNNER_TEMP/foundation/scripts/check-release-tag.mjs"
 
       - name: Setup Node
         if: hashFiles('package.json') != ''
@@ -101,7 +112,7 @@ jobs:
           EXTRA_EXCLUDES: ${{ inputs.exclude_paths }}
         run: |
           set -euo pipefail
-          bash "$GITHUB_WORKSPACE/.foundation/scripts/stage-plugin-tree.sh" "$SLUG" "$RUNNER_TEMP/stage" >/dev/null
+          bash "$RUNNER_TEMP/foundation/scripts/stage-plugin-tree.sh" "$SLUG" "$RUNNER_TEMP/stage" >/dev/null
           echo "Staged tree:"
           find "$RUNNER_TEMP/stage/$SLUG" -maxdepth 1 -mindepth 1 | sed 's/^/  /'
 
@@ -150,7 +161,7 @@ jobs:
           PLUGIN_SLUG: ${{ steps.info.outputs.slug }}
         run: |
           set -euo pipefail
-          unzip -Z1 "$SLUG.zip" | node "$GITHUB_WORKSPACE/.foundation/scripts/check-plugin-zip-content.mjs"
+          unzip -Z1 "$SLUG.zip" | node "$RUNNER_TEMP/foundation/scripts/check-plugin-zip-content.mjs"
 
       - name: Extract changelog section for this version
         id: notes

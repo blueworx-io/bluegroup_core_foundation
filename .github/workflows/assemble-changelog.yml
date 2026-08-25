@@ -65,12 +65,23 @@ jobs:
       - name: Checkout project
         uses: actions/checkout@v4
 
-      - name: Checkout foundation (shared scripts)
-        uses: actions/checkout@v4
-        with:
-          repository: blueworx-io/bluegroup_core_foundation
-          ref: ${{ inputs.foundation_ref }}
-          path: .foundation
+      # Fetched into the runner's temp dir, deliberately NOT checked out into
+      # the workspace: a project whose lint or test script walks its own tree
+      # (`eslint .`, a bare test glob) would otherwise find the foundation's
+      # scripts and fail the build on someone else's code style.
+      - name: Fetch foundation (shared check scripts)
+        env:
+          FOUNDATION_REF: ${{ inputs.foundation_ref }}
+        run: |
+          set -euo pipefail
+          # init + fetch rather than `clone --branch`, so foundation_ref can be a
+          # branch, a tag, or an exact commit SHA.
+          mkdir -p "$RUNNER_TEMP/foundation"
+          cd "$RUNNER_TEMP/foundation"
+          git init -q .
+          git remote add origin https://github.com/blueworx-io/bluegroup_core_foundation.git
+          git fetch -q --depth 1 origin "$FOUNDATION_REF"
+          git checkout -q FETCH_HEAD
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -82,7 +93,7 @@ jobs:
           CHANGELOG_DIR: ${{ inputs.changelog_dir }}
           CHANGELOG_PATH: ${{ inputs.changelog_path }}
           VERSION_SOURCE: ${{ inputs.version_source }}
-        run: node "$GITHUB_WORKSPACE/.foundation/scripts/assemble-changelog.mjs"
+        run: node "$RUNNER_TEMP/foundation/scripts/assemble-changelog.mjs"
 
       # A push here re-triggers this workflow in the caller. That run finds an
       # empty fragment directory, the script exits before writing, and this step

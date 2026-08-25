@@ -183,12 +183,23 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Checkout foundation (shared check scripts)
-        uses: actions/checkout@v4
-        with:
-          repository: blueworx-io/bluegroup_core_foundation
-          ref: ${{ inputs.foundation_ref }}
-          path: .foundation
+      # Fetched into the runner's temp dir, deliberately NOT checked out into
+      # the workspace: a project whose lint or test script walks its own tree
+      # (`eslint .`, a bare test glob) would otherwise find the foundation's
+      # scripts and fail the build on someone else's code style.
+      - name: Fetch foundation (shared check scripts)
+        env:
+          FOUNDATION_REF: ${{ inputs.foundation_ref }}
+        run: |
+          set -euo pipefail
+          # init + fetch rather than `clone --branch`, so foundation_ref can be a
+          # branch, a tag, or an exact commit SHA.
+          mkdir -p "$RUNNER_TEMP/foundation"
+          cd "$RUNNER_TEMP/foundation"
+          git init -q .
+          git remote add origin https://github.com/blueworx-io/bluegroup_core_foundation.git
+          git fetch -q --depth 1 origin "$FOUNDATION_REF"
+          git checkout -q FETCH_HEAD
 
       - name: Fetch base branch
         if: github.base_ref != ''
@@ -265,29 +276,29 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
           VERSION_SOURCE: plugin-header
-        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-version-bump.mjs"
+        run: node "$RUNNER_TEMP/foundation/scripts/check-version-bump.mjs"
 
       - name: Changelog check
         env:
           BASE_REF: ${{ github.base_ref }}
           CHANGELOG_DIR: ${{ inputs.changelog_dir }}
-        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-changelog.mjs"
+        run: node "$RUNNER_TEMP/foundation/scripts/check-changelog.mjs"
 
       - name: Approved dependencies check
-        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-approved-deps.mjs"
+        run: node "$RUNNER_TEMP/foundation/scripts/check-approved-deps.mjs"
 
       - name: Plugin version sync (header vs package.json)
-        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-plugin-version-sync.mjs"
+        run: node "$RUNNER_TEMP/foundation/scripts/check-plugin-version-sync.mjs"
 
       # Both copies of the shared admin design system — the skill folder Claude
       # Code reads, and the stylesheet the plugin enqueues — must match the
-      # foundation's. The foundation is already checked out above, so this is a
+      # foundation's. The foundation is already fetched above, so this is a
       # local comparison. A plugin that has not adopted it yet passes.
       - name: Design system sync (shared admin UI)
         env:
           DESIGN_SYSTEM_SYNC: ${{ inputs.design_system_sync }}
-          FOUNDATION_DIR: .foundation
-        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-design-system-sync.mjs"
+          FOUNDATION_DIR: ${{ runner.temp }}/foundation
+        run: node "$RUNNER_TEMP/foundation/scripts/check-design-system-sync.mjs"
 
       # The sync check above proves the plugin carries the design system. This
       # one proves the screens are built from it. Only files in the diff are
@@ -296,12 +307,12 @@ jobs:
         env:
           ADMIN_UI_ADHERENCE: ${{ inputs.admin_ui_adherence }}
           BASE_REF: ${{ github.base_ref }}
-        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-admin-ui-adherence.mjs"
+        run: node "$RUNNER_TEMP/foundation/scripts/check-admin-ui-adherence.mjs"
 
       - name: Plugin zip check (only one <slug> zip)
         env:
           PLUGIN_SLUG: ${{ inputs.plugin_slug }}
-        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-plugin-zip.mjs"
+        run: node "$RUNNER_TEMP/foundation/scripts/check-plugin-zip.mjs"
 
       # Stages the tree the release workflow would zip and fails if anything
       # that must never reach a live site survives the exclude list. Run here,
@@ -314,9 +325,9 @@ jobs:
           EXTRA_EXCLUDES: ${{ inputs.exclude_paths }}
         run: |
           set -euo pipefail
-          slug="${PLUGIN_SLUG:-$(node "$GITHUB_WORKSPACE/.foundation/scripts/plugin-info.mjs" | sed -n 's/^slug=//p')}"
-          bash "$GITHUB_WORKSPACE/.foundation/scripts/stage-plugin-tree.sh" "$slug" "$RUNNER_TEMP/stage" \
-            | node "$GITHUB_WORKSPACE/.foundation/scripts/check-plugin-zip-content.mjs"
+          slug="${PLUGIN_SLUG:-$(node "$RUNNER_TEMP/foundation/scripts/plugin-info.mjs" | sed -n 's/^slug=//p')}"
+          bash "$RUNNER_TEMP/foundation/scripts/stage-plugin-tree.sh" "$slug" "$RUNNER_TEMP/stage" \
+            | node "$RUNNER_TEMP/foundation/scripts/check-plugin-zip-content.mjs"
 
   tests:
     needs: prep
@@ -333,12 +344,23 @@ jobs:
       - name: Checkout PR code
         uses: actions/checkout@v4
 
-      - name: Checkout foundation (shared check scripts)
-        uses: actions/checkout@v4
-        with:
-          repository: blueworx-io/bluegroup_core_foundation
-          ref: ${{ inputs.foundation_ref }}
-          path: .foundation
+      # Fetched into the runner's temp dir, deliberately NOT checked out into
+      # the workspace: a project whose lint or test script walks its own tree
+      # (`eslint .`, a bare test glob) would otherwise find the foundation's
+      # scripts and fail the build on someone else's code style.
+      - name: Fetch foundation (shared check scripts)
+        env:
+          FOUNDATION_REF: ${{ inputs.foundation_ref }}
+        run: |
+          set -euo pipefail
+          # init + fetch rather than `clone --branch`, so foundation_ref can be a
+          # branch, a tag, or an exact commit SHA.
+          mkdir -p "$RUNNER_TEMP/foundation"
+          cd "$RUNNER_TEMP/foundation"
+          git init -q .
+          git remote add origin https://github.com/blueworx-io/bluegroup_core_foundation.git
+          git fetch -q --depth 1 origin "$FOUNDATION_REF"
+          git checkout -q FETCH_HEAD
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -424,7 +446,7 @@ jobs:
           PLUGIN_SLUG: ${{ inputs.plugin_slug }}
         run: |
           SLUG="${PLUGIN_SLUG:-$(basename "$PWD")}"
-          node "$GITHUB_WORKSPACE/.foundation/scripts/wp-test-env.mjs" up \
+          node "$RUNNER_TEMP/foundation/scripts/wp-test-env.mjs" up \
             --plugin . --slug "$SLUG" --dir .wp-test --port 8881
 
       # The local harness ships its own admin account; a preview URL relies on
@@ -452,7 +474,7 @@ jobs:
       - name: Stop local WordPress
         if: always() && inputs.use_local_wordpress
         run: |
-          node "$GITHUB_WORKSPACE/.foundation/scripts/wp-test-env.mjs" down --dir .wp-test || true
+          node "$RUNNER_TEMP/foundation/scripts/wp-test-env.mjs" down --dir .wp-test || true
 
       # The gate lives in the `guardrails` job, which has to see every shard's
       # numbers to apply it to the total — one shard's report is not the suite.
@@ -507,12 +529,23 @@ jobs:
           done
           [ "$failed" -eq 0 ]
 
-      - name: Checkout foundation (shared check scripts)
-        uses: actions/checkout@v4
-        with:
-          repository: blueworx-io/bluegroup_core_foundation
-          ref: ${{ inputs.foundation_ref }}
-          path: .foundation
+      # Fetched into the runner's temp dir, deliberately NOT checked out into
+      # the workspace: a project whose lint or test script walks its own tree
+      # (`eslint .`, a bare test glob) would otherwise find the foundation's
+      # scripts and fail the build on someone else's code style.
+      - name: Fetch foundation (shared check scripts)
+        env:
+          FOUNDATION_REF: ${{ inputs.foundation_ref }}
+        run: |
+          set -euo pipefail
+          # init + fetch rather than `clone --branch`, so foundation_ref can be a
+          # branch, a tag, or an exact commit SHA.
+          mkdir -p "$RUNNER_TEMP/foundation"
+          cd "$RUNNER_TEMP/foundation"
+          git init -q .
+          git remote add origin https://github.com/blueworx-io/bluegroup_core_foundation.git
+          git fetch -q --depth 1 origin "$FOUNDATION_REF"
+          git checkout -q FETCH_HEAD
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -533,4 +566,4 @@ jobs:
         env:
           PLAYWRIGHT_REPORT_DIR: .shard-reports
           ALLOW_ZERO_TESTS: ${{ inputs.allow_zero_tests }}
-        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-tests-ran.mjs"
+        run: node "$RUNNER_TEMP/foundation/scripts/check-tests-ran.mjs"
