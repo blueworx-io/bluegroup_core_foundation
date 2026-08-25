@@ -401,6 +401,7 @@ export function designSystemSync({
   skillPath = '.claude/skills/blueworx-admin-design',
   cssPath = 'assets/blueworx-admin-design.css',
   fontsPath = 'assets/fonts',
+  foundationRef = 'main',
 }) {
   if (foundationFiles === null) {
     return { ok: true, problems: [], message: `Design system sync: ${skillPath} is not in the foundation yet — nothing to compare.` };
@@ -444,19 +445,28 @@ export function designSystemSync({
   }
 
   if (problems.length === 0) {
-    return { ok: true, problems, message: `Design system sync: ${skillPath} and ${cssPath} match the foundation.` };
+    return { ok: true, problems, message: `Design system sync: ${skillPath} and ${cssPath} match the foundation at ${foundationRef}.` };
   }
 
+  // The ref matters. This run compared against foundationRef, so a fix that
+  // pulled anything else installed files the comparison never saw — which is
+  // how the printed fix used to fail the check and then tell you to run it
+  // again.
   const fix = [
-    'Fix by re-pulling the design system and re-copying the stylesheet:',
+    `Fix by re-pulling the design system at ${foundationRef} — the ref this run compared`,
+    'against — and re-copying the stylesheet:',
     '',
+    `  rm -rf ${skillPath} /tmp/bw-foundation`,
+    `  git clone -q --depth 1 --branch ${foundationRef} \\`,
+    '    https://github.com/blueworx-io/bluegroup_core_foundation.git /tmp/bw-foundation',
     '  mkdir -p .claude/skills',
-    `  rm -rf ${skillPath}`,
-    '  curl -sL https://github.com/blueworx-io/bluegroup_core_foundation/archive/refs/heads/main.tar.gz \\',
-    '    | tar -xz --strip-components=3 -C .claude/skills \\',
-    `      bluegroup_core_foundation-main/${skillPath}`,
+    `  cp -R /tmp/bw-foundation/${skillPath} .claude/skills/`,
+    '  rm -rf /tmp/bw-foundation',
     `  cp ${skillPath}/styles.css ${cssPath}`,
     `  mkdir -p ${fontsPath} && cp ${skillPath}/fonts/* ${fontsPath}/`,
+    '',
+    `Pull ${foundationRef}, not main — CI compares against ${foundationRef}, so anything newer`,
+    'than that fails this same check again.',
     '',
     'The committed folder in the foundation is the source — do not hand-edit either copy here.',
   ].join('\n');

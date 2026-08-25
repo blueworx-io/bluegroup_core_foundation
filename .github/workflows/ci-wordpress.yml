@@ -298,6 +298,7 @@ jobs:
         env:
           DESIGN_SYSTEM_SYNC: ${{ inputs.design_system_sync }}
           FOUNDATION_DIR: ${{ runner.temp }}/foundation
+          FOUNDATION_REF: ${{ inputs.foundation_ref }}
         run: node "$RUNNER_TEMP/foundation/scripts/check-design-system-sync.mjs"
 
       # The sync check above proves the plugin carries the design system. This

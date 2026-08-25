@@ -452,8 +452,23 @@ test('designSystemSync: fails when the shipped stylesheet is stale', () => {
 test('designSystemSync: failure message names the files and the fix', () => {
   const r = designSystemSync({ ...inSync, shippedCss: 'OLD' });
   assert.ok(r.message.includes(CSS));
-  assert.match(r.message, /curl/);
+  assert.match(r.message, /git clone/);
   assert.match(r.message, /cp .*styles\.css/);
+});
+
+// The printed fix used to pull `main` while the run compared against `v1`, so
+// following it installed newer files and failed the same check again.
+test('designSystemSync: the fix pulls the ref the run compared against', () => {
+  const r = designSystemSync({ ...inSync, shippedCss: 'OLD', foundationRef: 'v1' });
+  assert.match(r.message, /--branch v1/);
+  assert.ok(!r.message.includes('--branch main'));
+  assert.ok(!r.message.includes('refs/heads/main'));
+});
+
+test('designSystemSync: a passing run says which ref it compared against', () => {
+  const r = designSystemSync({ ...inSync, foundationRef: 'v1' });
+  assert.equal(r.ok, true);
+  assert.match(r.message, /foundation at v1/);
 });
 
 test('designSystemSync: reports every problem, not just the first', () => {
