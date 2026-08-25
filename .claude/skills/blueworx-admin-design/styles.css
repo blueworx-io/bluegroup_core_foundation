@@ -498,6 +498,47 @@
 .bw-settingscard .bw-card__foot{gap:var(--bw-space-6)}
 .bw-settingscard .bw-card__foot>:first-child{margin-right:auto}
 
+/* --- Components — settings screens -------------------------------------------- */
+/* A settings screen that lists many independent functions, each with its own
+   settings. Built for a plugin with twenty-seven of them on one screen: the
+   section nav narrows the list, the section head says how many are on, and each
+   function card holds its own settings so nothing has to be read as a table. */
+
+.bw-panels-row{display:flex;align-items:flex-start;gap:var(--bw-space-9)}
+@media (max-width:900px){
+  .bw-panels-row{flex-direction:column}
+  .bw-panels-row>.bw-secnav{flex:0 0 auto;width:100%;flex-direction:row;flex-wrap:wrap}
+}
+
+/* Section head — a flush card above the stack, carrying the section name, how
+   many of its functions are on, and one action on that whole section. */
+.bw-sectionhead .bw-card__head{border-bottom:0}
+
+/* Function card — one switch, its name and description, and a settings panel
+   underneath that is only shown while the switch is on. The panel is sunken and
+   carries the brand rail, which is what ties it to the switch above it when
+   twenty-seven of these are stacked. */
+.bw-fnstack{display:flex;flex-direction:column;gap:var(--bw-space-6)}
+.bw-fncard{background:var(--bw-surface-card);border:1px solid var(--bw-border);border-radius:var(--bw-radius-lg);box-shadow:var(--bw-shadow-card)}
+.bw-fncard__row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--bw-space-9);align-items:start;padding:var(--bw-space-7) var(--bw-panel-pad)}
+.bw-fncard__name{display:block;font-size:var(--bw-size-body);font-weight:var(--bw-weight-semibold);color:var(--bw-text-heading)}
+.bw-fncard__desc{margin:var(--bw-space-2) 0 0;font-size:var(--bw-size-sm);color:var(--bw-text-muted);max-width:var(--bw-content-max)}
+.bw-fncard__panel{padding:0 var(--bw-panel-pad) var(--bw-space-8)}
+.bw-fncard__panel>.bw-card--sunken{border-left:2px solid var(--bw-brand)}
+.bw-fncard__panel .bw-card__eyebrow{margin-bottom:var(--bw-space-7)}
+
+/* Product tabs — a second, coarser level above .bw-tabs, for a screen whose
+   topics belong to more than one product. Pills rather than underlines, so the
+   two rows never read as one. */
+.bw-prodtabs{display:flex;align-items:center;flex-wrap:wrap;gap:var(--bw-space-4);padding:var(--bw-space-7) var(--bw-pad) 0}
+.bw-prodtabs--inset{padding-left:0;padding-right:0}
+.bw-prodtabs__label{margin-right:var(--bw-space-2);font-size:var(--bw-size-xs);letter-spacing:var(--bw-track-label);text-transform:uppercase;font-weight:var(--bw-weight-semibold);color:var(--bw-text-faint)}
+.bw-prodtab{display:inline-flex;align-items:center;gap:var(--bw-space-3);padding:var(--bw-space-4) var(--bw-space-7);border:1px solid var(--bw-border);border-radius:var(--bw-radius-pill);background:var(--bw-control-bg);font-family:inherit;font-size:var(--bw-size-sm);color:var(--bw-text-muted);text-decoration:none;cursor:pointer;white-space:nowrap;transition:var(--bw-transition-control)}
+.bw-prodtab:hover{border-color:var(--bw-border-strong);color:var(--bw-text-body)}
+.bw-prodtab.is-active{background:var(--bw-brand-wash);border-color:var(--bw-brand);color:var(--bw-text-accent);font-weight:var(--bw-weight-medium)}
+.bw-prodtab__count{font-size:var(--bw-size-xs);color:var(--bw-text-faint);font-variant-numeric:tabular-nums}
+.bw-prodtab.is-active .bw-prodtab__count{color:var(--bw-text-accent);opacity:.72}
+
 /* --- Components — feedback --------------------------------------------------- */
 /* Messaging and overlays */
 .bw-notice{display:flex;gap:var(--bw-space-6);align-items:flex-start;padding:var(--bw-space-6) 14px;border:1px solid var(--bw-border);border-radius:var(--bw-radius-md);background:var(--bw-surface-card)}
