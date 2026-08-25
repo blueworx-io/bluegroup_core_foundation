@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // WordPress: fails if the plugin's copy of the shared blueworx-admin-design
 // system has drifted from the copy committed in the foundation. CI already
-// checks the foundation out into .foundation, so this is a local comparison —
-// no network fetch, no version file.
+// fetches the foundation to FOUNDATION_DIR, so this is a local comparison — no
+// network fetch, no version file.
 //
 // DESIGN_SYSTEM_SYNC=warn downgrades a failure to a printed warning (for a
 // plugin that cannot absorb a design system update mid-feature); off skips it.

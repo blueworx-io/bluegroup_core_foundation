@@ -46,12 +46,23 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Checkout foundation (shared check scripts)
-        uses: actions/checkout@v4
-        with:
-          repository: blueworx-io/bluegroup_core_foundation
-          ref: ${{ inputs.foundation_ref }}
-          path: .foundation
+      # Fetched into the runner's temp dir, deliberately NOT checked out into
+      # the workspace: a project whose lint or test script walks its own tree
+      # (`eslint .`, a bare test glob) would otherwise find the foundation's
+      # scripts and fail the build on someone else's code style.
+      - name: Fetch foundation (shared check scripts)
+        env:
+          FOUNDATION_REF: ${{ inputs.foundation_ref }}
+        run: |
+          set -euo pipefail
+          # init + fetch rather than `clone --branch`, so foundation_ref can be a
+          # branch, a tag, or an exact commit SHA.
+          mkdir -p "$RUNNER_TEMP/foundation"
+          cd "$RUNNER_TEMP/foundation"
+          git init -q .
+          git remote add origin https://github.com/blueworx-io/bluegroup_core_foundation.git
+          git fetch -q --depth 1 origin "$FOUNDATION_REF"
+          git checkout -q FETCH_HEAD
 
       - name: Fetch base branch
         if: github.base_ref != ''
@@ -74,15 +85,15 @@ jobs:
       - name: Version bump check
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-version-bump.mjs"
+        run: node "$RUNNER_TEMP/foundation/scripts/check-version-bump.mjs"
 
       - name: Changelog check
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-changelog.mjs"
+        run: node "$RUNNER_TEMP/foundation/scripts/check-changelog.mjs"
 
       - name: Approved dependencies check
-        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-approved-deps.mjs"
+        run: node "$RUNNER_TEMP/foundation/scripts/check-approved-deps.mjs"
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
@@ -99,4 +110,4 @@ jobs:
         if: always()
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-report.json
-        run: node "$GITHUB_WORKSPACE/.foundation/scripts/check-tests-ran.mjs"
+        run: node "$RUNNER_TEMP/foundation/scripts/check-tests-ran.mjs"

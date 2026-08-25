@@ -137,9 +137,15 @@ All inputs have sensible defaults (`node_version`, `lint_command`, `build_comman
 needs.
 
 > **Set `foundation_ref` to match the `@ref` you called with.** The `@ref` picks the
-> workflow; `foundation_ref` picks the check scripts the workflow checks out. They
+> workflow; `foundation_ref` picks the check scripts the workflow fetches. They
 > default apart — `foundation_ref` defaults to `main` — so calling `@v1` without it
 > runs the v1 workflow against whatever is on `main` today.
+
+> **The foundation is fetched outside the project's workspace**, into the runner's
+> temp directory. It used to land in the workspace as `.foundation/`, where a
+> project whose lint script is a plain `eslint .` would lint the foundation's own
+> scripts and fail the build on someone else's code style. Nothing in a project
+> needs to ignore it.
 
 > **What ships in a plugin zip is decided in one place**, `scripts/plugin-zip-excludes.txt`.
 > Every PR stages the tree the release would zip and fails if anything that must never
