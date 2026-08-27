@@ -152,9 +152,14 @@ The browser sends the whole record. The library then, in order: re-checks the sc
 drops any field whose own capability the user lacks; sanitises each remaining value by its field
 kind; runs the plugin's optional validate callback; and only then writes.
 
-**A failed save writes nothing at all.** It returns field-level errors keyed to the field, which
+**A validation failure writes nothing at all.** It returns field-level errors keyed to the field, which
 the screen renders as `bw-field__error` under each one, plus a danger notice at the top saying
 nothing was saved and a button that moves to the first problem.
+
+A write that fails part-way through is a different case, and the library does not pretend otherwise:
+post meta has no transaction, so it stops at the first genuine failure and tells the site owner that
+some changes may have been saved and to reload. The guarantee it does make, and tests, is that
+nothing invalid is ever written.
 
 Capability filtering happens on the way **out** as well as in: a field the user cannot change is
 never sent to the browser, so it cannot be re-enabled by editing the page. Where it matters that
