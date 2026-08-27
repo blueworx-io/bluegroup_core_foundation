@@ -10,10 +10,11 @@ $GLOBALS['bwpe_stub'] = [
 	'capabilities' => [],
 	'meta'         => [],
 	'options'      => [],
+	'fail_writes'  => false,
 ];
 
 function bwpe_stub_reset(): void {
-	$GLOBALS['bwpe_stub'] = [ 'post_types' => [], 'capabilities' => [], 'meta' => [], 'options' => [] ];
+	$GLOBALS['bwpe_stub'] = [ 'post_types' => [], 'capabilities' => [], 'meta' => [], 'options' => [], 'fail_writes' => false ];
 }
 
 if ( ! function_exists( 'post_type_exists' ) ) {
@@ -68,6 +69,9 @@ if ( ! function_exists( 'get_post_meta' ) ) {
 }
 if ( ! function_exists( 'update_post_meta' ) ) {
 	function update_post_meta( $id, $key, $value ) {
+		if ( $GLOBALS['bwpe_stub']['fail_writes'] ) {
+			return false;
+		}
 		$GLOBALS['bwpe_stub']['meta'][ $id ][ $key ] = $value;
 		return true;
 	}
@@ -79,6 +83,9 @@ if ( ! function_exists( 'get_option' ) ) {
 }
 if ( ! function_exists( 'update_option' ) ) {
 	function update_option( $name, $value ) {
+		if ( $GLOBALS['bwpe_stub']['fail_writes'] ) {
+			return false;
+		}
 		$GLOBALS['bwpe_stub']['options'][ $name ] = $value;
 		return true;
 	}

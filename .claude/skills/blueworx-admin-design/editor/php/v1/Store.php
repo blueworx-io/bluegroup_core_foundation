@@ -42,10 +42,13 @@ final class PostStore extends Store {
 	}
 
 	public function write( array $values, int $id = 0 ): bool {
+		$ok = true;
 		foreach ( $values as $key => $value ) {
-			update_post_meta( $id, $this->key( $key ), $value );
+			if ( ! update_post_meta( $id, $this->key( $key ), $value ) ) {
+				$ok = false;
+			}
 		}
-		return true;
+		return $ok;
 	}
 
 	private function key( string $field ): string {

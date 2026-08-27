@@ -53,6 +53,55 @@ final class Editor {
 		return self::$problems[ $slug ] ?? '';
 	}
 
+	/**
+	 * Everything the screen needs to draw itself: the schema this user is
+	 * allowed to see, and the values behind it.
+	 */
+	public static function load( string $slug, int $id = 0 ): array {
+		$screen = self::get( $slug );
+		if ( null === $screen || ! self::ready( $slug ) ) {
+			return [ 'schema' => null, 'values' => [], 'problem' => self::problem( $slug ) ];
+		}
+		$visible = Capabilities::filterSchema( $screen );
+		$values  = Store::for( $screen )->read( $id );
+
+		return [
+			'schema' => $visible,
+			'values' => Capabilities::filterValues( $screen, $values ),
+		];
+	}
+
+	/**
+	 * The whole record, or nothing. A part-written record is worse than a
+	 * rejected one: the site owner would have no way to tell which half landed.
+	 */
+	public static function save( string $slug, array $values, int $id = 0 ): array {
+		$screen = self::get( $slug );
+		if ( null === $screen ) {
+			return [ 'ok' => false, 'errors' => [ '_screen' => 'That editor screen does not exist.' ] ];
+		}
+		if ( ! current_user_can( $screen['capability'] ) ) {
+			return [ 'ok' => false, 'errors' => [ '_screen' => 'You do not have permission to change this.' ] ];
+		}
+		if ( ! self::ready( $slug ) ) {
+			return [ 'ok' => false, 'errors' => [ '_screen' => self::problem( $slug ) ] ];
+		}
+
+		$writable = Capabilities::filterValues( $screen, $values );
+		$clean    = Sanitise::values( $screen, $writable );
+		$errors   = Validate::run( $screen, $clean );
+
+		if ( $errors ) {
+			return [ 'ok' => false, 'errors' => $errors ];
+		}
+
+		if ( ! Store::for( $screen )->write( $clean, $id ) ) {
+			return [ 'ok' => false, 'errors' => [ '_screen' => 'This could not be saved. Nothing was changed. Try again.' ] ];
+		}
+
+		return [ 'ok' => true, 'values' => $clean ];
+	}
+
 	public static function reset(): void {
 		self::$screens = [];
 		self::$problems = [];
