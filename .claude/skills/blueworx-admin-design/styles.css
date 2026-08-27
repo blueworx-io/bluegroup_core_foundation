@@ -82,6 +82,7 @@
 
   --bw-size-h1:28px;
   --bw-size-h2:20px;
+  --bw-size-title:24px;
   --bw-size-h3:18px;
   --bw-size-lede:14px;
   --bw-size-body:13px;
@@ -334,7 +335,7 @@
 .bw-input--sm{height:var(--bw-control-h-sm);font-size:var(--bw-size-body);padding:0 10px}
 
 .bw-inputwrap{position:relative;display:flex;align-items:center}
-.bw-inputwrap .bw-input{padding-left:34px}
+.bw-inputwrap .bw-input{padding-left:var(--bw-space-6)}
 .bw-inputwrap__icon{position:absolute;left:10px;color:var(--bw-text-faint);pointer-events:none}
 .bw-inputwrap__affix{position:absolute;right:12px;font-size:var(--bw-size-sm);color:var(--bw-text-faint)}
 
@@ -370,11 +371,9 @@
 .bw-media__hint{font-size:var(--bw-size-sm);color:var(--bw-text-muted)}
 .bw-media__actions{display:flex;gap:var(--bw-space-5);align-items:center}
 
-.bw-input[type="number"]::-webkit-inner-spin-button,
-.bw-input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.bw-input[type="number"]::-webkit-inner-spin-button,.bw-input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .bw-input[type="number"]{appearance:textfield}
 .bw-inputwrap:has(.bw-inputwrap__affix) .bw-input{padding-right:76px}
-.bw-inputwrap .bw-input{padding-left:var(--bw-space-6)}
 .bw-inputwrap .bw-inputwrap__icon ~ .bw-input{padding-left:34px}
 
 /* --- Components — forms, extended controls ----------------------------------- */
@@ -443,7 +442,7 @@
 
 .bw-conditional{border-left:2px solid var(--bw-border-accent);background:var(--bw-surface-sunken);border-radius:0 var(--bw-radius-md) var(--bw-radius-md) 0;padding:var(--bw-space-7) var(--bw-space-8)}
 
-.bw-titleinput{width:100%;font-family:var(--bw-font-display);font-weight:var(--bw-weight-semibold);font-size:24px;line-height:var(--bw-lh-heading);color:var(--bw-text-heading);background:var(--bw-surface-card);border:1px solid var(--bw-border);border-radius:var(--bw-radius-lg);padding:var(--bw-space-7) var(--bw-space-8)}
+.bw-titleinput{width:100%;font-family:var(--bw-font-display);font-weight:var(--bw-weight-semibold);font-size:var(--bw-size-title);line-height:var(--bw-lh-heading);color:var(--bw-text-heading);background:var(--bw-surface-card);border:1px solid var(--bw-border);border-radius:var(--bw-radius-lg);padding:var(--bw-space-7) var(--bw-space-8)}
 .bw-titleinput::placeholder{color:var(--bw-text-faint)}
 .bw-titleinput:focus{outline:2px solid var(--bw-brand);outline-offset:1px;border-color:var(--bw-brand)}
 
