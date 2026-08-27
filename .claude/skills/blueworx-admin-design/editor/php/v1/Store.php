@@ -90,7 +90,9 @@ final class PostStore extends Store {
 
 		foreach ( $values as $key => $value ) {
 			if ( in_array( $key, self::POST_COLUMNS, true ) ) {
-				$columns[ $key ] = $this->toColumn( $key, $value );
+				if ( ! $this->skipColumn( $key, $value ) ) {
+					$columns[ $key ] = $this->toColumn( $key, $value );
+				}
 				continue;
 			}
 
@@ -165,9 +167,21 @@ final class PostStore extends Store {
 			return $value ? 'open' : 'closed';
 		}
 		if ( 'post_date' === $key ) {
-			return '' === $value ? '' : str_replace( 'T', ' ', $value ) . ':00';
+			return str_replace( 'T', ' ', (string) $value ) . ':00';
 		}
 		return $value;
+	}
+
+	/**
+	 * Whether a column has to be left out of the array altogether rather than
+	 * written. An empty post_date is not "leave it alone" to wp_update_post():
+	 * it resets the publish date to now, so a site owner clearing the field —
+	 * or a screen where it was never set — would quietly change when the
+	 * record claims to have been published. Omitting the key is the only way
+	 * to say nothing.
+	 */
+	private function skipColumn( string $key, $value ): bool {
+		return 'post_date' === $key && '' === (string) $value;
 	}
 
 	private function fromColumn( string $key, $value ) {
@@ -175,10 +189,13 @@ final class PostStore extends Store {
 			return 'open' === $value;
 		}
 		if ( 'post_date' === $key ) {
-			if ( '' === $value || null === $value || strlen( (string) $value ) < 16 ) {
+			$raw = (string) $value;
+			// An all-zero date is WordPress's "no date". Sent as it stands the
+			// browser would show 0000-00-00, which is worse than blank.
+			if ( strlen( $raw ) < 16 || 0 === strpos( $raw, '0000-00-00' ) ) {
 				return '';
 			}
-			return substr( str_replace( ' ', 'T', $value ), 0, 16 );
+			return substr( str_replace( ' ', 'T', $raw ), 0, 16 );
 		}
 		return $value;
 	}

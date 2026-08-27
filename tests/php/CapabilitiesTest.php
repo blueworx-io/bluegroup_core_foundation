@@ -69,6 +69,25 @@ final class CapabilitiesTest extends TestCase {
 		$this->assertSame( [ 'name' ], $allowed );
 	}
 
+	/**
+	 * Pins the three callers to one rule. The strict-superset assertion is the
+	 * point: the moment the shown set and the writable set become equal, a
+	 * locked field has become writable, and this says so.
+	 */
+	public function test_the_shown_set_and_the_writable_set_stay_in_step(): void {
+		$screen = $this->screen();
+		$kept   = array_column( Capabilities::filterSchema( $screen )['tabs'][0]['panels'][0]['fields'], 'id' );
+
+		$shown    = Capabilities::visible( $screen );
+		$writable = Capabilities::allowed( $screen );
+
+		$this->assertSame( $shown, $kept, 'filterSchema() must keep exactly the fields visible() names' );
+		$this->assertSame( [ 'name', 'note' ], $shown );
+		$this->assertSame( [ 'name' ], $writable );
+		$this->assertSame( [], array_values( array_diff( $writable, $shown ) ), 'nothing writable may be hidden from the screen' );
+		$this->assertSame( [ 'note' ], array_values( array_diff( $shown, $writable ) ), 'a locked field is shown and never writable' );
+	}
+
 	public function test_filter_schema_works_without_schema_validate_defaults(): void {
 		$screen = [
 			'tabs' => [

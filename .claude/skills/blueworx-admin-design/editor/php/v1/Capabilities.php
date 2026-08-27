@@ -14,6 +14,11 @@ namespace Blueworx\PageEditor\v1;
  * Reads capability and locked_help with ?? '' rather than direct array access:
  * a hand-built screen (never passed through Schema::validate()) may not have
  * either key set.
+ *
+ * mayWrite() and isShown() below are the only two places that decide either
+ * question. Every public method here calls one of them rather than repeating
+ * the test: three copies of the rule would drift, and the way it drifts is a
+ * locked field quietly becoming writable.
  */
 final class Capabilities {
 
@@ -22,18 +27,16 @@ final class Capabilities {
 			foreach ( $tab['panels'] as $p => $panel ) {
 				$kept = [];
 				foreach ( $panel['fields'] as $field ) {
-					if ( self::may( $field ) ) {
-						$kept[] = $field;
+					if ( ! self::isShown( $field ) ) {
 						continue;
 					}
 					// Where knowing the field exists matters, it is sent locked
 					// with a line naming who can change it — never editable.
-					$locked_help = $field['locked_help'] ?? '';
-					if ( '' !== $locked_help ) {
+					if ( ! self::mayWrite( $field ) ) {
 						$field['readonly'] = true;
-						$field['help']     = $locked_help;
-						$kept[]            = $field;
+						$field['help']     = $field['locked_help'] ?? '';
 					}
+					$kept[] = $field;
 				}
 				$screen['tabs'][ $t ]['panels'][ $p ]['fields'] = array_values( $kept );
 			}
@@ -43,17 +46,7 @@ final class Capabilities {
 
 	/** @return string[] */
 	public static function allowed( array $screen ): array {
-		$ids = [];
-		foreach ( $screen['tabs'] as $tab ) {
-			foreach ( $tab['panels'] as $panel ) {
-				foreach ( $panel['fields'] as $field ) {
-					if ( self::may( $field ) ) {
-						$ids[] = $field['id'];
-					}
-				}
-			}
-		}
-		return $ids;
+		return self::ids( $screen, 'mayWrite' );
 	}
 
 	public static function filterValues( array $screen, array $values ): array {
@@ -69,17 +62,7 @@ final class Capabilities {
 	 * @return string[]
 	 */
 	public static function visible( array $screen ): array {
-		$ids = [];
-		foreach ( $screen['tabs'] as $tab ) {
-			foreach ( $tab['panels'] as $panel ) {
-				foreach ( $panel['fields'] as $field ) {
-					if ( self::may( $field ) || '' !== ( $field['locked_help'] ?? '' ) ) {
-						$ids[] = $field['id'];
-					}
-				}
-			}
-		}
-		return $ids;
+		return self::ids( $screen, 'isShown' );
 	}
 
 	/**
@@ -93,8 +76,38 @@ final class Capabilities {
 		return array_intersect_key( $values, $visible );
 	}
 
-	private static function may( array $field ): bool {
+	/**
+	 * Every field id on the screen that the given rule keeps, in screen order.
+	 *
+	 * @param string $rule mayWrite or isShown.
+	 * @return string[]
+	 */
+	private static function ids( array $screen, string $rule ): array {
+		$ids = [];
+		foreach ( $screen['tabs'] as $tab ) {
+			foreach ( $tab['panels'] as $panel ) {
+				foreach ( $panel['fields'] as $field ) {
+					if ( self::$rule( $field ) ) {
+						$ids[] = $field['id'];
+					}
+				}
+			}
+		}
+		return $ids;
+	}
+
+	/** May this user change the field? The inbound question, and the only one that governs writing. */
+	private static function mayWrite( array $field ): bool {
 		$capability = $field['capability'] ?? '';
 		return '' === $capability || current_user_can( $capability );
+	}
+
+	/**
+	 * Should the field appear on the screen? Writable, or locked with a line
+	 * naming who can change it. Always a superset of mayWrite(): a field this
+	 * returns false for never reaches the browser at all.
+	 */
+	private static function isShown( array $field ): bool {
+		return self::mayWrite( $field ) || '' !== ( $field['locked_help'] ?? '' );
 	}
 }

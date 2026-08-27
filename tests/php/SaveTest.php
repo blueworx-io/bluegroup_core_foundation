@@ -186,6 +186,24 @@ final class SaveTest extends TestCase {
 		$this->assertSame( '2026-03-04T09:30', Editor::load( 'sports', 7 )['values']['post_date'] );
 	}
 
+	public function test_an_empty_post_date_leaves_the_stored_date_alone(): void {
+		$GLOBALS['bwpe_stub']['posts'][7] = [ 'post_date' => '2026-03-04 09:30:00' ];
+		$result = Editor::save( 'sports', [ 'name' => 'Rugby', 'post_status' => 'publish', 'post_date' => '' ], 7 );
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 'publish', $GLOBALS['bwpe_stub']['posts'][7]['post_status'] );
+		$this->assertSame(
+			'2026-03-04 09:30:00',
+			$GLOBALS['bwpe_stub']['posts'][7]['post_date'],
+			'an empty date resets the publish date to now, so the key must be left out entirely'
+		);
+	}
+
+	public function test_a_zeroed_post_date_reads_back_as_empty(): void {
+		$GLOBALS['bwpe_stub']['posts'][7] = [ 'post_date' => '0000-00-00 00:00:00' ];
+		$this->assertSame( '', Editor::load( 'sports', 7 )['values']['post_date'] );
+	}
+
 	public function test_a_term_write_that_returns_a_wp_error_is_reported_as_a_failure(): void {
 		$GLOBALS['bwpe_stub']['fail_key'] = 'post_tag';
 		$result = Editor::save( 'sports', [ 'name' => 'Rugby', 'post_tags' => [ 'Union' ] ], 7 );
