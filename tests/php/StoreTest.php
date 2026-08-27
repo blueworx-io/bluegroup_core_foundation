@@ -3,6 +3,7 @@ namespace Blueworx\PageEditor\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Blueworx\PageEditor\v1\Schema;
+use Blueworx\PageEditor\v1\Settings;
 use Blueworx\PageEditor\v1\Store;
 
 final class StoreTest extends TestCase {
@@ -164,5 +165,87 @@ final class StoreTest extends TestCase {
 	public function test_a_toggle_on_an_option_screen_never_saved_reads_back_as_false_not_empty_string(): void {
 		$store = Store::for( $this->optionFieldScreen( [ 'id' => 'announce', 'kind' => 'toggle', 'label' => 'Announce' ] ) );
 		$this->assertSame( false, $store->read()['announce'] );
+	}
+
+	private function hideablePanelScreen(): array {
+		return Schema::validate( [
+			'slug' => 'sports', 'title' => 'Edit sport', 'post_type' => 'bw_sport',
+			'tabs' => [ [ 'id' => 'd', 'label' => 'Details', 'panels' => [
+				[ 'id' => 'promo', 'title' => 'Promo', 'hideable' => true, 'fields' => [
+					[ 'id' => 'name', 'kind' => 'text', 'label' => 'Name' ],
+				] ],
+			] ] ],
+		] );
+	}
+
+	/**
+	 * A record nobody has touched has not had any panel hidden. Store::read()
+	 * used to have no way to say that: it always emitted every declared key,
+	 * so a value that was never saved was indistinguishable from one saved
+	 * false, and both cast to false — collapsing every hideable panel on a
+	 * brand-new record.
+	 */
+	public function test_a_never_saved_hideable_panel_switch_reads_back_shown(): void {
+		$store = Store::for( $this->hideablePanelScreen() );
+		$this->assertSame( true, $store->read( 99 )['promo__shown'] );
+	}
+
+	public function test_a_hideable_panel_switch_explicitly_saved_off_reads_back_hidden(): void {
+		$store = Store::for( $this->hideablePanelScreen() );
+		$store->write( [ 'name' => 'Rugby', 'promo__shown' => false ], 1 );
+		$this->assertSame( false, $store->read( 1 )['promo__shown'] );
+	}
+
+	public function test_a_never_saved_number_reads_back_the_kinds_own_default(): void {
+		$store = Store::for( $this->fieldScreen( [ 'id' => 'seats', 'kind' => 'number', 'label' => 'Seats' ] ) );
+		$this->assertSame( 0, $store->read( 99 )['seats'] );
+	}
+
+	public function test_a_never_saved_token_list_reads_back_an_empty_array(): void {
+		$store = Store::for( $this->fieldScreen( [ 'id' => 'ages', 'kind' => 'tokens', 'label' => 'Ages' ] ) );
+		$this->assertSame( [], $store->read( 99 )['ages'] );
+	}
+
+	public function test_a_field_declaring_its_own_default_gets_that_rather_than_the_kinds(): void {
+		$store = Store::for( $this->fieldScreen( [ 'id' => 'seats', 'kind' => 'number', 'label' => 'Seats', 'default' => 20 ] ) );
+		$this->assertSame( 20, $store->read( 99 )['seats'] );
+	}
+
+	/**
+	 * post_parent, menu_order and featured_image are Settings::tab()'s own
+	 * columns, reserved on a plugin's own screen — so this goes through the
+	 * merged screen the way Editor::load() builds it, via
+	 * Schema::normaliseTab(), rather than Schema::validate() on a bare
+	 * plugin screen.
+	 */
+	private function screenWithSettingsTab(): array {
+		$screen = Schema::validate( [
+			'slug' => 'sports', 'title' => 'Edit sport', 'post_type' => 'bw_sport',
+			'tabs' => [ [ 'id' => 'd', 'label' => 'Details', 'panels' => [
+				[ 'id' => 'b', 'title' => 'Basics', 'fields' => [ [ 'id' => 'name', 'kind' => 'text', 'label' => 'Name' ] ] ],
+			] ] ],
+		] );
+		$screen['tabs'][] = Settings::tab( $screen );
+		return $screen;
+	}
+
+	/**
+	 * WP_Post hands every column back exactly as the database driver
+	 * returned it: a numeric string, not an int, for post_parent and
+	 * menu_order. castByKind() has to run on a post column's value too, not
+	 * only on post meta.
+	 */
+	public function test_post_parent_and_menu_order_round_trip_as_real_integers(): void {
+		$store = Store::for( $this->screenWithSettingsTab() );
+		$GLOBALS['bwpe_stub']['posts'][7] = [ 'post_type' => 'bw_sport', 'post_parent' => 4, 'menu_order' => 2 ];
+		$values = $store->read( 7 );
+		$this->assertSame( 4, $values['post_parent'] );
+		$this->assertSame( 2, $values['menu_order'] );
+	}
+
+	public function test_a_never_set_featured_image_reads_back_as_zero_not_false(): void {
+		$store = Store::for( $this->screenWithSettingsTab() );
+		$GLOBALS['bwpe_stub']['posts'][7] = [ 'post_type' => 'bw_sport' ];
+		$this->assertSame( 0, $store->read( 7 )['featured_image'] );
 	}
 }

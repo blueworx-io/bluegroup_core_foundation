@@ -248,13 +248,15 @@
     // pipeline; found by its marker rather than assuming the id shape, so a
     // change to that convention on the server cannot silently strand this.
     const switchField = (panel.fields || []).find(function (f) { return f.panel_switch; });
-    const switchValue = switchField ? props.record.values[switchField.id] : undefined;
-    // The server now reads this back as a real boolean (Store::castByKind),
-    // never a stray '0' or '' from somewhere else, so this is a plain
-    // equality test rather than a "not false" one. undefined is named on its
-    // own: it means the switch has never been saved, not that it was saved
-    // hidden, and a panel with no history yet defaults to shown.
-    const shown = switchValue === undefined ? true : switchValue === true;
+    // The server always supplies a value for a declared field — Schema gives
+    // every field a default (see Schema::defaultForKind() and the panel
+    // switch's own 'default' => true), so a hideable panel's switch is never
+    // undefined; a value the browser has never touched still comes back
+    // true. This is a plain equality test, not a "not false" one, because
+    // Store::read() now hands back a real boolean, never a stray '0' or ''.
+    // The only remaining branch is a non-hideable panel, which has no switch
+    // field to read at all and is always shown.
+    const shown = !switchField || props.record.values[switchField.id] === true;
 
     return h('section', { className: 'bw-card' },
       h('div', { className: 'bw-card__head' },

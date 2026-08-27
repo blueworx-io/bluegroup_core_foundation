@@ -196,6 +196,10 @@ final class Schema {
 				'kind'         => 'toggle',
 				'label'        => 'Shown',
 				'panel_switch' => true,
+				// A panel nobody has touched has not been hidden — the kind's
+				// own default (false) would collapse every hideable panel on
+				// a brand-new record, so this one field overrides it.
+				'default'      => true,
 			], $slug, $seen, null, $dependencies, $repeater_scopes, $reserved_fields );
 		}
 
@@ -205,6 +209,30 @@ final class Schema {
 	private static function endsWithPanelSwitchSuffix( string $id ): bool {
 		$suffix = self::PANEL_SWITCH_SUFFIX;
 		return substr( $id, -strlen( $suffix ) ) === $suffix;
+	}
+
+	/** The value Store::read() hands back for a field of this kind when it has never been saved. */
+	private static function defaultForKind( string $kind ) {
+		switch ( $kind ) {
+			case 'toggle':
+				return false;
+
+			case 'number':
+			case 'range':
+			case 'media':
+			case 'file':
+			case 'record':
+				return 0;
+
+			case 'checkboxes':
+			case 'scrolllist':
+			case 'tokens':
+			case 'repeater':
+				return [];
+
+			default:
+				return '';
+		}
 	}
 
 	/**
@@ -275,6 +303,12 @@ final class Schema {
 		$field['locked_help'] = $field['locked_help'] ?? '';
 		$field['depends_on']  = $field['depends_on'] ?? null;
 		$field['wide']        = (bool) ( $field['wide'] ?? in_array( $field['kind'], [ 'richtext', 'repeater', 'media', 'file', 'table', 'facts', 'title' ], true ) );
+		// What Store::read() hands back for this field when it has never
+		// been saved. A plugin may declare its own; otherwise it follows the
+		// kind, so a never-touched toggle reads false and a never-touched
+		// list reads [] rather than every kind sharing the single '' a bare
+		// unset value would otherwise be.
+		$field['default']     = array_key_exists( 'default', $field ) ? $field['default'] : self::defaultForKind( $field['kind'] );
 
 		if ( null === $repeater_id && 'repeater' === $field['kind'] ) {
 			if ( empty( $field['fields'] ) ) {

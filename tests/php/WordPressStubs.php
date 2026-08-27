@@ -135,6 +135,15 @@ if ( ! function_exists( 'get_post_meta' ) ) {
 		return $single ? $value : ( '' === $value ? [] : [ $value ] );
 	}
 }
+if ( ! function_exists( 'metadata_exists' ) ) {
+	// get_post_meta() answers '' both for a key that was never written and
+	// for one genuinely saved empty — it cannot tell those apart. This is
+	// the function that can: it looks at whether the row exists at all,
+	// never at what it holds.
+	function metadata_exists( $meta_type, $id, $key ) {
+		return array_key_exists( $key, $GLOBALS['bwpe_stub']['meta'][ $id ] ?? [] );
+	}
+}
 if ( ! function_exists( 'update_post_meta' ) ) {
 	function update_post_meta( $id, $key, $value ) {
 		if ( $GLOBALS['bwpe_stub']['fail_writes'] ) {
@@ -155,8 +164,16 @@ if ( ! function_exists( 'update_post_meta' ) ) {
 		// cast form, because that is what "already stored" means: the row
 		// only ever holds the cast form, never the PHP-typed value that was
 		// passed in.
-		$current = $GLOBALS['bwpe_stub']['meta'][ $id ][ $key ] ?? '';
-		if ( $current === $cast ) {
+		//
+		// That no-op check only applies once the row already exists: a key
+		// that has never been written has no "already stored" value to match
+		// against, and real WordPress always inserts a brand new row
+		// regardless of what it holds. Comparing against the '' a missing
+		// key defaults to would treat "never saved" and "saved as empty" as
+		// the same thing, and silently skip writing the very first false or
+		// empty value a field is ever given.
+		$existed = array_key_exists( $key, $GLOBALS['bwpe_stub']['meta'][ $id ] ?? [] );
+		if ( $existed && $GLOBALS['bwpe_stub']['meta'][ $id ][ $key ] === $cast ) {
 			return false;
 		}
 		$GLOBALS['bwpe_stub']['meta'][ $id ][ $key ] = $cast;
@@ -189,7 +206,19 @@ if ( ! function_exists( 'get_post' ) ) {
 		if ( ! isset( $GLOBALS['bwpe_stub']['posts'][ $id ] ) ) {
 			return null;
 		}
-		return (object) $GLOBALS['bwpe_stub']['posts'][ $id ];
+		$post = $GLOBALS['bwpe_stub']['posts'][ $id ];
+		// A real WP_Post is built straight from the database row: every
+		// column comes back as whatever the db driver hands over, which for
+		// a numeric column is a numeric string, not an int — only ID gets
+		// cast. A test setting post_author/post_parent/menu_order as a bare
+		// PHP int would otherwise let Store read one back unchanged and
+		// never notice it was never actually cast on the way out.
+		foreach ( [ 'post_author', 'post_parent', 'menu_order' ] as $numeric_column ) {
+			if ( array_key_exists( $numeric_column, $post ) ) {
+				$post[ $numeric_column ] = (string) $post[ $numeric_column ];
+			}
+		}
+		return (object) $post;
 	}
 }
 if ( ! function_exists( 'wp_update_post' ) ) {
@@ -245,6 +274,9 @@ if ( ! function_exists( 'delete_post_thumbnail' ) ) {
 }
 if ( ! function_exists( 'get_post_thumbnail_id' ) ) {
 	function get_post_thumbnail_id( $id ) {
-		return $GLOBALS['bwpe_stub']['thumbnails'][ $id ] ?? 0;
+		// Real WordPress returns false, not 0, when there is no thumbnail —
+		// Store::read() has to cast that itself; the stub returning 0 here
+		// would hide a missing cast rather than exercise it.
+		return $GLOBALS['bwpe_stub']['thumbnails'][ $id ] ?? false;
 	}
 }

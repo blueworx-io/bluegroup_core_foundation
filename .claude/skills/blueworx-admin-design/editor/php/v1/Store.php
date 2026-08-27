@@ -46,6 +46,11 @@ abstract class Store {
 	 * the storage layer's own text-only memory happens to preserve. Sits
 	 * beside PostStore::fromColumn() — that is a WordPress column's own
 	 * translation, this is this library's.
+	 *
+	 * facts, table and copytext are display-only and never submitted —
+	 * Sanitise produces null for them on the way in — so nothing here tries
+	 * to round-trip whatever shape they happen to read back as; nothing ever
+	 * compares it.
 	 */
 	protected function castByKind( array $field, $value ) {
 		switch ( $field['kind'] ?? 'text' ) {
@@ -94,8 +99,15 @@ final class PostStore extends Store {
 				if ( null === $post ) {
 					$post = get_post( $id );
 				}
+				// WP_Post hands every column back exactly as the database
+				// driver returned it — a string, for a numeric column like
+				// post_author or menu_order, same as post meta. fromColumn()
+				// only translates the couple of columns with their own
+				// storage shape (comment_status, post_date); castByKind()
+				// then turns whatever comes out of that into what the
+				// field's kind implies, same as it does for meta.
 				$raw         = ( $post && isset( $post->$key ) ) ? $post->$key : '';
-				$out[ $key ] = $this->fromColumn( $key, $raw );
+				$out[ $key ] = $this->castByKind( $field, $this->fromColumn( $key, $raw ) );
 				continue;
 			}
 
@@ -105,11 +117,22 @@ final class PostStore extends Store {
 			}
 
 			if ( 'featured_image' === $key ) {
-				$out[ $key ] = get_post_thumbnail_id( $id );
+				// get_post_thumbnail_id() returns false, not 0, when there is
+				// no thumbnail — castByKind() turns that into the int the
+				// media kind expects.
+				$out[ $key ] = $this->castByKind( $field, get_post_thumbnail_id( $id ) );
 				continue;
 			}
 
-			$out[ $key ] = $this->castByKind( $field, get_post_meta( $id, $this->key( $key ), true ) );
+			$meta_key    = $this->key( $key );
+			// metadata_exists() is the only way to ask "was this ever
+			// written" — get_post_meta() returns '' both for an unset key
+			// and for a genuinely empty saved value, so it cannot tell them
+			// apart. A field that was never saved gets its declared default
+			// rather than a cast of an empty string that was never there.
+			$out[ $key ] = metadata_exists( 'post', $id, $meta_key )
+				? $this->castByKind( $field, get_post_meta( $id, $meta_key, true ) )
+				: $field['default'];
 		}
 
 		return $out;
@@ -178,10 +201,18 @@ final class PostStore extends Store {
 	 * Sanitise produced. Comparing the raw PHP value against that would never
 	 * match, so an unchanged bool or number field would never be recognised
 	 * as unchanged — this check would never actually fire for one.
+	 *
+	 * It only short-circuits once metadata_exists() confirms the row is
+	 * already there: get_post_meta() also answers '' for a key that has
+	 * never been written at all, and that is not the same fact as "already
+	 * holds this value" — treating them alike would skip the write the very
+	 * first time a field is saved false, empty or zero, and a never-touched
+	 * field would then look indistinguishable from one deliberately set that
+	 * way.
 	 */
 	private function writeMeta( int $id, string $field_id, $value ): bool {
 		$key = $this->key( $field_id );
-		if ( get_post_meta( $id, $key, true ) === $this->metaScalar( $value ) ) {
+		if ( metadata_exists( 'post', $id, $key ) && get_post_meta( $id, $key, true ) === $this->metaScalar( $value ) ) {
 			return true;
 		}
 		return (bool) update_post_meta( $id, $key, $value );
@@ -276,7 +307,13 @@ final class OptionStore extends Store {
 		$saved = is_array( $saved ) ? $saved : [];
 		$out   = [];
 		foreach ( $this->fields() as $field ) {
-			$out[ $field['id'] ] = $this->castByKind( $field, $saved[ $field['id'] ] ?? '' );
+			// The key being absent from the saved array is this store's
+			// version of "was this ever written" — an option is one array,
+			// so there is no metadata_exists() to ask; array_key_exists()
+			// answers the same question.
+			$out[ $field['id'] ] = array_key_exists( $field['id'], $saved )
+				? $this->castByKind( $field, $saved[ $field['id'] ] )
+				: $field['default'];
 		}
 		return $out;
 	}

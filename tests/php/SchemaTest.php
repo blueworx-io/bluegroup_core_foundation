@@ -362,4 +362,43 @@ final class SchemaTest extends TestCase {
 		$screen = Schema::validate( $this->screen( [ 'id' => 'custom__shown', 'kind' => 'toggle', 'label' => 'Custom' ] ) );
 		$this->assertSame( 'custom__shown', $screen['tabs'][0]['panels'][0]['fields'][0]['id'] );
 	}
+
+	public function test_a_toggle_defaults_to_false(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'announce', 'kind' => 'toggle', 'label' => 'Announce' ] ) );
+		$this->assertSame( false, $screen['tabs'][0]['panels'][0]['fields'][0]['default'] );
+	}
+
+	public function test_a_number_defaults_to_zero(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'seats', 'kind' => 'number', 'label' => 'Seats' ] ) );
+		$this->assertSame( 0, $screen['tabs'][0]['panels'][0]['fields'][0]['default'] );
+	}
+
+	public function test_tokens_default_to_an_empty_array(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'ages', 'kind' => 'tokens', 'label' => 'Ages' ] ) );
+		$this->assertSame( [], $screen['tabs'][0]['panels'][0]['fields'][0]['default'] );
+	}
+
+	public function test_a_text_field_defaults_to_an_empty_string(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'name', 'kind' => 'text', 'label' => 'Name' ] ) );
+		$this->assertSame( '', $screen['tabs'][0]['panels'][0]['fields'][0]['default'] );
+	}
+
+	public function test_a_field_may_declare_its_own_default_instead_of_the_kinds(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'seats', 'kind' => 'number', 'label' => 'Seats', 'default' => 20 ] ) );
+		$this->assertSame( 20, $screen['tabs'][0]['panels'][0]['fields'][0]['default'] );
+	}
+
+	public function test_the_panel_switch_field_defaults_to_shown(): void {
+		$screen = Schema::validate( [
+			'slug'      => 'sports',
+			'title'     => 'Edit sport',
+			'post_type' => 'bw_sport',
+			'tabs'      => [
+				[ 'id' => 'details', 'label' => 'Details', 'panels' => [
+					[ 'id' => 'promo', 'title' => 'Promo', 'hideable' => true, 'fields' => [] ],
+				] ],
+			],
+		] );
+		$this->assertSame( true, $screen['tabs'][0]['panels'][0]['fields'][0]['default'] );
+	}
 }
