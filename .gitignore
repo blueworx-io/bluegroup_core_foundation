@@ -1,4 +1,5 @@
 .superpowers/
+/vendor/
 
 # The disposable WordPress the shared harness provisions. It appears in
 # whichever repo runs wp-test-env.mjs, and that includes this one when the

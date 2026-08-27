@@ -44,6 +44,27 @@ jobs:
       - name: Run unit tests
         run: node --test scripts/lib/*.test.mjs .claude/hooks/*.test.mjs
 
+  php:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+          coverage: none
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --no-progress
+
+      - name: Syntax-check the library
+        run: find .claude/skills/blueworx-admin-design/editor/php -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: PHPUnit
+        run: vendor/bin/phpunit
+
   # The job branch protection requires. Keep this name.
   test:
     if: always()
