@@ -42,4 +42,109 @@ final class SchemaTest extends TestCase {
 		$this->expectExceptionMessage( 'needs a label' );
 		Schema::validate( $this->screen( [ 'id' => 'name', 'kind' => 'text' ] ) );
 	}
+
+	public function test_a_repeater_sub_field_with_an_unknown_kind_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'trumpet' );
+		Schema::validate( $this->screen( [
+			'id'     => 'days',
+			'kind'   => 'repeater',
+			'label'  => 'Days',
+			'fields' => [
+				[ 'id' => 'label', 'kind' => 'trumpet', 'label' => 'Label' ],
+			],
+		] ) );
+	}
+
+	public function test_a_repeater_sub_field_without_a_label_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'needs a label' );
+		Schema::validate( $this->screen( [
+			'id'     => 'days',
+			'kind'   => 'repeater',
+			'label'  => 'Days',
+			'fields' => [
+				[ 'id' => 'label', 'kind' => 'text' ],
+			],
+		] ) );
+	}
+
+	public function test_a_repeater_containing_a_repeater_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		Schema::validate( $this->screen( [
+			'id'     => 'days',
+			'kind'   => 'repeater',
+			'label'  => 'Days',
+			'fields' => [
+				[ 'id' => 'inner', 'kind' => 'repeater', 'label' => 'Inner', 'fields' => [
+					[ 'id' => 'x', 'kind' => 'text', 'label' => 'X' ],
+				] ],
+			],
+		] ) );
+	}
+
+	public function test_a_repeater_sub_field_id_may_repeat_a_top_level_field_id(): void {
+		$screen = Schema::validate( [
+			'slug'      => 'sports',
+			'title'     => 'Edit sport',
+			'post_type' => 'bw_sport',
+			'tabs'      => [
+				[ 'id' => 'details', 'label' => 'Details', 'panels' => [
+					[ 'id' => 'basics', 'title' => 'Basics', 'fields' => [
+						[ 'id' => 'day', 'kind' => 'text', 'label' => 'Day' ],
+						[ 'id' => 'days', 'kind' => 'repeater', 'label' => 'Days', 'fields' => [
+							[ 'id' => 'day', 'kind' => 'text', 'label' => 'Day' ],
+						] ],
+					] ],
+				] ],
+			],
+		] );
+		$this->assertSame( 'day', $screen['tabs'][0]['panels'][0]['fields'][1]['fields'][0]['id'] );
+	}
+
+	public function test_a_valid_repeater_gets_sub_field_defaults_filled_in(): void {
+		$screen = Schema::validate( $this->screen( [
+			'id'     => 'days',
+			'kind'   => 'repeater',
+			'label'  => 'Days',
+			'fields' => [
+				[ 'id' => 'label', 'kind' => 'text', 'label' => 'Label' ],
+			],
+		] ) );
+		$sub = $screen['tabs'][0]['panels'][0]['fields'][0]['fields'][0];
+		$this->assertArrayHasKey( 'help', $sub );
+		$this->assertArrayHasKey( 'required', $sub );
+		$this->assertArrayHasKey( 'capability', $sub );
+		$this->assertArrayHasKey( 'locked_help', $sub );
+	}
+
+	public function test_two_tabs_with_the_same_id_are_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		Schema::validate( [
+			'slug'      => 'sports',
+			'title'     => 'Edit sport',
+			'post_type' => 'bw_sport',
+			'tabs'      => [
+				[ 'id' => 'details', 'label' => 'Details', 'panels' => [] ],
+				[ 'id' => 'details', 'label' => 'Details again', 'panels' => [] ],
+			],
+		] );
+	}
+
+	public function test_two_panels_with_the_same_id_in_different_tabs_are_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		Schema::validate( [
+			'slug'      => 'sports',
+			'title'     => 'Edit sport',
+			'post_type' => 'bw_sport',
+			'tabs'      => [
+				[ 'id' => 'details', 'label' => 'Details', 'panels' => [
+					[ 'id' => 'basics', 'title' => 'Basics', 'fields' => [] ],
+				] ],
+				[ 'id' => 'more', 'label' => 'More', 'panels' => [
+					[ 'id' => 'basics', 'title' => 'Basics again', 'fields' => [] ],
+				] ],
+			],
+		] );
+	}
 }
