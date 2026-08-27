@@ -48,7 +48,13 @@ if ( ! function_exists( 'sanitize_email' ) ) {
 }
 if ( ! function_exists( 'wp_kses_post' ) ) {
 	function wp_kses_post( $value ) {
-		return strip_tags( (string) $value, '<p><br><strong><em><a><ul><ol><li><img>' );
+		$value = strip_tags( (string) $value, '<p><br><strong><em><a><ul><ol><li><img>' );
+		// Real wp_kses_post filters attributes, not just tags. The stub has to
+		// do the same or a test asserting "this was stripped" passes against a
+		// stub that never stripped it.
+		$value = preg_replace( '/\s+on[a-z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $value );
+		$value = preg_replace( '/\s+(href|src)\s*=\s*("|\')?\s*javascript:[^"\'\s>]*("|\')?/i', '', $value );
+		return $value;
 	}
 }
 if ( ! function_exists( '__' ) ) {
@@ -56,7 +62,8 @@ if ( ! function_exists( '__' ) ) {
 }
 if ( ! function_exists( 'get_post_meta' ) ) {
 	function get_post_meta( $id, $key, $single = false ) {
-		return $GLOBALS['bwpe_stub']['meta'][ $id ][ $key ] ?? '';
+		$value = $GLOBALS['bwpe_stub']['meta'][ $id ][ $key ] ?? '';
+		return $single ? $value : ( '' === $value ? [] : [ $value ] );
 	}
 }
 if ( ! function_exists( 'update_post_meta' ) ) {

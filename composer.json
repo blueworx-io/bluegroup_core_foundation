@@ -12,5 +12,8 @@
     ]
   },
   "autoload-dev": { "psr-4": { "Blueworx\\PageEditor\\Tests\\": "tests/php/" } },
-  "config": { "optimize-autoloader": true }
+  "config": {
+    "optimize-autoloader": true,
+    "platform": { "php": "7.4" }
+  }
 }
