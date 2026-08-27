@@ -18,6 +18,6 @@ if ( ! class_exists( 'Blueworx\PageEditor\Registry', false ) ) {
 	require_once __DIR__ . '/Registry.php';
 }
 
-\Blueworx\PageEditor\Registry::add( '1.0.0', __DIR__ . '/v1' );
+\Blueworx\PageEditor\Registry::add( '1.0.0', __DIR__ . '/v1', __FILE__ );
 
 add_action( 'plugins_loaded', [ '\Blueworx\PageEditor\Registry', 'load' ], 0 );

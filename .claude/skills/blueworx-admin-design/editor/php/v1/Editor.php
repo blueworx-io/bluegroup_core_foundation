@@ -136,4 +136,9 @@ final class Editor {
 		self::$screens = [];
 		self::$problems = [];
 	}
+
+	public static function boot(): void {
+		Screen::boot();
+		Rest::boot();
+	}
 }
