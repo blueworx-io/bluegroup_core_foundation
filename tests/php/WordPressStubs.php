@@ -14,6 +14,7 @@ $GLOBALS['bwpe_stub'] = [
 	'terms'        => [],
 	'thumbnails'   => [],
 	'fail_writes'  => false,
+	'fail_key'     => null,
 ];
 
 function bwpe_stub_reset(): void {
@@ -26,7 +27,24 @@ function bwpe_stub_reset(): void {
 		'terms'        => [],
 		'thumbnails'   => [],
 		'fail_writes'  => false,
+		'fail_key'     => null,
 	];
+}
+
+if ( ! class_exists( 'WP_Error' ) ) {
+	class WP_Error {
+		public $errors = [];
+		public function __construct( $code = '', $message = '' ) {
+			if ( $code ) {
+				$this->errors[ $code ][] = $message;
+			}
+		}
+	}
+}
+if ( ! function_exists( 'is_wp_error' ) ) {
+	function is_wp_error( $thing ) {
+		return $thing instanceof WP_Error;
+	}
 }
 
 if ( ! function_exists( 'post_type_exists' ) ) {
@@ -84,6 +102,13 @@ if ( ! function_exists( 'update_post_meta' ) ) {
 		if ( $GLOBALS['bwpe_stub']['fail_writes'] ) {
 			return false;
 		}
+		// fail_key fails one named write rather than every write, so a test can
+		// prove a loop stopped at the failing key instead of merely proving
+		// nothing at all was written. Each stub matches it against whatever it
+		// is asked to write: a meta key here, a taxonomy in wp_set_post_terms().
+		if ( null !== $GLOBALS['bwpe_stub']['fail_key'] && $key === $GLOBALS['bwpe_stub']['fail_key'] ) {
+			return false;
+		}
 		// Real WordPress returns false both on a genuine failure and whenever
 		// the new value is identical to the one already stored — the stub has
 		// to reproduce that quirk, or a bug that only shows up on a no-op
@@ -136,8 +161,13 @@ if ( ! function_exists( 'wp_update_post' ) ) {
 }
 if ( ! function_exists( 'wp_set_post_terms' ) ) {
 	function wp_set_post_terms( $id, $terms, $taxonomy ) {
-		if ( $GLOBALS['bwpe_stub']['fail_writes'] ) {
-			return false;
+		$named = null !== $GLOBALS['bwpe_stub']['fail_key'] && $taxonomy === $GLOBALS['bwpe_stub']['fail_key'];
+		if ( $GLOBALS['bwpe_stub']['fail_writes'] || $named ) {
+			// Real WordPress returns a WP_Error here, not false, on a genuine
+			// failure — the stub has to reproduce that or code that only
+			// checks `false === $result` could never be caught failing to
+			// notice one.
+			return new WP_Error( 'invalid_taxonomy', 'Invalid taxonomy.' );
 		}
 		$GLOBALS['bwpe_stub']['terms'][ $id ][ $taxonomy ] = $terms;
 		return $terms;
@@ -153,7 +183,13 @@ if ( ! function_exists( 'set_post_thumbnail' ) ) {
 		if ( $GLOBALS['bwpe_stub']['fail_writes'] ) {
 			return false;
 		}
-		$GLOBALS['bwpe_stub']['thumbnails'][ $id ] = (int) $thumbnail_id;
+		// Real set_post_thumbnail() just calls update_post_meta() under the
+		// hood, so it has the exact same no-op-returns-false quirk.
+		$thumbnail_id = (int) $thumbnail_id;
+		if ( ( $GLOBALS['bwpe_stub']['thumbnails'][ $id ] ?? 0 ) === $thumbnail_id ) {
+			return false;
+		}
+		$GLOBALS['bwpe_stub']['thumbnails'][ $id ] = $thumbnail_id;
 		return true;
 	}
 }

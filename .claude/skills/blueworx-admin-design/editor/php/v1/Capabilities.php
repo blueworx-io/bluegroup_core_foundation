@@ -2,9 +2,14 @@
 namespace Blueworx\PageEditor\v1;
 
 /**
- * What this user may see and write. Filtering happens on the way out as well as
- * in: a field the browser never receives cannot be re-enabled by editing the
- * page, and a value for it is dropped rather than trusted.
+ * What this user may see and write. The two directions genuinely differ:
+ *
+ * - outbound (the schema, and a locked field's value on load): a locked
+ *   field stays visible, read-only, with locked_help as its help — a
+ *   read-only field with nothing in it is useless.
+ * - inbound (a value on the way back in on save): a locked field's value is
+ *   dropped, even though the field itself was shown — it must never be
+ *   writable.
  *
  * Reads capability and locked_help with ?? '' rather than direct array access:
  * a hand-built screen (never passed through Schema::validate()) may not have
@@ -54,6 +59,38 @@ final class Capabilities {
 	public static function filterValues( array $screen, array $values ): array {
 		$allowed = array_flip( self::allowed( $screen ) );
 		return array_intersect_key( $values, $allowed );
+	}
+
+	/**
+	 * Every field id kept by filterSchema() — writable, or locked but shown.
+	 * This is the outbound list: a locked field's value belongs on the
+	 * screen even though the field itself is not writable.
+	 *
+	 * @return string[]
+	 */
+	public static function visible( array $screen ): array {
+		$ids = [];
+		foreach ( $screen['tabs'] as $tab ) {
+			foreach ( $tab['panels'] as $panel ) {
+				foreach ( $panel['fields'] as $field ) {
+					if ( self::may( $field ) || '' !== ( $field['locked_help'] ?? '' ) ) {
+						$ids[] = $field['id'];
+					}
+				}
+			}
+		}
+		return $ids;
+	}
+
+	/**
+	 * The outbound counterpart to filterValues(): a locked field's value is
+	 * included, because the field is shown read-only rather than hidden.
+	 * save() still uses filterValues(), never this, so a locked field's
+	 * value can never be written even though it can be seen.
+	 */
+	public static function filterValuesForDisplay( array $screen, array $values ): array {
+		$visible = array_flip( self::visible( $screen ) );
+		return array_intersect_key( $values, $visible );
 	}
 
 	private static function may( array $field ): bool {

@@ -3,6 +3,7 @@ namespace Blueworx\PageEditor\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Blueworx\PageEditor\v1\Editor;
+use Blueworx\PageEditor\v1\Settings;
 
 final class SaveTest extends TestCase {
 
@@ -124,5 +125,100 @@ final class SaveTest extends TestCase {
 		$this->assertStringNotContainsString( 'Nothing was changed', $result['errors']['_screen'] );
 		$this->assertStringContainsString( 'may not', $result['errors']['_screen'] );
 		$this->assertSame( 'Rugby', $GLOBALS['bwpe_stub']['meta'][7]['bw_sport_name'], 'the write stopped before this could be overwritten' );
+	}
+
+	public function test_load_values_has_an_entry_for_every_field_in_the_settings_tab(): void {
+		$values = Editor::load( 'sports', 7 )['values'];
+
+		foreach ( Settings::tab( [ 'store' => 'post', 'slug' => 'sports' ] )['panels'] as $panel ) {
+			foreach ( $panel['fields'] as $field ) {
+				$this->assertArrayHasKey(
+					$field['id'],
+					$values,
+					sprintf( '"%s" is on the settings tab but load() gave no value for it.', $field['id'] )
+				);
+			}
+		}
+
+		$this->assertArrayHasKey( 'post_author', $values, 'a locked field still needs its value on the way out' );
+	}
+
+	public function test_a_locked_field_arrives_with_its_value_on_load(): void {
+		$GLOBALS['bwpe_stub']['posts'][7] = [ 'post_author' => 9 ];
+		$loaded = Editor::load( 'sports', 7 );
+
+		$this->assertSame( 9, $loaded['values']['post_author'] );
+		$readonly = array_column( $loaded['schema']['tabs'][1]['panels'][0]['fields'], 'readonly', 'id' );
+		$this->assertTrue( $readonly['post_author'], 'the field is shown, but read-only' );
+	}
+
+	public function test_a_locked_field_is_still_dropped_on_save(): void {
+		$GLOBALS['bwpe_stub']['posts'][7] = [ 'post_author' => 9 ];
+		$result = Editor::save( 'sports', [ 'name' => 'Rugby', 'post_author' => 5 ], 7 );
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 9, $GLOBALS['bwpe_stub']['posts'][7]['post_author'], 'a read-only field must never be written' );
+		$this->assertArrayNotHasKey( 'post_author', $result['values'] );
+	}
+
+	public function test_resaving_an_unchanged_featured_image_reports_ok(): void {
+		Editor::save( 'sports', [ 'name' => 'Rugby', 'featured_image' => 3 ], 7 );
+		$result = Editor::save( 'sports', [ 'name' => 'Rugby', 'featured_image' => 3 ], 7 );
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 3, $GLOBALS['bwpe_stub']['thumbnails'][7] );
+	}
+
+	public function test_comment_status_round_trips_as_a_bool_through_an_open_closed_column(): void {
+		Editor::save( 'sports', [ 'name' => 'Rugby', 'comment_status' => true ], 7 );
+		$this->assertSame( 'open', $GLOBALS['bwpe_stub']['posts'][7]['comment_status'] );
+		$this->assertTrue( Editor::load( 'sports', 7 )['values']['comment_status'] );
+
+		Editor::save( 'sports', [ 'name' => 'Rugby', 'comment_status' => false ], 7 );
+		$this->assertSame( 'closed', $GLOBALS['bwpe_stub']['posts'][7]['comment_status'] );
+		$this->assertFalse( Editor::load( 'sports', 7 )['values']['comment_status'] );
+	}
+
+	public function test_post_date_round_trips_through_the_mysql_format(): void {
+		Editor::save( 'sports', [ 'name' => 'Rugby', 'post_date' => '2026-03-04T09:30' ], 7 );
+
+		$this->assertSame( '2026-03-04 09:30:00', $GLOBALS['bwpe_stub']['posts'][7]['post_date'] );
+		$this->assertSame( '2026-03-04T09:30', Editor::load( 'sports', 7 )['values']['post_date'] );
+	}
+
+	public function test_a_term_write_that_returns_a_wp_error_is_reported_as_a_failure(): void {
+		$GLOBALS['bwpe_stub']['fail_key'] = 'post_tag';
+		$result = Editor::save( 'sports', [ 'name' => 'Rugby', 'post_tags' => [ 'Union' ] ], 7 );
+
+		$this->assertFalse( $result['ok'], 'wp_set_post_terms() reports failure as a WP_Error, which is truthy' );
+		$this->assertArrayHasKey( '_screen', $result['errors'] );
+	}
+
+	public function test_a_settings_screen_resaved_unchanged_reports_ok(): void {
+		Editor::register( [
+			'slug' => 'club-pages', 'title' => 'Club pages', 'store' => 'option', 'option_name' => 'bw_club_pages',
+			'tabs' => [ [ 'id' => 'g', 'label' => 'Global', 'panels' => [
+				[ 'id' => 'h', 'title' => 'Header', 'fields' => [ [ 'id' => 'menu_label', 'kind' => 'text', 'label' => 'Menu label' ] ] ],
+			] ] ],
+		] );
+
+		Editor::save( 'club-pages', [ 'menu_label' => 'Menu' ] );
+		$result = Editor::save( 'club-pages', [ 'menu_label' => 'Menu' ] );
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 'Menu', $GLOBALS['bwpe_stub']['options']['bw_club_pages']['menu_label'] );
+	}
+
+	public function test_a_failed_write_never_reaches_the_fields_after_it(): void {
+		$GLOBALS['bwpe_stub']['fail_key'] = 'bw_sport_name';
+		$result = Editor::save( 'sports', [ 'name' => 'Rugby', 'contact' => 'dan@coastalbloom.co' ], 7 );
+
+		$this->assertFalse( $result['ok'] );
+		$this->assertArrayNotHasKey( 'bw_sport_name', $GLOBALS['bwpe_stub']['meta'][7] ?? [] );
+		$this->assertArrayNotHasKey(
+			'bw_sport_contact',
+			$GLOBALS['bwpe_stub']['meta'][7] ?? [],
+			'the save stopped at the first failure, so the field after it was never attempted'
+		);
 	}
 }

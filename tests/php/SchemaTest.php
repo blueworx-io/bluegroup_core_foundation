@@ -265,4 +265,38 @@ final class SchemaTest extends TestCase {
 		] );
 		$this->assertSame( 'publish', $screen['tabs'][0]['id'] );
 	}
+
+	public function test_a_record_screen_cannot_use_a_reserved_field_id(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'reserved for the Publish and settings tab' );
+		Schema::validate( $this->screen( [ 'id' => 'post_status', 'kind' => 'text', 'label' => 'Status' ] ) );
+	}
+
+	public function test_a_record_screen_cannot_use_a_reserved_field_id_inside_a_repeater(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'reserved for the Publish and settings tab' );
+		Schema::validate( $this->screen( [
+			'id'     => 'sessions',
+			'kind'   => 'repeater',
+			'label'  => 'Sessions',
+			'fields' => [ [ 'id' => 'menu_order', 'kind' => 'number', 'label' => 'Order' ] ],
+		] ) );
+	}
+
+	public function test_a_settings_screen_may_use_a_field_id_reserved_for_the_publish_tab(): void {
+		$screen = Schema::validate( [
+			'slug'        => 'general',
+			'title'       => 'General settings',
+			'store'       => 'option',
+			'option_name' => 'bw_general',
+			'tabs'        => [
+				[ 'id' => 'general', 'label' => 'General', 'panels' => [
+					[ 'id' => 'basics', 'title' => 'Basics', 'fields' => [
+						[ 'id' => 'post_status', 'kind' => 'text', 'label' => 'Status' ],
+					] ],
+				] ],
+			],
+		] );
+		$this->assertSame( 'post_status', $screen['tabs'][0]['panels'][0]['fields'][0]['id'] );
+	}
 }

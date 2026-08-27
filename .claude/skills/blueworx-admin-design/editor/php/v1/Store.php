@@ -58,7 +58,8 @@ final class PostStore extends Store {
 				if ( null === $post ) {
 					$post = get_post( $id );
 				}
-				$out[ $key ] = ( $post && isset( $post->$key ) ) ? $post->$key : '';
+				$raw         = ( $post && isset( $post->$key ) ) ? $post->$key : '';
+				$out[ $key ] = $this->fromColumn( $key, $raw );
 				continue;
 			}
 
@@ -89,12 +90,16 @@ final class PostStore extends Store {
 
 		foreach ( $values as $key => $value ) {
 			if ( in_array( $key, self::POST_COLUMNS, true ) ) {
-				$columns[ $key ] = $value;
+				$columns[ $key ] = $this->toColumn( $key, $value );
 				continue;
 			}
 
 			if ( 'post_tags' === $key ) {
-				if ( false === wp_set_post_terms( $id, (array) $value, 'post_tag' ) ) {
+				$result = wp_set_post_terms( $id, (array) $value, 'post_tag' );
+				// wp_set_post_terms() reports failure as either false or a
+				// WP_Error — both are truthy in a naive `if ( ! $result )`,
+				// so both have to be checked for explicitly.
+				if ( false === $result || is_wp_error( $result ) ) {
 					return false;
 				}
 				continue;
@@ -102,7 +107,7 @@ final class PostStore extends Store {
 
 			if ( 'featured_image' === $key ) {
 				if ( (int) $value > 0 ) {
-					if ( ! set_post_thumbnail( $id, (int) $value ) ) {
+					if ( ! $this->writeThumbnail( $id, (int) $value ) ) {
 						return false;
 					}
 				} else {
@@ -134,6 +139,48 @@ final class PostStore extends Store {
 			return true;
 		}
 		return (bool) update_post_meta( $id, $key, $value );
+	}
+
+	/**
+	 * set_post_thumbnail() calls update_post_meta() internally, so it has the
+	 * exact same no-op-returns-false quirk as writeMeta() above.
+	 */
+	private function writeThumbnail( int $id, int $thumbnail_id ): bool {
+		if ( get_post_thumbnail_id( $id ) === $thumbnail_id ) {
+			return true;
+		}
+		return (bool) set_post_thumbnail( $id, $thumbnail_id );
+	}
+
+	/**
+	 * A couple of columns store a different shape than the field kind that
+	 * edits them: comment_status is WordPress's 'open'/'closed' string, not
+	 * the bool a toggle gives Sanitise; post_date is 'Y-m-d H:i:s', not the
+	 * 'Y-m-d\TH:i' a datetime field sends. Kept next to POST_COLUMNS so the
+	 * one place that knows a field is a column is also the place that knows
+	 * how to translate it — in both directions, see fromColumn() below.
+	 */
+	private function toColumn( string $key, $value ) {
+		if ( 'comment_status' === $key ) {
+			return $value ? 'open' : 'closed';
+		}
+		if ( 'post_date' === $key ) {
+			return '' === $value ? '' : str_replace( 'T', ' ', $value ) . ':00';
+		}
+		return $value;
+	}
+
+	private function fromColumn( string $key, $value ) {
+		if ( 'comment_status' === $key ) {
+			return 'open' === $value;
+		}
+		if ( 'post_date' === $key ) {
+			if ( '' === $value || null === $value || strlen( (string) $value ) < 16 ) {
+				return '';
+			}
+			return substr( str_replace( ' ', 'T', $value ), 0, 16 );
+		}
+		return $value;
 	}
 
 	private function key( string $field ): string {

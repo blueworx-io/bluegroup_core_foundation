@@ -31,6 +31,24 @@ final class Schema {
 	const RESERVED_TAB_IDS   = [ 'publish' ];
 	const RESERVED_PANEL_IDS = [ 'status', 'taxonomies', 'parent' ];
 
+	/**
+	 * The Publish and settings tab's own field ids are reserved the same way:
+	 * a plugin field called post_status or post_tags would register fine and
+	 * then have its value silently redirected into the post column instead of
+	 * its own meta. Derived from Settings::tab() itself, never written out a
+	 * second time, so this cannot drift from what that tab actually declares.
+	 */
+	private static function reservedFieldIds( string $slug ): array {
+		$tab = Settings::tab( [ 'store' => 'post', 'slug' => $slug ] );
+		$ids = [];
+		foreach ( $tab['panels'] ?? [] as $panel ) {
+			foreach ( $panel['fields'] as $field ) {
+				$ids[] = $field['id'];
+			}
+		}
+		return $ids;
+	}
+
 	public static function validate( array $screen ): array {
 		if ( empty( $screen['slug'] ) || ! is_string( $screen['slug'] ) ) {
 			throw new InvalidArgumentException( 'This editor screen needs a slug.' );
@@ -61,8 +79,9 @@ final class Schema {
 		$dependencies    = [];
 		$repeater_scopes = [];
 		$check_reserved  = ( 'post' === $screen['store'] );
+		$reserved_fields = $check_reserved ? self::reservedFieldIds( $screen['slug'] ) : [];
 		foreach ( $screen['tabs'] as $t => $tab ) {
-			$screen['tabs'][ $t ] = self::tab( $tab, $screen['slug'], $seen, $tab_ids, $panel_ids, $dependencies, $repeater_scopes, $check_reserved );
+			$screen['tabs'][ $t ] = self::tab( $tab, $screen['slug'], $seen, $tab_ids, $panel_ids, $dependencies, $repeater_scopes, $check_reserved, $reserved_fields );
 		}
 
 		self::checkDependencies( $screen['slug'], $seen, $repeater_scopes, $dependencies );
@@ -95,7 +114,7 @@ final class Schema {
 		return $tab;
 	}
 
-	private static function tab( array $tab, string $slug, array &$seen, array &$tab_ids, array &$panel_ids, array &$dependencies, array &$repeater_scopes, bool $check_reserved = false ): array {
+	private static function tab( array $tab, string $slug, array &$seen, array &$tab_ids, array &$panel_ids, array &$dependencies, array &$repeater_scopes, bool $check_reserved = false, array $reserved_fields = [] ): array {
 		if ( empty( $tab['id'] ) || empty( $tab['label'] ) ) {
 			throw new InvalidArgumentException( sprintf( 'Every tab on the "%s" editor screen needs an id and a label.', $slug ) );
 		}
@@ -113,12 +132,12 @@ final class Schema {
 
 		$tab['panels'] = $tab['panels'] ?? [];
 		foreach ( $tab['panels'] as $p => $panel ) {
-			$tab['panels'][ $p ] = self::panel( $panel, $slug, $seen, $panel_ids, $dependencies, $repeater_scopes, $check_reserved );
+			$tab['panels'][ $p ] = self::panel( $panel, $slug, $seen, $panel_ids, $dependencies, $repeater_scopes, $check_reserved, $reserved_fields );
 		}
 		return $tab;
 	}
 
-	private static function panel( array $panel, string $slug, array &$seen, array &$panel_ids, array &$dependencies, array &$repeater_scopes, bool $check_reserved = false ): array {
+	private static function panel( array $panel, string $slug, array &$seen, array &$panel_ids, array &$dependencies, array &$repeater_scopes, bool $check_reserved = false, array $reserved_fields = [] ): array {
 		if ( empty( $panel['id'] ) || empty( $panel['title'] ) ) {
 			throw new InvalidArgumentException( sprintf( 'Every panel on the "%s" editor screen needs an id and a title.', $slug ) );
 		}
@@ -139,7 +158,7 @@ final class Schema {
 		$panel['hideable'] = (bool) ( $panel['hideable'] ?? false );
 		$panel['fields']   = $panel['fields'] ?? [];
 		foreach ( $panel['fields'] as $f => $field ) {
-			$panel['fields'][ $f ] = self::field( $field, $slug, $seen, null, $dependencies, $repeater_scopes );
+			$panel['fields'][ $f ] = self::field( $field, $slug, $seen, null, $dependencies, $repeater_scopes, $reserved_fields );
 		}
 		return $panel;
 	}
@@ -154,12 +173,24 @@ final class Schema {
 	 * be resolved once the whole screen is known — see checkDependencies().
 	 * That lets a field depend on one declared later, in a later tab or panel.
 	 */
-	private static function field( array $field, string $slug, array &$seen, ?string $repeater_id, array &$dependencies, array &$repeater_scopes ): array {
+	private static function field( array $field, string $slug, array &$seen, ?string $repeater_id, array &$dependencies, array &$repeater_scopes, array $reserved_fields = [] ): array {
 		if ( empty( $field['id'] ) ) {
 			throw new InvalidArgumentException( sprintf( 'Every field on the "%s" editor screen needs an id.', $slug ) );
 		}
 		if ( isset( $seen[ $field['id'] ] ) ) {
 			throw new InvalidArgumentException( sprintf( 'The "%s" editor screen uses the field id "%s" twice. Every field id is saved as its own value, so they must be unique across the whole screen.', $slug, $field['id'] ) );
+		}
+		// A repeater's sub-fields are checked too. Their values are stored
+		// nested, so nothing would be redirected into a post column — but a
+		// sub-field called post_status reads as if it sets the status, and a
+		// name that means one thing at the top of a screen and something else
+		// inside a repeater is a trap for whoever writes the schema next.
+		if ( in_array( $field['id'], $reserved_fields, true ) ) {
+			throw new InvalidArgumentException( sprintf(
+				'The "%s" editor screen uses the field id "%s", which is reserved for the Publish and settings tab the library adds. Choose a different id.',
+				$slug,
+				$field['id']
+			) );
 		}
 		$seen[ $field['id'] ] = true;
 
@@ -207,7 +238,7 @@ final class Schema {
 			}
 			$sub_seen = [];
 			foreach ( $field['fields'] as $sf => $sub_field ) {
-				$field['fields'][ $sf ] = self::field( $sub_field, $slug, $sub_seen, $field['id'], $dependencies, $repeater_scopes );
+				$field['fields'][ $sf ] = self::field( $sub_field, $slug, $sub_seen, $field['id'], $dependencies, $repeater_scopes, $reserved_fields );
 			}
 			$repeater_scopes[ $field['id'] ] = $sub_seen;
 		}

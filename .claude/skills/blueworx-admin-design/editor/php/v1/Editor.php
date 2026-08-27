@@ -89,13 +89,17 @@ final class Editor {
 
 		return [
 			'schema' => $visible,
-			'values' => Capabilities::filterValues( $merged, $values ),
+			'values' => Capabilities::filterValuesForDisplay( $merged, $values ),
 		];
 	}
 
 	/**
-	 * The whole record, or nothing. A part-written record is worse than a
-	 * rejected one: the site owner would have no way to tell which half landed.
+	 * A validation failure writes nothing at all: values are checked before
+	 * anything is written, so if any is invalid nothing reaches the store —
+	 * that guarantee still holds. A write failure is a different matter: post
+	 * meta and the post itself have no transaction, so it can leave part of
+	 * the record already committed, and the message below says so rather
+	 * than claiming otherwise.
 	 */
 	public static function save( string $slug, array $values, int $id = 0 ): array {
 		$screen = self::get( $slug );
