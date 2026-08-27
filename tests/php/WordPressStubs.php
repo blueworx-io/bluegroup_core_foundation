@@ -105,6 +105,30 @@ if ( ! function_exists( 'wp_kses_post' ) ) {
 if ( ! function_exists( '__' ) ) {
 	function __( $text, $domain = null ) { return $text; }
 }
+if ( ! function_exists( 'bwpe_stub_cast_meta_value' ) ) {
+	/**
+	 * What the wpdb layer does to a value on its way into a text column: a
+	 * scalar is cast to string (true -> '1', false -> '', an int -> its
+	 * digits) because the column is text and only ever holds text; an array
+	 * is left alone, because it went through maybe_serialize()/serialize()
+	 * first, and unserialize() hands back the original structure — including
+	 * every scalar type nested inside it — exactly as it went in. Shared by
+	 * the meta and option stubs below, since both go through the same
+	 * mechanism in real WordPress.
+	 */
+	function bwpe_stub_cast_meta_value( $value ) {
+		if ( is_array( $value ) ) {
+			return $value;
+		}
+		if ( is_bool( $value ) ) {
+			return $value ? '1' : '';
+		}
+		if ( null === $value ) {
+			return '';
+		}
+		return (string) $value;
+	}
+}
 if ( ! function_exists( 'get_post_meta' ) ) {
 	function get_post_meta( $id, $key, $single = false ) {
 		$value = $GLOBALS['bwpe_stub']['meta'][ $id ][ $key ] ?? '';
@@ -123,15 +147,19 @@ if ( ! function_exists( 'update_post_meta' ) ) {
 		if ( null !== $GLOBALS['bwpe_stub']['fail_key'] && $key === $GLOBALS['bwpe_stub']['fail_key'] ) {
 			return false;
 		}
+		$cast = bwpe_stub_cast_meta_value( $value );
 		// Real WordPress returns false both on a genuine failure and whenever
 		// the new value is identical to the one already stored — the stub has
 		// to reproduce that quirk, or a bug that only shows up on a no-op
-		// re-save could never be caught here.
+		// re-save could never be caught here. The comparison is against the
+		// cast form, because that is what "already stored" means: the row
+		// only ever holds the cast form, never the PHP-typed value that was
+		// passed in.
 		$current = $GLOBALS['bwpe_stub']['meta'][ $id ][ $key ] ?? '';
-		if ( $current === $value ) {
+		if ( $current === $cast ) {
 			return false;
 		}
-		$GLOBALS['bwpe_stub']['meta'][ $id ][ $key ] = $value;
+		$GLOBALS['bwpe_stub']['meta'][ $id ][ $key ] = $cast;
 		return true;
 	}
 }
@@ -145,12 +173,14 @@ if ( ! function_exists( 'update_option' ) ) {
 		if ( $GLOBALS['bwpe_stub']['fail_writes'] ) {
 			return false;
 		}
-		// Same no-op-returns-false quirk as update_post_meta().
+		$cast = bwpe_stub_cast_meta_value( $value );
+		// Same no-op-returns-false quirk as update_post_meta(), same reason
+		// the comparison is against the cast form.
 		$current = $GLOBALS['bwpe_stub']['options'][ $name ] ?? false;
-		if ( $current === $value ) {
+		if ( $current === $cast ) {
 			return false;
 		}
-		$GLOBALS['bwpe_stub']['options'][ $name ] = $value;
+		$GLOBALS['bwpe_stub']['options'][ $name ] = $cast;
 		return true;
 	}
 }

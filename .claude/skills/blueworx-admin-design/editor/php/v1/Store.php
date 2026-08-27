@@ -33,6 +33,42 @@ abstract class Store {
 	protected function fields(): array {
 		return Sanitise::fields( $this->screen );
 	}
+
+	/**
+	 * Post meta and a bare option value are stored as text: a value never
+	 * saved reads back as '', and any scalar that was saved reads back as a
+	 * string ('1'/'' for a bool, digits for an int) rather than the type that
+	 * went in — WordPress casts it going in and never remembers what it was
+	 * before. An array survives the round trip untouched, because it went
+	 * through serialize()/unserialize() rather than a text cast. This puts a
+	 * value back into the shape its field kind implies, so PostStore and
+	 * OptionStore both hand back what Sanitise would have produced, not what
+	 * the storage layer's own text-only memory happens to preserve. Sits
+	 * beside PostStore::fromColumn() — that is a WordPress column's own
+	 * translation, this is this library's.
+	 */
+	protected function castByKind( array $field, $value ) {
+		switch ( $field['kind'] ?? 'text' ) {
+			case 'toggle':
+				return (bool) $value;
+
+			case 'number':
+			case 'range':
+			case 'media':
+			case 'file':
+			case 'record':
+				return (int) $value;
+
+			case 'checkboxes':
+			case 'scrolllist':
+			case 'tokens':
+			case 'repeater':
+				return is_array( $value ) ? $value : [];
+
+			default:
+				return (string) $value;
+		}
+	}
 }
 
 final class PostStore extends Store {
@@ -73,7 +109,7 @@ final class PostStore extends Store {
 				continue;
 			}
 
-			$out[ $key ] = get_post_meta( $id, $this->key( $key ), true );
+			$out[ $key ] = $this->castByKind( $field, get_post_meta( $id, $this->key( $key ), true ) );
 		}
 
 		return $out;
@@ -118,7 +154,7 @@ final class PostStore extends Store {
 				continue;
 			}
 
-			if ( ! $this->writeMeta( $id, $this->key( $key ), $value ) ) {
+			if ( ! $this->writeMeta( $id, $key, $value ) ) {
 				return false;
 			}
 		}
@@ -135,12 +171,40 @@ final class PostStore extends Store {
 	 * WordPress, whenever the new value is identical to the one already
 	 * stored. Comparing first means a false return here always means a real
 	 * failure — and a no-op re-save is never mistaken for one.
+	 *
+	 * The comparison is against the meta-cast form of $value, not $value
+	 * itself: get_post_meta() only ever hands back what a text column can
+	 * hold — '1'/'' for a bool, digits for an int — never the PHP type
+	 * Sanitise produced. Comparing the raw PHP value against that would never
+	 * match, so an unchanged bool or number field would never be recognised
+	 * as unchanged — this check would never actually fire for one.
 	 */
-	private function writeMeta( int $id, string $key, $value ): bool {
-		if ( get_post_meta( $id, $key, true ) === $value ) {
+	private function writeMeta( int $id, string $field_id, $value ): bool {
+		$key = $this->key( $field_id );
+		if ( get_post_meta( $id, $key, true ) === $this->metaScalar( $value ) ) {
 			return true;
 		}
 		return (bool) update_post_meta( $id, $key, $value );
+	}
+
+	/**
+	 * What get_post_meta() will read this value back as, once stored — see
+	 * writeMeta() above. Kept distinct from castByKind(): that one turns a
+	 * stored value back into the type a field kind implies; this one
+	 * predicts the lossy text-column shape a value becomes on the way in,
+	 * which does not depend on the field's kind at all.
+	 */
+	private function metaScalar( $value ) {
+		if ( is_array( $value ) ) {
+			return $value;
+		}
+		if ( is_bool( $value ) ) {
+			return $value ? '1' : '';
+		}
+		if ( null === $value ) {
+			return '';
+		}
+		return (string) $value;
 	}
 
 	/**
@@ -212,7 +276,7 @@ final class OptionStore extends Store {
 		$saved = is_array( $saved ) ? $saved : [];
 		$out   = [];
 		foreach ( $this->fields() as $field ) {
-			$out[ $field['id'] ] = $saved[ $field['id'] ] ?? '';
+			$out[ $field['id'] ] = $this->castByKind( $field, $saved[ $field['id'] ] ?? '' );
 		}
 		return $out;
 	}

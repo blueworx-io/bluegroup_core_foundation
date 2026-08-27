@@ -262,4 +262,28 @@ final class SaveTest extends TestCase {
 		Editor::save( 'clubs', [ 'name' => 'Rugby', 'promo__shown' => true ], 7 );
 		$this->assertTrue( Editor::load( 'clubs', 7 )['values']['promo__shown'] );
 	}
+
+	/**
+	 * get_post_meta() only ever hands back the text form of a bool ('1' or
+	 * ''), never the PHP bool Sanitise produced, so the no-op pre-check in
+	 * Store::writeMeta() has to compare against that text form too — or an
+	 * unchanged toggle looks different from what is stored every time, and
+	 * a resave of a value nobody changed is wrongly reported as failed.
+	 */
+	public function test_resaving_an_unchanged_toggle_field_reports_ok(): void {
+		Editor::register( [
+			'slug' => 'announce-test', 'title' => 'Announce test', 'post_type' => 'bw_sport',
+			'tabs' => [ [ 'id' => 'd', 'label' => 'Details', 'panels' => [
+				[ 'id' => 'b', 'title' => 'Basics', 'fields' => [
+					[ 'id' => 'name', 'kind' => 'text', 'label' => 'Name' ],
+					[ 'id' => 'announce', 'kind' => 'toggle', 'label' => 'Announce' ],
+				] ],
+			] ] ],
+		] );
+
+		Editor::save( 'announce-test', [ 'name' => 'Rugby', 'announce' => true ], 7 );
+		$result = Editor::save( 'announce-test', [ 'name' => 'Rugby', 'announce' => true ], 7 );
+
+		$this->assertTrue( $result['ok'] );
+	}
 }

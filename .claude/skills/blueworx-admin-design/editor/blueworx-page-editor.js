@@ -248,7 +248,13 @@
     // pipeline; found by its marker rather than assuming the id shape, so a
     // change to that convention on the server cannot silently strand this.
     const switchField = (panel.fields || []).find(function (f) { return f.panel_switch; });
-    const shown = !switchField || props.record.values[switchField.id] !== false;
+    const switchValue = switchField ? props.record.values[switchField.id] : undefined;
+    // The server now reads this back as a real boolean (Store::castByKind),
+    // never a stray '0' or '' from somewhere else, so this is a plain
+    // equality test rather than a "not false" one. undefined is named on its
+    // own: it means the switch has never been saved, not that it was saved
+    // hidden, and a panel with no history yet defaults to shown.
+    const shown = switchValue === undefined ? true : switchValue === true;
 
     return h('section', { className: 'bw-card' },
       h('div', { className: 'bw-card__head' },
