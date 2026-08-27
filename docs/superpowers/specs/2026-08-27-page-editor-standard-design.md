@@ -90,10 +90,16 @@ The PHP is version-namespaced (`Blueworx\PageEditor\v1\…`) with a highest-vers
 following the same pattern as the vendored plugin update checker, so two plugins at different
 versions coexist.
 
-The JavaScript is **built in this repo, shipped built**. It is written against the React that
-WordPress already registers (`wp.element`, `wp.apiFetch`), so a plugin adds no npm dependency
-and no build configuration — the approved-dependency list stays empty. The cost is that this
-repo gains a build step it does not have today, and the built file is committed.
+The JavaScript is written against the React that WordPress already registers (`wp.element`,
+`wp.apiFetch`), so a plugin adds no npm dependency and no build configuration — the
+approved-dependency list stays empty.
+
+It is **plain JavaScript with no build step at all**: element creation goes through a short
+`h()` alias for `wp.element.createElement` rather than JSX. This repo has no `package.json`, no
+dependencies and no bundler, and adding all three to compile one file would be a worse trade
+than writing `h('div', …)`. The file is committed as it ships, `node --check` covers it in the
+existing syntax pass, and its pure logic is exported for `node --test` at the bottom behind a
+`typeof module` guard so the same file runs in both places.
 
 ### 2.2 What a plugin writes
 
