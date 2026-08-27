@@ -86,8 +86,10 @@ final class Screen {
 		wp_add_inline_script(
 			'blueworx-page-editor',
 			'window.blueworxPageEditor=' . wp_json_encode( [
-				'root'  => esc_url_raw( rest_url( Rest::NS ) ),
-				'nonce' => wp_create_nonce( 'wp_rest' ),
+				'root'      => esc_url_raw( rest_url( Rest::NS ) ),
+				'namespace' => Rest::NS,
+				'home'      => trailingslashit( home_url() ),
+				'nonce'     => wp_create_nonce( 'wp_rest' ),
 			] ) . ';',
 			'before'
 		);

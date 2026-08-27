@@ -78,6 +78,197 @@
     return found ? found.id : null;
   }
 
+  /* --- Data ---------------------------------------------------------------- */
+
+  function wp() {
+    return root.wp;
+  }
+
+  // Paths are built as '/' + namespace + '/' + slug, never by cutting the
+  // wp-json prefix off root: a site on plain permalinks serves the REST API
+  // at ?rest_route= and has no /wp-json to cut, so that surgery breaks there.
+  function restPath(slug) {
+    return '/' + root.blueworxPageEditor.namespace + '/' + slug;
+  }
+
+  function useRecord(slug, id) {
+    const el = wp().element;
+    const [schema, setSchema] = el.useState(null);
+    const [problem, setProblem] = el.useState('');
+    const [saved, setSaved] = el.useState({});
+    const [values, setValues] = el.useState({});
+    const [errors, setErrors] = el.useState({});
+    const [notice, setNotice] = el.useState(null);
+    const [saving, setSaving] = el.useState(false);
+    const [loading, setLoading] = el.useState(true);
+
+    el.useEffect(function () {
+      wp().apiFetch({ path: restPath(slug) + '?id=' + id })
+        .then(function (data) {
+          if (!data.schema) { setProblem(data.problem || ''); setLoading(false); return; }
+          setSchema(data.schema);
+          setSaved(data.values);
+          setValues(data.values);
+          setLoading(false);
+        })
+        .catch(function () {
+          setProblem('This editor could not be loaded. Reload the page to try again.');
+          setLoading(false);
+        });
+    }, [slug, id]);
+
+    function setValue(fieldId, value) {
+      setValues(function (prev) {
+        const next = Object.assign({}, prev);
+        next[fieldId] = value;
+        return next;
+      });
+      setNotice(null);
+    }
+
+    function save() {
+      setSaving(true);
+      wp().apiFetch({
+        path: restPath(slug),
+        method: 'POST',
+        data: { id: id, values: values },
+      }).then(function (result) {
+        setSaved(result.values);
+        setValues(result.values);
+        setErrors({});
+        setNotice({ kind: 'success', text: 'Saved. The site is showing these changes now.' });
+        setSaving(false);
+      }).catch(function (response) {
+        const body = response && response.errors ? response : { errors: { _screen: 'That could not be saved. Try again.' } };
+        setErrors(body.errors);
+        setNotice({ kind: 'danger', text: body.errors._screen || 'Nothing was saved. Some fields need attention first.' });
+        setSaving(false);
+      });
+    }
+
+    function discard() {
+      setValues(saved);
+      setErrors({});
+      setNotice(null);
+    }
+
+    return {
+      schema: schema, problem: problem, loading: loading, values: values, saved: saved,
+      errors: errors, notice: notice, saving: saving,
+      setValue: setValue, save: save, discard: discard,
+      dismiss: function () { setNotice(null); },
+      dirty: isDirty(saved, values),
+    };
+  }
+
+  /* --- The shell ----------------------------------------------------------- */
+
+  function Editor(props) {
+    const el = wp().element;
+    const h = el.createElement;
+    const record = useRecord(props.slug, props.id);
+    const [tab, setTab] = el.useState(null);
+
+    if (record.loading) {
+      return h('div', { className: 'bw-card' }, h('div', { className: 'bw-card__body' },
+        h('div', { className: 'bw-skel' }), h('div', { className: 'bw-skel' }), h('div', { className: 'bw-skel' })));
+    }
+    if (record.problem) {
+      return h('div', { className: 'bw-notice bw-notice--danger' }, h('p', null, record.problem));
+    }
+
+    const tabs = record.schema.tabs || [];
+    const active = tab || (tabs[0] && tabs[0].id);
+    const current = tabs.find(function (t) { return t.id === active; }) || tabs[0];
+    const dirtyIn = dirtyTabs(record.schema, record.saved, record.values);
+
+    return h('div', { className: 'bw-page' },
+      h(PageHead, { schema: record.schema }),
+      tabs.length > 1 ? h(Tabs, { tabs: tabs, active: active, onPick: setTab }) : null,
+      record.notice ? h(Notice, { notice: record.notice, onDismiss: record.dismiss,
+        onGo: function () { const t = firstErrorTab(record.schema, record.errors); if (t) setTab(t); } }) : null,
+      h('div', { className: 'bw-panels' }, (current ? current.panels : []).map(function (panel) {
+        return h(Panel, { key: panel.id, panel: panel, record: record });
+      })),
+      h(SaveBar, { record: record, dirtyIn: dirtyIn })
+    );
+  }
+
+  function PageHead(props) {
+    const h = wp().element.createElement;
+    return h('div', { className: 'bw-pagehead' },
+      h('div', { className: 'bw-pagehead__titles' },
+        props.schema.eyebrow ? h('p', { className: 'bw-pagehead__eyebrow' }, props.schema.eyebrow) : null,
+        h('h1', { className: 'bw-pagehead__h1' }, props.schema.title),
+        props.schema.lede ? h('p', { className: 'bw-pagehead__lede' }, props.schema.lede) : null));
+  }
+
+  function Tabs(props) {
+    const h = wp().element.createElement;
+    return h('div', { className: 'bw-tabs', role: 'tablist' }, props.tabs.map(function (tab) {
+      return h('button', {
+        key: tab.id,
+        type: 'button',
+        role: 'tab',
+        'aria-selected': tab.id === props.active,
+        className: 'bw-tab' + (tab.id === props.active ? ' is-active' : ''),
+        onClick: function () { props.onPick(tab.id); },
+      }, tab.label, h('span', { className: 'bw-tab__count' }, countLabel(tabCount(tab))));
+    }));
+  }
+
+  function Notice(props) {
+    const h = wp().element.createElement;
+    return h('div', { className: 'bw-notice bw-notice--' + props.notice.kind },
+      h('p', null, props.notice.text),
+      props.notice.kind === 'danger'
+        ? h('button', { type: 'button', className: 'bw-btn bw-btn--ghost', onClick: props.onGo }, 'Take me to it')
+        : h('button', { type: 'button', className: 'bw-btn bw-btn--ghost', onClick: props.onDismiss }, 'Dismiss'));
+  }
+
+  function Panel(props) {
+    const h = wp().element.createElement;
+    const panel = props.panel;
+    const fields = visibleFields(panel, props.record.values);
+    const hiddenId = panel.id + '__shown';
+    const shown = props.record.values[hiddenId] !== false;
+
+    return h('section', { className: 'bw-card' },
+      h('div', { className: 'bw-card__head' },
+        h('div', { className: 'bw-card__titles' },
+          panel.eyebrow ? h('p', { className: 'bw-card__eyebrow' }, panel.eyebrow) : null,
+          h('h2', { className: 'bw-card__title' }, panel.title)),
+        panel.hideable ? h('label', { className: 'bw-switch' },
+          h('input', { type: 'checkbox', checked: shown,
+            onChange: function (e) { props.record.setValue(hiddenId, e.target.checked); } }),
+          h('span', { className: 'bw-switch__track' }),
+          h('span', { className: 'bw-switch__label' }, shown ? 'Shown' : 'Hidden')) : null),
+      shown ? h('div', { className: 'bw-card__body' },
+        panel.note ? h('p', { className: 'bw-card__note' }, panel.note) : null,
+        fields.length === 0
+          ? h('div', { className: 'bw-empty' }, h('p', null, 'Nothing here yet.'))
+          : h('div', { className: 'bw-fields' }, fields.map(function (field) {
+              return h(Field, { key: field.id, field: field, record: props.record });
+            }))) : null);
+  }
+
+  function SaveBar(props) {
+    const h = wp().element.createElement;
+    const record = props.record;
+    const clean = !record.dirty;
+    const hint = clean
+      ? 'Everything is saved.'
+      : props.dirtyIn.length === 1
+        ? 'Unsaved changes in ' + props.dirtyIn[0] + '.'
+        : 'Unsaved changes.';
+
+    return h('div', { className: 'bw-savebar' },
+      h('p', { className: 'bw-savebar__hint' },
+        h('i', { className: 'bw-icon', 'data-lucide': clean ? 'circle-check' : 'circle-alert' }), hint),
+      h('button', { type: 'button', className: 'bw-btn bw-btn--ghost', disabled: clean || record.saving, onClick: record.discard }, 'Discard changes'),
+      h('button', { type: 'button', className: 'bw-btn bw-btn--primary', disabled: clean || record.saving, onClick: record.save }, record.saving ? 'Saving…' : 'Save changes'));
+  }
+
   const api = {
     isDirty: isDirty,
     dependencyMet: dependencyMet,
