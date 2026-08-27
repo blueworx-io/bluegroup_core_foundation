@@ -401,4 +401,36 @@ final class SchemaTest extends TestCase {
 		] );
 		$this->assertSame( true, $screen['tabs'][0]['panels'][0]['fields'][0]['default'] );
 	}
+
+	public function test_a_declared_default_matching_its_kind_is_accepted(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'announce', 'kind' => 'toggle', 'label' => 'Announce', 'default' => true ] ) );
+		$this->assertSame( true, $screen['tabs'][0]['panels'][0]['fields'][0]['default'] );
+	}
+
+	public function test_a_declared_default_of_the_wrong_type_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( '"announce" on the "sports" editor screen declares a default that is not a boolean, which a "toggle" field needs' );
+		Schema::validate( $this->screen( [ 'id' => 'announce', 'kind' => 'toggle', 'label' => 'Announce', 'default' => '1' ] ) );
+	}
+
+	public function test_a_declared_default_of_the_wrong_type_is_rejected_for_an_array_kind(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'not an array, which a "tokens" field needs' );
+		Schema::validate( $this->screen( [ 'id' => 'ages', 'kind' => 'tokens', 'label' => 'Ages', 'default' => '' ] ) );
+	}
+
+	public function test_a_number_fields_own_default_respects_its_declared_min(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'seats', 'kind' => 'number', 'label' => 'Seats', 'min' => 5 ] ) );
+		$this->assertSame( 5, $screen['tabs'][0]['panels'][0]['fields'][0]['default'] );
+	}
+
+	public function test_a_range_fields_own_default_respects_a_declared_max_below_zero(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'balance', 'kind' => 'range', 'label' => 'Balance', 'max' => -3 ] ) );
+		$this->assertSame( -3, $screen['tabs'][0]['panels'][0]['fields'][0]['default'] );
+	}
+
+	public function test_a_number_fields_default_is_unaffected_by_a_range_straddling_zero(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'seats', 'kind' => 'number', 'label' => 'Seats', 'min' => -10, 'max' => 10 ] ) );
+		$this->assertSame( 0, $screen['tabs'][0]['panels'][0]['fields'][0]['default'] );
+	}
 }

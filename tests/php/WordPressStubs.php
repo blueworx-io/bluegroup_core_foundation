@@ -274,9 +274,13 @@ if ( ! function_exists( 'delete_post_thumbnail' ) ) {
 }
 if ( ! function_exists( 'get_post_thumbnail_id' ) ) {
 	function get_post_thumbnail_id( $id ) {
-		// Real WordPress returns false, not 0, when there is no thumbnail —
-		// Store::read() has to cast that itself; the stub returning 0 here
-		// would hide a missing cast rather than exercise it.
+		// Real WordPress returns 0, not false, for an existing post with no
+		// thumbnail — false only when the post itself does not exist. This
+		// stub returns false whenever no thumbnail is set, which is stricter
+		// than reality: it exercises Store::read()'s cast harder than
+		// production ever will, since production never even needs one for
+		// the 0 case. That is deliberately safe, not a claim about what
+		// WordPress itself returns.
 		return $GLOBALS['bwpe_stub']['thumbnails'][ $id ] ?? false;
 	}
 }

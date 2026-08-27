@@ -212,13 +212,15 @@ final class Schema {
 	}
 
 	/** The value Store::read() hands back for a field of this kind when it has never been saved. */
-	private static function defaultForKind( string $kind ) {
-		switch ( $kind ) {
+	private static function defaultForKind( array $field ) {
+		switch ( $field['kind'] ) {
 			case 'toggle':
 				return false;
 
 			case 'number':
 			case 'range':
+				return self::defaultZeroClampedToRange( $field );
+
 			case 'media':
 			case 'file':
 			case 'record':
@@ -232,6 +234,79 @@ final class Schema {
 
 			default:
 				return '';
+		}
+	}
+
+	/**
+	 * 0 is the default a number/range field gets when it declares none of
+	 * its own — except Sanitise clamps every value to a declared min/max and
+	 * can never actually produce a 0 outside that range, so a fresh screen
+	 * would open already showing a value the field would refuse the moment
+	 * anyone saved it. Only min above zero or max below zero can ever move
+	 * this: any range straddling zero already accepts 0 as-is.
+	 */
+	private static function defaultZeroClampedToRange( array $field ) {
+		$value = 0;
+		if ( isset( $field['min'] ) && (int) $field['min'] > $value ) {
+			$value = (int) $field['min'];
+		}
+		if ( isset( $field['max'] ) && (int) $field['max'] < $value ) {
+			$value = (int) $field['max'];
+		}
+		return $value;
+	}
+
+	/**
+	 * Whether a declared default is even the right shape for its field's
+	 * kind. Checked at registration, where this library puts every loud
+	 * failure: Store::read() also runs a default through castByKind() on
+	 * the way out, but that is a defensive fallback for a hand-built screen
+	 * that skipped Schema::validate() entirely, not a substitute for telling
+	 * whoever wrote the schema what they got wrong.
+	 */
+	private static function defaultMatchesKind( $value, string $kind ): bool {
+		switch ( $kind ) {
+			case 'toggle':
+				return is_bool( $value );
+
+			case 'number':
+			case 'range':
+			case 'media':
+			case 'file':
+			case 'record':
+				return is_int( $value );
+
+			case 'checkboxes':
+			case 'scrolllist':
+			case 'tokens':
+			case 'repeater':
+				return is_array( $value );
+
+			default:
+				return is_string( $value );
+		}
+	}
+
+	private static function defaultTypeLabel( string $kind ): string {
+		switch ( $kind ) {
+			case 'toggle':
+				return 'a boolean';
+
+			case 'number':
+			case 'range':
+			case 'media':
+			case 'file':
+			case 'record':
+				return 'an integer';
+
+			case 'checkboxes':
+			case 'scrolllist':
+			case 'tokens':
+			case 'repeater':
+				return 'an array';
+
+			default:
+				return 'a string';
 		}
 	}
 
@@ -308,7 +383,19 @@ final class Schema {
 		// kind, so a never-touched toggle reads false and a never-touched
 		// list reads [] rather than every kind sharing the single '' a bare
 		// unset value would otherwise be.
-		$field['default']     = array_key_exists( 'default', $field ) ? $field['default'] : self::defaultForKind( $field['kind'] );
+		if ( array_key_exists( 'default', $field ) ) {
+			if ( ! self::defaultMatchesKind( $field['default'], $field['kind'] ) ) {
+				throw new InvalidArgumentException( sprintf(
+					'The field "%s" on the "%s" editor screen declares a default that is not %s, which a "%s" field needs.',
+					$field['id'],
+					$slug,
+					self::defaultTypeLabel( $field['kind'] ),
+					$field['kind']
+				) );
+			}
+		} else {
+			$field['default'] = self::defaultForKind( $field );
+		}
 
 		if ( null === $repeater_id && 'repeater' === $field['kind'] ) {
 			if ( empty( $field['fields'] ) ) {

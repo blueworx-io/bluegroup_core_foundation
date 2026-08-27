@@ -130,9 +130,13 @@ final class PostStore extends Store {
 			// and for a genuinely empty saved value, so it cannot tell them
 			// apart. A field that was never saved gets its declared default
 			// rather than a cast of an empty string that was never there.
+			// The default is read with ?? and run through castByKind() too:
+			// Schema::validate() already checked it matches the field's kind,
+			// but a hand-built screen that skipped Schema entirely may have
+			// no 'default' key at all, or one of the wrong shape.
 			$out[ $key ] = metadata_exists( 'post', $id, $meta_key )
 				? $this->castByKind( $field, get_post_meta( $id, $meta_key, true ) )
-				: $field['default'];
+				: $this->castByKind( $field, $field['default'] ?? '' );
 		}
 
 		return $out;
@@ -310,10 +314,11 @@ final class OptionStore extends Store {
 			// The key being absent from the saved array is this store's
 			// version of "was this ever written" — an option is one array,
 			// so there is no metadata_exists() to ask; array_key_exists()
-			// answers the same question.
+			// answers the same question. The default is read with ?? and
+			// cast the same way as PostStore::read() — see there for why.
 			$out[ $field['id'] ] = array_key_exists( $field['id'], $saved )
 				? $this->castByKind( $field, $saved[ $field['id'] ] )
-				: $field['default'];
+				: $this->castByKind( $field, $field['default'] ?? '' );
 		}
 		return $out;
 	}

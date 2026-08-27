@@ -248,4 +248,38 @@ final class StoreTest extends TestCase {
 		$GLOBALS['bwpe_stub']['posts'][7] = [ 'post_type' => 'bw_sport' ];
 		$this->assertSame( 0, $store->read( 7 )['featured_image'] );
 	}
+
+	/**
+	 * Schema::validate() rejects a mismatched default at registration, but a
+	 * hand-built screen (Task 12's settings tab, or any screen that never
+	 * passed through Schema::validate()) can still carry one. Store::read()
+	 * runs a default through castByKind() defensively, so this never reaches
+	 * the browser raw.
+	 */
+	public function test_a_mismatched_default_on_a_hand_built_screen_is_still_cast_sanely(): void {
+		$screen = [
+			'slug' => 'sports', 'store' => 'post', 'post_type' => 'bw_sport',
+			'tabs' => [ [ 'id' => 'd', 'label' => 'Details', 'panels' => [
+				[ 'id' => 'b', 'title' => 'Basics', 'fields' => [
+					[ 'id' => 'announce', 'kind' => 'toggle', 'label' => 'Announce', 'default' => '1' ],
+				] ],
+			] ] ],
+		];
+		$store = Store::for( $screen );
+		$this->assertSame( true, $store->read( 99 )['announce'] );
+	}
+
+	/** A hand-built screen may have no 'default' key at all — must not raise. */
+	public function test_a_missing_default_key_on_a_hand_built_screen_reads_back_the_kinds_own_default(): void {
+		$screen = [
+			'slug' => 'sports', 'store' => 'post', 'post_type' => 'bw_sport',
+			'tabs' => [ [ 'id' => 'd', 'label' => 'Details', 'panels' => [
+				[ 'id' => 'b', 'title' => 'Basics', 'fields' => [
+					[ 'id' => 'seats', 'kind' => 'number', 'label' => 'Seats' ],
+				] ],
+			] ] ],
+		];
+		$store = Store::for( $screen );
+		$this->assertSame( 0, $store->read( 99 )['seats'] );
+	}
 }
