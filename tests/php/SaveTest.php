@@ -244,4 +244,22 @@ final class SaveTest extends TestCase {
 			'the save stopped at the first failure, so the field after it was never attempted'
 		);
 	}
+
+	public function test_a_hideable_panels_shown_switch_round_trips_through_save_and_load(): void {
+		Editor::register( [
+			'slug' => 'clubs', 'title' => 'Edit club', 'post_type' => 'bw_sport',
+			'tabs' => [ [ 'id' => 'd', 'label' => 'Details', 'panels' => [
+				[ 'id' => 'promo', 'title' => 'Promo', 'hideable' => true, 'fields' => [
+					[ 'id' => 'name', 'kind' => 'text', 'label' => 'Name' ],
+				] ],
+			] ] ],
+		] );
+
+		$result = Editor::save( 'clubs', [ 'name' => 'Rugby', 'promo__shown' => false ], 7 );
+		$this->assertTrue( $result['ok'] );
+		$this->assertFalse( Editor::load( 'clubs', 7 )['values']['promo__shown'], 'the switch value must survive a save, not be dropped as an undeclared field' );
+
+		Editor::save( 'clubs', [ 'name' => 'Rugby', 'promo__shown' => true ], 7 );
+		$this->assertTrue( Editor::load( 'clubs', 7 )['values']['promo__shown'] );
+	}
 }

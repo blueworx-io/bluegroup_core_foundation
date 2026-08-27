@@ -31,9 +31,14 @@
     return String(got === undefined ? '' : got) === String(want);
   }
 
+  // A hideable panel's own shown/hidden switch is declared as a real field so
+  // its value is saved (see Schema's PANEL_SWITCH_SUFFIX), but it is the
+  // panel head's control, not one of the panel's own fields — so it never
+  // appears in the fields grid, and an otherwise-empty hideable panel still
+  // reads as empty rather than as having one field.
   function visibleFields(panel, values) {
     return (panel.fields || []).filter(function (field) {
-      return dependencyMet(field, values);
+      return !field.panel_switch && dependencyMet(field, values);
     });
   }
 
@@ -171,7 +176,10 @@
 
     if (record.loading) {
       return h('div', { className: 'bw-card' }, h('div', { className: 'bw-card__body' },
-        h('div', { className: 'bw-skel' }), h('div', { className: 'bw-skel' }), h('div', { className: 'bw-skel' })));
+        h('div', { className: 'bw-skel-stack' },
+          h('div', { className: 'bw-skel bw-skel--title' }),
+          h('div', { className: 'bw-skel bw-skel--text' }),
+          h('div', { className: 'bw-skel bw-skel--text' }))));
     }
     if (record.problem) {
       return h('div', { className: 'bw-notice bw-notice--danger' }, h('p', null, record.problem));
@@ -186,6 +194,7 @@
       h(PageHead, { schema: record.schema }),
       tabs.length > 1 ? h(Tabs, { tabs: tabs, active: active, onPick: setTab }) : null,
       record.notice ? h(Notice, { notice: record.notice, onDismiss: record.dismiss,
+        canGo: Boolean(firstErrorTab(record.schema, record.errors)),
         onGo: function () { const t = firstErrorTab(record.schema, record.errors); if (t) setTab(t); } }) : null,
       h('div', { className: 'bw-panels' }, (current ? current.panels : []).map(function (panel) {
         return h(Panel, { key: panel.id, panel: panel, record: record });
@@ -219,9 +228,13 @@
 
   function Notice(props) {
     const h = wp().element.createElement;
+    // "Take me to it" only makes sense when there is a tab to jump to. A
+    // screen-level (_screen) error has no field, so no tab, so no target —
+    // offer the same dismiss a success notice gets instead of a dead button.
+    const offerGo = props.notice.kind === 'danger' && props.canGo;
     return h('div', { className: 'bw-notice bw-notice--' + props.notice.kind },
       h('p', null, props.notice.text),
-      props.notice.kind === 'danger'
+      offerGo
         ? h('button', { type: 'button', className: 'bw-btn bw-btn--ghost', onClick: props.onGo }, 'Take me to it')
         : h('button', { type: 'button', className: 'bw-btn bw-btn--ghost', onClick: props.onDismiss }, 'Dismiss'));
   }
@@ -230,17 +243,21 @@
     const h = wp().element.createElement;
     const panel = props.panel;
     const fields = visibleFields(panel, props.record.values);
-    const hiddenId = panel.id + '__shown';
-    const shown = props.record.values[hiddenId] !== false;
+    // The panel's own switch field is declared by Schema (see
+    // PANEL_SWITCH_SUFFIX) so its value flows through the normal save
+    // pipeline; found by its marker rather than assuming the id shape, so a
+    // change to that convention on the server cannot silently strand this.
+    const switchField = (panel.fields || []).find(function (f) { return f.panel_switch; });
+    const shown = !switchField || props.record.values[switchField.id] !== false;
 
     return h('section', { className: 'bw-card' },
       h('div', { className: 'bw-card__head' },
         h('div', { className: 'bw-card__titles' },
           panel.eyebrow ? h('p', { className: 'bw-card__eyebrow' }, panel.eyebrow) : null,
           h('h2', { className: 'bw-card__title' }, panel.title)),
-        panel.hideable ? h('label', { className: 'bw-switch' },
+        panel.hideable && switchField ? h('label', { className: 'bw-switch' },
           h('input', { type: 'checkbox', checked: shown,
-            onChange: function (e) { props.record.setValue(hiddenId, e.target.checked); } }),
+            onChange: function (e) { props.record.setValue(switchField.id, e.target.checked); } }),
           h('span', { className: 'bw-switch__track' }),
           h('span', { className: 'bw-switch__label' }, shown ? 'Shown' : 'Hidden')) : null),
       shown ? h('div', { className: 'bw-card__body' },

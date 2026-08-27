@@ -48,6 +48,25 @@ test('visibleFields: drops fields whose condition is false', () => {
   assert.deepEqual(pe.visibleFields(panel, { announce: true }).map((f) => f.id), ['name', 'announce', 'announce_text']);
 });
 
+test('visibleFields: omits a panel-switch field', () => {
+  const panel = { id: 'basics', fields: [
+    { id: 'name', kind: 'text' },
+    { id: 'basics__shown', kind: 'toggle', panel_switch: true },
+  ] };
+  assert.deepEqual(pe.visibleFields(panel, {}).map((f) => f.id), ['name']);
+});
+
+test('dependencyMet: a string-valued dependency compares as strings', () => {
+  const field = { id: 'extra', depends_on: { field: 'side', value: 'away' } };
+  assert.equal(pe.dependencyMet(field, { side: 'home' }), false);
+  assert.equal(pe.dependencyMet(field, { side: 'away' }), true);
+});
+
+test('dependencyMet: a numeric value from the server satisfies a declared string', () => {
+  const field = { id: 'extra', depends_on: { field: 'tier', value: '1' } };
+  assert.equal(pe.dependencyMet(field, { tier: 1 }), true);
+});
+
 test('tabCount: counts the panels in the tab, not the fields', () => {
   assert.equal(pe.tabCount(schema.tabs[0], {}), 1);
 });

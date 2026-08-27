@@ -32,6 +32,17 @@ final class Schema {
 	const RESERVED_PANEL_IDS = [ 'status', 'taxonomies', 'parent' ];
 
 	/**
+	 * A hideable panel gets a field auto-declared on it — <panel_id>__shown —
+	 * so its shown/hidden state flows through Capabilities, Sanitise, Validate
+	 * and Store like any other value, rather than being invented by the
+	 * browser and dropped by Sanitise::values(), which only keeps values for
+	 * fields the schema actually declares. Hence the suffix is reserved: a
+	 * plugin field with the same ending on a hideable panel would collide
+	 * with the one this library adds.
+	 */
+	const PANEL_SWITCH_SUFFIX = '__shown';
+
+	/**
 	 * The Publish and settings tab's own field ids are reserved the same way:
 	 * a plugin field called post_status or post_tags would register fine and
 	 * then have its value silently redirected into the post column instead of
@@ -157,10 +168,43 @@ final class Schema {
 		$panel['note']     = $panel['note'] ?? '';
 		$panel['hideable'] = (bool) ( $panel['hideable'] ?? false );
 		$panel['fields']   = $panel['fields'] ?? [];
+
+		if ( $panel['hideable'] ) {
+			foreach ( $panel['fields'] as $existing ) {
+				if ( isset( $existing['id'] ) && self::endsWithPanelSwitchSuffix( $existing['id'] ) ) {
+					throw new InvalidArgumentException( sprintf(
+						'The field "%s" on the "%s" editor screen ends in "%s", which is reserved for a hideable panel\'s own show/hide switch. Choose a different id.',
+						$existing['id'],
+						$slug,
+						self::PANEL_SWITCH_SUFFIX
+					) );
+				}
+			}
+		}
+
 		foreach ( $panel['fields'] as $f => $field ) {
 			$panel['fields'][ $f ] = self::field( $field, $slug, $seen, null, $dependencies, $repeater_scopes, $reserved_fields );
 		}
+
+		// Added after the plugin's own fields are validated, so it never
+		// collides with a field id the loop above already claimed, and after
+		// the reserved-suffix check above, so this is the only field ever
+		// allowed to end in the reserved suffix.
+		if ( $panel['hideable'] ) {
+			$panel['fields'][] = self::field( [
+				'id'           => $panel['id'] . self::PANEL_SWITCH_SUFFIX,
+				'kind'         => 'toggle',
+				'label'        => 'Shown',
+				'panel_switch' => true,
+			], $slug, $seen, null, $dependencies, $repeater_scopes, $reserved_fields );
+		}
+
 		return $panel;
+	}
+
+	private static function endsWithPanelSwitchSuffix( string $id ): bool {
+		$suffix = self::PANEL_SWITCH_SUFFIX;
+		return substr( $id, -strlen( $suffix ) ) === $suffix;
 	}
 
 	/**

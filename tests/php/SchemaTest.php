@@ -299,4 +299,67 @@ final class SchemaTest extends TestCase {
 		] );
 		$this->assertSame( 'post_status', $screen['tabs'][0]['panels'][0]['fields'][0]['id'] );
 	}
+
+	public function test_a_hideable_panel_gains_its_own_shown_switch_field(): void {
+		$screen = Schema::validate( [
+			'slug'      => 'sports',
+			'title'     => 'Edit sport',
+			'post_type' => 'bw_sport',
+			'tabs'      => [
+				[ 'id' => 'details', 'label' => 'Details', 'panels' => [
+					[ 'id' => 'basics', 'title' => 'Basics', 'hideable' => true, 'fields' => [
+						[ 'id' => 'name', 'kind' => 'text', 'label' => 'Name' ],
+					] ],
+				] ],
+			],
+		] );
+		$fields = $screen['tabs'][0]['panels'][0]['fields'];
+		$this->assertCount( 2, $fields );
+		$this->assertSame( 'basics__shown', $fields[1]['id'] );
+		$this->assertSame( 'toggle', $fields[1]['kind'] );
+		$this->assertTrue( $fields[1]['panel_switch'] );
+	}
+
+	public function test_a_non_hideable_panel_gains_no_shown_switch_field(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'name', 'kind' => 'text', 'label' => 'Name' ] ) );
+		$fields = $screen['tabs'][0]['panels'][0]['fields'];
+		$this->assertCount( 1, $fields );
+		$this->assertArrayNotHasKey( 'panel_switch', $fields[0] );
+	}
+
+	public function test_the_shown_switch_field_id_follows_the_panel_id(): void {
+		$screen = Schema::validate( [
+			'slug'      => 'sports',
+			'title'     => 'Edit sport',
+			'post_type' => 'bw_sport',
+			'tabs'      => [
+				[ 'id' => 'details', 'label' => 'Details', 'panels' => [
+					[ 'id' => 'promo', 'title' => 'Promo', 'hideable' => true, 'fields' => [] ],
+				] ],
+			],
+		] );
+		$this->assertSame( 'promo__shown', $screen['tabs'][0]['panels'][0]['fields'][0]['id'] );
+	}
+
+	public function test_a_plugin_field_ending_in_shown_on_a_hideable_panel_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'reserved for a hideable panel' );
+		Schema::validate( [
+			'slug'      => 'sports',
+			'title'     => 'Edit sport',
+			'post_type' => 'bw_sport',
+			'tabs'      => [
+				[ 'id' => 'details', 'label' => 'Details', 'panels' => [
+					[ 'id' => 'basics', 'title' => 'Basics', 'hideable' => true, 'fields' => [
+						[ 'id' => 'basics__shown', 'kind' => 'toggle', 'label' => 'Custom' ],
+					] ],
+				] ],
+			],
+		] );
+	}
+
+	public function test_a_field_ending_in_shown_on_a_non_hideable_panel_is_accepted(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'custom__shown', 'kind' => 'toggle', 'label' => 'Custom' ] ) );
+		$this->assertSame( 'custom__shown', $screen['tabs'][0]['panels'][0]['fields'][0]['id'] );
+	}
 }
