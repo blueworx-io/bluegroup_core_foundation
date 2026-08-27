@@ -20,6 +20,17 @@ final class Schema {
 
 	const CHOICE_KINDS = [ 'select', 'radio', 'checkboxes', 'scrolllist', 'record' ];
 
+	/**
+	 * The Publish and settings tab the library appends to every record screen
+	 * (see Settings::tab()) uses these ids. A plugin's own screen is rejected
+	 * if it tries to reuse one, so the appended tab never collides with a
+	 * plugin-authored tab or panel of the same id. This only applies to a
+	 * record ("post") screen — a settings ("option") screen never gains the
+	 * tab, so nothing to collide with.
+	 */
+	const RESERVED_TAB_IDS   = [ 'publish' ];
+	const RESERVED_PANEL_IDS = [ 'status', 'taxonomies', 'parent' ];
+
 	public static function validate( array $screen ): array {
 		if ( empty( $screen['slug'] ) || ! is_string( $screen['slug'] ) ) {
 			throw new InvalidArgumentException( 'This editor screen needs a slug.' );
@@ -49,8 +60,9 @@ final class Schema {
 		$panel_ids       = [];
 		$dependencies    = [];
 		$repeater_scopes = [];
+		$check_reserved  = ( 'post' === $screen['store'] );
 		foreach ( $screen['tabs'] as $t => $tab ) {
-			$screen['tabs'][ $t ] = self::tab( $tab, $screen['slug'], $seen, $tab_ids, $panel_ids, $dependencies, $repeater_scopes );
+			$screen['tabs'][ $t ] = self::tab( $tab, $screen['slug'], $seen, $tab_ids, $panel_ids, $dependencies, $repeater_scopes, $check_reserved );
 		}
 
 		self::checkDependencies( $screen['slug'], $seen, $repeater_scopes, $dependencies );
@@ -58,28 +70,67 @@ final class Schema {
 		return $screen;
 	}
 
-	private static function tab( array $tab, string $slug, array &$seen, array &$tab_ids, array &$panel_ids, array &$dependencies, array &$repeater_scopes ): array {
+	/**
+	 * Runs one tab through the same id-uniqueness checks and default-filling
+	 * every tab on a registered screen gets, without knowing about any other
+	 * tab on the screen. Used to normalise the Publish and settings tab
+	 * (Settings::tab()) so it produces fields with the same shape — wide,
+	 * required, help, depends_on, locked_help, capability — as a field that
+	 * came from a plugin's own schema, rather than a hand-shaped second kind
+	 * of field the browser would have to special-case.
+	 *
+	 * Reserved-id checking never applies here: this is how the reserved ids
+	 * themselves get onto the screen.
+	 */
+	public static function normaliseTab( array $tab, string $slug ): array {
+		$seen            = [];
+		$tab_ids         = [];
+		$panel_ids       = [];
+		$dependencies    = [];
+		$repeater_scopes = [];
+
+		$tab = self::tab( $tab, $slug, $seen, $tab_ids, $panel_ids, $dependencies, $repeater_scopes );
+		self::checkDependencies( $slug, $seen, $repeater_scopes, $dependencies );
+
+		return $tab;
+	}
+
+	private static function tab( array $tab, string $slug, array &$seen, array &$tab_ids, array &$panel_ids, array &$dependencies, array &$repeater_scopes, bool $check_reserved = false ): array {
 		if ( empty( $tab['id'] ) || empty( $tab['label'] ) ) {
 			throw new InvalidArgumentException( sprintf( 'Every tab on the "%s" editor screen needs an id and a label.', $slug ) );
 		}
 		if ( isset( $tab_ids[ $tab['id'] ] ) ) {
 			throw new InvalidArgumentException( sprintf( 'The "%s" editor screen uses the tab id "%s" twice. Tab ids must be unique across the whole screen.', $slug, $tab['id'] ) );
 		}
+		if ( $check_reserved && in_array( $tab['id'], self::RESERVED_TAB_IDS, true ) ) {
+			throw new InvalidArgumentException( sprintf(
+				'The "%s" editor screen uses the tab id "%s", which is reserved for the Publish and settings tab the library adds. Choose a different id.',
+				$slug,
+				$tab['id']
+			) );
+		}
 		$tab_ids[ $tab['id'] ] = true;
 
 		$tab['panels'] = $tab['panels'] ?? [];
 		foreach ( $tab['panels'] as $p => $panel ) {
-			$tab['panels'][ $p ] = self::panel( $panel, $slug, $seen, $panel_ids, $dependencies, $repeater_scopes );
+			$tab['panels'][ $p ] = self::panel( $panel, $slug, $seen, $panel_ids, $dependencies, $repeater_scopes, $check_reserved );
 		}
 		return $tab;
 	}
 
-	private static function panel( array $panel, string $slug, array &$seen, array &$panel_ids, array &$dependencies, array &$repeater_scopes ): array {
+	private static function panel( array $panel, string $slug, array &$seen, array &$panel_ids, array &$dependencies, array &$repeater_scopes, bool $check_reserved = false ): array {
 		if ( empty( $panel['id'] ) || empty( $panel['title'] ) ) {
 			throw new InvalidArgumentException( sprintf( 'Every panel on the "%s" editor screen needs an id and a title.', $slug ) );
 		}
 		if ( isset( $panel_ids[ $panel['id'] ] ) ) {
 			throw new InvalidArgumentException( sprintf( 'The "%s" editor screen uses the panel id "%s" twice. Panel ids must be unique across the whole screen.', $slug, $panel['id'] ) );
+		}
+		if ( $check_reserved && in_array( $panel['id'], self::RESERVED_PANEL_IDS, true ) ) {
+			throw new InvalidArgumentException( sprintf(
+				'The "%s" editor screen uses the panel id "%s", which is reserved for the Publish and settings tab the library adds. Choose a different id.',
+				$slug,
+				$panel['id']
+			) );
 		}
 		$panel_ids[ $panel['id'] ] = true;
 

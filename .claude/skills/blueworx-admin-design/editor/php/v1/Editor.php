@@ -65,6 +65,11 @@ final class Editor {
 		$visible = Capabilities::filterSchema( $screen );
 		$values  = Store::for( $screen )->read( $id );
 
+		$extra = Settings::tab( $screen );
+		if ( null !== $extra ) {
+			$visible['tabs'][] = Capabilities::filterSchema( [ 'tabs' => [ $extra ] ] )['tabs'][0];
+		}
+
 		return [
 			'schema' => $visible,
 			'values' => Capabilities::filterValues( $screen, $values ),

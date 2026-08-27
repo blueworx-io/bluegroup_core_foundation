@@ -222,4 +222,47 @@ final class SchemaTest extends TestCase {
 			],
 		] );
 	}
+
+	public function test_a_record_screen_cannot_use_the_reserved_publish_tab_id(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'reserved for the Publish and settings tab' );
+		Schema::validate( [
+			'slug'      => 'sports',
+			'title'     => 'Edit sport',
+			'post_type' => 'bw_sport',
+			'tabs'      => [
+				[ 'id' => 'publish', 'label' => 'Publish', 'panels' => [] ],
+			],
+		] );
+	}
+
+	public function test_a_record_screen_cannot_use_a_reserved_panel_id(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'reserved for the Publish and settings tab' );
+		Schema::validate( [
+			'slug'      => 'sports',
+			'title'     => 'Edit sport',
+			'post_type' => 'bw_sport',
+			'tabs'      => [
+				[ 'id' => 'details', 'label' => 'Details', 'panels' => [
+					[ 'id' => 'status', 'title' => 'Status', 'fields' => [] ],
+				] ],
+			],
+		] );
+	}
+
+	public function test_a_settings_screen_may_use_ids_reserved_for_the_publish_tab(): void {
+		$screen = Schema::validate( [
+			'slug'        => 'general',
+			'title'       => 'General settings',
+			'store'       => 'option',
+			'option_name' => 'bw_general',
+			'tabs'        => [
+				[ 'id' => 'publish', 'label' => 'Publish', 'panels' => [
+					[ 'id' => 'status', 'title' => 'Status', 'fields' => [] ],
+				] ],
+			],
+		] );
+		$this->assertSame( 'publish', $screen['tabs'][0]['id'] );
+	}
 }
