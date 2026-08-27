@@ -148,4 +148,23 @@ final class PostTypeGuardTest extends TestCase {
 		$this->assertNotNull( $loaded['schema'] );
 		$this->assertSame( 'Rugby', $loaded['values']['name'] );
 	}
+
+	/**
+	 * save() already checked the screen capability; load() did not, so
+	 * anything that reached the library directly rather than through the
+	 * REST route's permission_callback (a WP-CLI command, another plugin, a
+	 * future admin-post handler) could read a screen without holding the
+	 * capability it requires to open.
+	 */
+	public function test_load_refuses_a_user_without_the_screen_capability(): void {
+		$GLOBALS['bwpe_stub']['post_types']   = [ 'bw_sport' ];
+		$GLOBALS['bwpe_stub']['capabilities'] = [];
+		$this->registerFull();
+		$GLOBALS['bwpe_stub']['posts'][7] = [ 'post_type' => 'bw_sport' ];
+
+		$loaded = Editor::load( 'sports', 7 );
+
+		$this->assertNull( $loaded['schema'] );
+		$this->assertStringContainsString( 'permission', $loaded['problem'] );
+	}
 }

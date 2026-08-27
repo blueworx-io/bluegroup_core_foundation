@@ -112,7 +112,18 @@ final class Editor {
 	 */
 	public static function load( string $slug, int $id = 0 ): array {
 		$screen = self::get( $slug );
-		if ( null === $screen || ! self::ready( $slug ) ) {
+		if ( null === $screen ) {
+			return [ 'schema' => null, 'values' => [], 'problem' => self::problem( $slug ) ];
+		}
+		// The REST route's permission_callback is the first gate, but load()
+		// is public API: a WP-CLI command, another plugin, or a future
+		// admin-post handler could call it directly, bypassing that gate
+		// entirely. save() already checked this; load() must too, or reading
+		// a screen never requires the capability that opening it does.
+		if ( ! current_user_can( $screen['capability'] ) ) {
+			return [ 'schema' => null, 'values' => [], 'problem' => 'You do not have permission to open this editor.' ];
+		}
+		if ( ! self::ready( $slug ) ) {
 			return [ 'schema' => null, 'values' => [], 'problem' => self::problem( $slug ) ];
 		}
 		$merged  = self::screenFor( $slug );
