@@ -44,17 +44,21 @@ final class Schema {
 			throw new InvalidArgumentException( sprintf( 'The "%s" editor screen stores to options, so it needs an option_name.', $screen['slug'] ) );
 		}
 
-		$seen      = [];
-		$tab_ids   = [];
-		$panel_ids = [];
+		$seen            = [];
+		$tab_ids         = [];
+		$panel_ids       = [];
+		$dependencies    = [];
+		$repeater_scopes = [];
 		foreach ( $screen['tabs'] as $t => $tab ) {
-			$screen['tabs'][ $t ] = self::tab( $tab, $screen['slug'], $seen, $tab_ids, $panel_ids );
+			$screen['tabs'][ $t ] = self::tab( $tab, $screen['slug'], $seen, $tab_ids, $panel_ids, $dependencies, $repeater_scopes );
 		}
+
+		self::checkDependencies( $screen['slug'], $seen, $repeater_scopes, $dependencies );
 
 		return $screen;
 	}
 
-	private static function tab( array $tab, string $slug, array &$seen, array &$tab_ids, array &$panel_ids ): array {
+	private static function tab( array $tab, string $slug, array &$seen, array &$tab_ids, array &$panel_ids, array &$dependencies, array &$repeater_scopes ): array {
 		if ( empty( $tab['id'] ) || empty( $tab['label'] ) ) {
 			throw new InvalidArgumentException( sprintf( 'Every tab on the "%s" editor screen needs an id and a label.', $slug ) );
 		}
@@ -65,12 +69,12 @@ final class Schema {
 
 		$tab['panels'] = $tab['panels'] ?? [];
 		foreach ( $tab['panels'] as $p => $panel ) {
-			$tab['panels'][ $p ] = self::panel( $panel, $slug, $seen, $panel_ids );
+			$tab['panels'][ $p ] = self::panel( $panel, $slug, $seen, $panel_ids, $dependencies, $repeater_scopes );
 		}
 		return $tab;
 	}
 
-	private static function panel( array $panel, string $slug, array &$seen, array &$panel_ids ): array {
+	private static function panel( array $panel, string $slug, array &$seen, array &$panel_ids, array &$dependencies, array &$repeater_scopes ): array {
 		if ( empty( $panel['id'] ) || empty( $panel['title'] ) ) {
 			throw new InvalidArgumentException( sprintf( 'Every panel on the "%s" editor screen needs an id and a title.', $slug ) );
 		}
@@ -84,7 +88,7 @@ final class Schema {
 		$panel['hideable'] = (bool) ( $panel['hideable'] ?? false );
 		$panel['fields']   = $panel['fields'] ?? [];
 		foreach ( $panel['fields'] as $f => $field ) {
-			$panel['fields'][ $f ] = self::field( $field, $slug, $seen );
+			$panel['fields'][ $f ] = self::field( $field, $slug, $seen, null, $dependencies, $repeater_scopes );
 		}
 		return $panel;
 	}
@@ -94,8 +98,12 @@ final class Schema {
 	 * repeater's own id, to validate a repeater's sub-fields — so a repeater
 	 * cell gets the same kind/label/options checks and the same defaults as a
 	 * top-level field, without a second copy of those checks.
+	 *
+	 * $dependencies collects every depends_on found anywhere on the screen, to
+	 * be resolved once the whole screen is known — see checkDependencies().
+	 * That lets a field depend on one declared later, in a later tab or panel.
 	 */
-	private static function field( array $field, string $slug, array &$seen, ?string $repeater_id = null ): array {
+	private static function field( array $field, string $slug, array &$seen, ?string $repeater_id, array &$dependencies, array &$repeater_scopes ): array {
 		if ( empty( $field['id'] ) ) {
 			throw new InvalidArgumentException( sprintf( 'Every field on the "%s" editor screen needs an id.', $slug ) );
 		}
@@ -103,6 +111,18 @@ final class Schema {
 			throw new InvalidArgumentException( sprintf( 'The "%s" editor screen uses the field id "%s" twice. Every field id is saved as its own value, so they must be unique across the whole screen.', $slug, $field['id'] ) );
 		}
 		$seen[ $field['id'] ] = true;
+
+		if ( array_key_exists( 'depends_on', $field ) && null !== $field['depends_on'] ) {
+			$on = $field['depends_on'];
+			if ( ! is_array( $on ) || ! array_key_exists( 'field', $on ) || ! array_key_exists( 'value', $on ) ) {
+				throw new InvalidArgumentException( sprintf( 'The field "%s" on the "%s" editor screen has a depends_on that is not usable. It needs a "field" and a "value".', $field['id'], $slug ) );
+			}
+			$dependencies[] = [
+				'field_id'    => $field['id'],
+				'repeater_id' => $repeater_id,
+				'target'      => $on['field'],
+			];
+		}
 
 		if ( empty( $field['kind'] ) || ! in_array( $field['kind'], self::KINDS, true ) ) {
 			throw new InvalidArgumentException( sprintf(
@@ -136,10 +156,81 @@ final class Schema {
 			}
 			$sub_seen = [];
 			foreach ( $field['fields'] as $sf => $sub_field ) {
-				$field['fields'][ $sf ] = self::field( $sub_field, $slug, $sub_seen, $field['id'] );
+				$field['fields'][ $sf ] = self::field( $sub_field, $slug, $sub_seen, $field['id'], $dependencies, $repeater_scopes );
 			}
+			$repeater_scopes[ $field['id'] ] = $sub_seen;
 		}
 
 		return $field;
+	}
+
+	/**
+	 * Resolves every depends_on collected while walking the screen, now that
+	 * every field id — top-level and, per repeater, sub-field — is known. Runs
+	 * after the whole screen is walked so a field may depend on one declared
+	 * later.
+	 *
+	 * A top-level field may only depend on another top-level field; a repeater
+	 * sub-field may only depend on another sub-field in the same repeater. Sub-
+	 * field values live inside rows, so a dependency that crosses that boundary
+	 * has no meaning.
+	 */
+	private static function checkDependencies( string $slug, array $seen, array $repeater_scopes, array $dependencies ): void {
+		foreach ( $dependencies as $dep ) {
+			$field_id    = $dep['field_id'];
+			$repeater_id = $dep['repeater_id'];
+			$target      = $dep['target'];
+
+			if ( null === $repeater_id ) {
+				if ( isset( $seen[ $target ] ) ) {
+					continue;
+				}
+				if ( self::inAnyRepeater( $target, $repeater_scopes ) ) {
+					throw new InvalidArgumentException( sprintf(
+						'The field "%s" on the "%s" editor screen depends on "%s", which is a field inside a repeater. A top-level field can only depend on another top-level field.',
+						$field_id,
+						$slug,
+						$target
+					) );
+				}
+				throw new InvalidArgumentException( sprintf(
+					'The field "%s" on the "%s" editor screen depends on "%s", which is not a field on the "%s" editor screen.',
+					$field_id,
+					$slug,
+					$target,
+					$slug
+				) );
+			}
+
+			if ( isset( $repeater_scopes[ $repeater_id ][ $target ] ) ) {
+				continue;
+			}
+			if ( isset( $seen[ $target ] ) || self::inAnyRepeater( $target, $repeater_scopes ) ) {
+				throw new InvalidArgumentException( sprintf(
+					'The field "%s" in the repeater "%s" on the "%s" editor screen depends on "%s", which is not a field in the same repeater. A repeater sub-field can only depend on another field in the same repeater.',
+					$field_id,
+					$repeater_id,
+					$slug,
+					$target
+				) );
+			}
+			throw new InvalidArgumentException( sprintf(
+				'The field "%s" in the repeater "%s" on the "%s" editor screen depends on "%s", which is not a field on the "%s" editor screen.',
+				$field_id,
+				$repeater_id,
+				$slug,
+				$target,
+				$slug
+			) );
+		}
+	}
+
+	private static function inAnyRepeater( string $target, array $repeater_scopes ): bool {
+		foreach ( $repeater_scopes as $scope ) {
+			if ( isset( $scope[ $target ] ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 }

@@ -147,4 +147,79 @@ final class SchemaTest extends TestCase {
 			],
 		] );
 	}
+
+	public function test_a_dependency_on_an_unknown_field_is_rejected_naming_both_ids(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( '"announce_text" on the "club-pages" editor screen depends on "announce", which is not a field on the "club-pages" editor screen' );
+		Schema::validate( [
+			'slug'      => 'club-pages',
+			'title'     => 'Club pages',
+			'post_type' => 'bw_club_page',
+			'tabs'      => [
+				[ 'id' => 'details', 'label' => 'Details', 'panels' => [
+					[ 'id' => 'basics', 'title' => 'Basics', 'fields' => [
+						[
+							'id'         => 'announce_text',
+							'kind'       => 'text',
+							'label'      => 'Announcement',
+							'depends_on' => [ 'field' => 'announce', 'value' => true ],
+						],
+					] ],
+				] ],
+			],
+		] );
+	}
+
+	public function test_a_dependency_on_a_field_declared_later_is_accepted(): void {
+		$screen = Schema::validate( [
+			'slug'      => 'sports',
+			'title'     => 'Edit sport',
+			'post_type' => 'bw_sport',
+			'tabs'      => [
+				[ 'id' => 'details', 'label' => 'Details', 'panels' => [
+					[ 'id' => 'basics', 'title' => 'Basics', 'fields' => [
+						[
+							'id'         => 'announce_text',
+							'kind'       => 'text',
+							'label'      => 'Announcement',
+							'depends_on' => [ 'field' => 'announce', 'value' => true ],
+						],
+					] ],
+					[ 'id' => 'more', 'title' => 'More', 'fields' => [
+						[ 'id' => 'announce', 'kind' => 'toggle', 'label' => 'Announce' ],
+					] ],
+				] ],
+			],
+		] );
+		$this->assertSame( 'announce', $screen['tabs'][0]['panels'][0]['fields'][0]['depends_on']['field'] );
+	}
+
+	public function test_a_repeater_sub_field_depending_on_a_top_level_field_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		Schema::validate( [
+			'slug'      => 'sports',
+			'title'     => 'Edit sport',
+			'post_type' => 'bw_sport',
+			'tabs'      => [
+				[ 'id' => 'details', 'label' => 'Details', 'panels' => [
+					[ 'id' => 'basics', 'title' => 'Basics', 'fields' => [
+						[ 'id' => 'name', 'kind' => 'text', 'label' => 'Name' ],
+						[
+							'id'     => 'days',
+							'kind'   => 'repeater',
+							'label'  => 'Days',
+							'fields' => [
+								[
+									'id'         => 'label',
+									'kind'       => 'text',
+									'label'      => 'Label',
+									'depends_on' => [ 'field' => 'name', 'value' => true ],
+								],
+							],
+						],
+					] ],
+				] ],
+			],
+		] );
+	}
 }

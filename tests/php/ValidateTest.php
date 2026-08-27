@@ -48,4 +48,68 @@ final class ValidateTest extends TestCase {
 		$errors = Validate::run( $this->screen(), [ 'name' => 'Rugby', 'label' => 'Far too long a label' ] );
 		$this->assertStringContainsString( '12', $errors['label'] );
 	}
+
+	private function dependentScreen(): array {
+		return Schema::validate( [
+			'slug'      => 'sports',
+			'title'     => 'Edit sport',
+			'post_type' => 'bw_sport',
+			'tabs'      => [
+				[ 'id' => 'details', 'label' => 'Details', 'panels' => [
+					[ 'id' => 'basics', 'title' => 'Basics', 'fields' => [
+						[ 'id' => 'announce', 'kind' => 'toggle', 'label' => 'Announce' ],
+						[
+							'id'         => 'announce_text',
+							'kind'       => 'text',
+							'label'      => 'Announcement',
+							'required'   => true,
+							'depends_on' => [ 'field' => 'announce', 'value' => true ],
+						],
+					] ],
+				] ],
+			],
+		] );
+	}
+
+	public function test_a_dependent_field_whose_condition_holds_is_validated(): void {
+		$errors = Validate::run( $this->dependentScreen(), [ 'announce' => true, 'announce_text' => '' ] );
+		$this->assertArrayHasKey( 'announce_text', $errors );
+	}
+
+	public function test_a_dependent_field_whose_condition_is_false_is_skipped(): void {
+		$errors = Validate::run( $this->dependentScreen(), [ 'announce' => false, 'announce_text' => '' ] );
+		$this->assertArrayNotHasKey( 'announce_text', $errors );
+	}
+
+	public function test_a_checkbox_submission_of_1_satisfies_a_boolean_true_condition(): void {
+		$errors = Validate::run( $this->dependentScreen(), [ 'announce' => '1', 'announce_text' => '' ] );
+		$this->assertArrayHasKey( 'announce_text', $errors );
+	}
+
+	public function test_a_dependency_on_an_unknown_field_is_validated_rather_than_skipped(): void {
+		// Built by hand, bypassing Schema::validate(), the way Task 12's second
+		// schema is — so this exercises Validate's own fail-safe rather than
+		// Schema's registration-time rejection of the same thing.
+		$screen = [
+			'slug'      => 'sports',
+			'title'     => 'Edit sport',
+			'post_type' => 'bw_sport',
+			'tabs'      => [
+				[ 'id' => 'details', 'label' => 'Details', 'panels' => [
+					[ 'id' => 'basics', 'title' => 'Basics', 'fields' => [
+						[
+							'id'         => 'name',
+							'kind'       => 'text',
+							'label'      => 'Name',
+							'required'   => true,
+							'depends_on' => [ 'field' => 'ghost', 'value' => true ],
+						],
+					] ],
+				] ],
+			],
+		];
+
+		$errors = Validate::run( $screen, [ 'name' => '' ] );
+		$this->assertArrayHasKey( 'name', $errors );
+	}
 }

@@ -13,11 +13,17 @@ final class Validate {
 	/** @return array<string,string> */
 	public static function run( array $screen, array $values ): array {
 		$errors = [];
+		$fields = Sanitise::fields( $screen );
 
-		foreach ( Sanitise::fields( $screen ) as $field ) {
+		$field_ids = [];
+		foreach ( $fields as $field ) {
+			$field_ids[ $field['id'] ] = true;
+		}
+
+		foreach ( $fields as $field ) {
 			$value = $values[ $field['id'] ] ?? '';
 
-			if ( ! self::applies( $field, $values ) ) {
+			if ( ! self::applies( $field, $values, $field_ids ) ) {
 				continue;
 			}
 
@@ -57,11 +63,23 @@ final class Validate {
 	 * A field that only exists while its condition holds is not validated when
 	 * the condition is false — it is not on the screen, so it cannot be wrong.
 	 */
-	private static function applies( array $field, array $values ): bool {
-		if ( empty( $field['depends_on'] ) ) {
+	private static function applies( array $field, array $values, array $field_ids ): bool {
+		$on = $field['depends_on'] ?? null;
+		if ( empty( $on ) || ! is_array( $on ) || ! array_key_exists( 'field', $on ) ) {
 			return true;
 		}
-		$on = $field['depends_on'];
+
+		if ( ! isset( $field_ids[ $on['field'] ] ) ) {
+			// An unresolvable dependency means we do not know whether the field
+			// is on the screen. Schema::validate() rejects this at registration,
+			// but a screen built by hand — Task 12's does — never passes through
+			// it, so this cannot assume the reference resolves. Validating a
+			// field that turns out to be hidden is a visible, fixable error;
+			// skipping one that turns out to be visible lets bad data through
+			// silently, so we fail safe and validate it.
+			return true;
+		}
+
 		return ( $values[ $on['field'] ] ?? null ) == $on['value']; // phpcs:ignore WordPress.PHP.StrictComparisons.LooseComparison -- a checkbox sends "1" for the boolean true a schema declares.
 	}
 
