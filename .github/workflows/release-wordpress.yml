@@ -129,25 +129,35 @@ jobs:
 
       # GNU tar on Ubuntu cannot write zip format, so this uses zip(1). Entries
       # come out with forward slashes, which is what WordPress needs.
+      #
+      # ZIP_NAME, and never ZIP. Info-ZIP's zip(1) reads $ZIP as a list of
+      # default command-line options and puts them before the real arguments,
+      # so naming this variable ZIP made the filename the archive argument —
+      # written to the current directory — and turned the intended destination
+      # into an input path instead. -q hid the warning about that path not
+      # existing, and zip still exited 0 because it had archived the plugin, so
+      # the failure surfaced two lines later as `ls: cannot access` and looked
+      # like nothing to do with the zip step. $UNZIP is the same trap for
+      # unzip(1), which the verify steps below call.
       - name: Build zip
         env:
           SLUG: ${{ steps.info.outputs.slug }}
-          ZIP: ${{ steps.zip.outputs.name }}
+          ZIP_NAME: ${{ steps.zip.outputs.name }}
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/stage"
-          zip -r -q "$GITHUB_WORKSPACE/$ZIP" "$SLUG"
-          ls -lh "$GITHUB_WORKSPACE/$ZIP"
+          zip -r -q "$GITHUB_WORKSPACE/$ZIP_NAME" "$SLUG"
+          ls -lh "$GITHUB_WORKSPACE/$ZIP_NAME"
 
       - name: Verify zip shape
         env:
           SLUG: ${{ steps.info.outputs.slug }}
-          ZIP: ${{ steps.zip.outputs.name }}
+          ZIP_NAME: ${{ steps.zip.outputs.name }}
           PLUGIN_FILE: ${{ steps.info.outputs.plugin_file }}
         run: |
           set -euo pipefail
-          unzip -l "$ZIP"
-          entries=$(unzip -Z1 "$ZIP")
+          unzip -l "$ZIP_NAME"
+          entries=$(unzip -Z1 "$ZIP_NAME")
           stray=$(printf '%s\n' "$entries" | awk -v s="$SLUG/" 'index($0, s) != 1' || true)
           if [ -n "$stray" ]; then
             echo "::error title=Malformed plugin zip::Entries outside $SLUG/ — the archive must nest exactly one level:"
@@ -172,10 +182,10 @@ jobs:
         env:
           SLUG: ${{ steps.info.outputs.slug }}
           PLUGIN_SLUG: ${{ steps.info.outputs.slug }}
-          ZIP: ${{ steps.zip.outputs.name }}
+          ZIP_NAME: ${{ steps.zip.outputs.name }}
         run: |
           set -euo pipefail
-          unzip -Z1 "$ZIP" | node "$RUNNER_TEMP/foundation/scripts/check-plugin-zip-content.mjs"
+          unzip -Z1 "$ZIP_NAME" | node "$RUNNER_TEMP/foundation/scripts/check-plugin-zip-content.mjs"
 
       - name: Extract changelog section for this version
         id: notes
@@ -215,13 +225,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-          ZIP: ${{ steps.zip.outputs.name }}
+          ZIP_NAME: ${{ steps.zip.outputs.name }}
           NOTES_FOUND: ${{ steps.notes.outputs.found }}
         run: |
           set -euo pipefail
           if [ "$NOTES_FOUND" = "true" ]; then
-            gh release create "$TAG" "$ZIP" --title "$TAG" --notes-file /tmp/release-notes.md
+            gh release create "$TAG" "$ZIP_NAME" --title "$TAG" --notes-file /tmp/release-notes.md
           else
-            gh release create "$TAG" "$ZIP" --title "$TAG" --generate-notes
+            gh release create "$TAG" "$ZIP_NAME" --title "$TAG" --generate-notes
           fi
-          echo "Published $TAG with $ZIP attached."
+          echo "Published $TAG with $ZIP_NAME attached."
