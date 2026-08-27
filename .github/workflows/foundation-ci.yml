@@ -39,7 +39,11 @@ jobs:
           node-version: ${{ matrix.node }}
 
       - name: Syntax-check all scripts
-        run: for f in scripts/*.mjs scripts/lib/*.mjs .claude/hooks/*.mjs; do node --check "$f"; done
+        run: |
+          for f in scripts/*.mjs scripts/lib/*.mjs .claude/hooks/*.mjs \
+                   .claude/skills/blueworx-admin-design/editor/*.js; do
+            node --check "$f"
+          done
 
       - name: Run unit tests
         run: node --test scripts/lib/*.test.mjs .claude/hooks/*.test.mjs
