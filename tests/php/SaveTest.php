@@ -12,6 +12,11 @@ final class SaveTest extends TestCase {
 		Editor::reset();
 		$GLOBALS['bwpe_stub']['post_types']   = [ 'bw_sport' ];
 		$GLOBALS['bwpe_stub']['capabilities'] = [ 'manage_options' ];
+		// Editor::load()/save() now check the id resolves to a real post of
+		// this screen's own post type before doing anything else — see
+		// PostTypeGuardTest. Every test in this file edits post 7, so it
+		// needs to exist as a bw_sport post for that check to pass.
+		$GLOBALS['bwpe_stub']['posts'][7]    = [ 'post_type' => 'bw_sport' ];
 
 		Editor::register( [
 			'slug' => 'sports', 'title' => 'Edit sport', 'post_type' => 'bw_sport',
@@ -144,7 +149,7 @@ final class SaveTest extends TestCase {
 	}
 
 	public function test_a_locked_field_arrives_with_its_value_on_load(): void {
-		$GLOBALS['bwpe_stub']['posts'][7] = [ 'post_author' => 9 ];
+		$GLOBALS['bwpe_stub']['posts'][7] = [ 'post_type' => 'bw_sport', 'post_author' => 9 ];
 		$loaded = Editor::load( 'sports', 7 );
 
 		$this->assertSame( 9, $loaded['values']['post_author'] );
@@ -153,7 +158,7 @@ final class SaveTest extends TestCase {
 	}
 
 	public function test_a_locked_field_is_still_dropped_on_save(): void {
-		$GLOBALS['bwpe_stub']['posts'][7] = [ 'post_author' => 9 ];
+		$GLOBALS['bwpe_stub']['posts'][7] = [ 'post_type' => 'bw_sport', 'post_author' => 9 ];
 		$result = Editor::save( 'sports', [ 'name' => 'Rugby', 'post_author' => 5 ], 7 );
 
 		$this->assertTrue( $result['ok'] );
@@ -187,7 +192,7 @@ final class SaveTest extends TestCase {
 	}
 
 	public function test_an_empty_post_date_leaves_the_stored_date_alone(): void {
-		$GLOBALS['bwpe_stub']['posts'][7] = [ 'post_date' => '2026-03-04 09:30:00' ];
+		$GLOBALS['bwpe_stub']['posts'][7] = [ 'post_type' => 'bw_sport', 'post_date' => '2026-03-04 09:30:00' ];
 		$result = Editor::save( 'sports', [ 'name' => 'Rugby', 'post_status' => 'publish', 'post_date' => '' ], 7 );
 
 		$this->assertTrue( $result['ok'] );
@@ -200,7 +205,7 @@ final class SaveTest extends TestCase {
 	}
 
 	public function test_a_zeroed_post_date_reads_back_as_empty(): void {
-		$GLOBALS['bwpe_stub']['posts'][7] = [ 'post_date' => '0000-00-00 00:00:00' ];
+		$GLOBALS['bwpe_stub']['posts'][7] = [ 'post_type' => 'bw_sport', 'post_date' => '0000-00-00 00:00:00' ];
 		$this->assertSame( '', Editor::load( 'sports', 7 )['values']['post_date'] );
 	}
 

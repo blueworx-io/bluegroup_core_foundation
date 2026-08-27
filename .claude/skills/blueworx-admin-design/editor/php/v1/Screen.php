@@ -108,11 +108,14 @@ final class Screen {
 	}
 
 	/**
-	 * The plugin that registered the screen owns the assets, so the URL comes
-	 * from where its own copy of the library was loaded from, not a directory
-	 * depth guessed from this file's own location — that guess only holds in
-	 * this repo's own layout, and walks past the plugin root once the library
-	 * is vendored into a real plugin at <plugin>/blueworx-page-editor/v1/.
+	 * Only one copy of the library ever runs — the highest version on the
+	 * site (see Registry) — regardless of which plugin registered any given
+	 * screen. So the asset URL always comes from wherever that winning
+	 * copy's own plugin vendored it, not from the plugin that registered
+	 * this particular screen, and not from a directory depth guessed from
+	 * this file's own location — that guess only holds in this repo's own
+	 * layout, and walks past the plugin root once the library is vendored
+	 * into a real plugin at <plugin>/blueworx-page-editor/v1/.
 	 *
 	 * The filter stays as an escape hatch for a plugin that keeps its built
 	 * assets somewhere other than <plugin>/assets/ (a custom build output

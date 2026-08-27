@@ -8,6 +8,7 @@
 $GLOBALS['bwpe_stub'] = [
 	'post_types'   => [],
 	'capabilities' => [],
+	'edit_posts'   => [],
 	'meta'         => [],
 	'options'      => [],
 	'posts'        => [],
@@ -21,6 +22,7 @@ function bwpe_stub_reset(): void {
 	$GLOBALS['bwpe_stub'] = [
 		'post_types'   => [],
 		'capabilities' => [],
+		'edit_posts'   => [],
 		'meta'         => [],
 		'options'      => [],
 		'posts'        => [],
@@ -53,7 +55,19 @@ if ( ! function_exists( 'post_type_exists' ) ) {
 	}
 }
 if ( ! function_exists( 'current_user_can' ) ) {
-	function current_user_can( $cap ) {
+	// Real WordPress takes a second argument for a per-object capability —
+	// current_user_can( 'edit_post', $id ) asks about that specific post,
+	// respecting its post type's own capability mapping, not just whether the
+	// screen capability is held. 'edit_posts' answers per id; an id with no
+	// entry defaults to allowed, so every test that never mentions it keeps
+	// behaving as it did before this existed.
+	function current_user_can( $cap, ...$args ) {
+		if ( 'edit_post' === $cap && isset( $args[0] ) ) {
+			$id = (int) $args[0];
+			return array_key_exists( $id, $GLOBALS['bwpe_stub']['edit_posts'] )
+				? (bool) $GLOBALS['bwpe_stub']['edit_posts'][ $id ]
+				: true;
+		}
 		return in_array( $cap, $GLOBALS['bwpe_stub']['capabilities'], true );
 	}
 }

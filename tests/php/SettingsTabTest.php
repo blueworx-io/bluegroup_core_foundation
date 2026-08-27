@@ -11,6 +11,10 @@ final class SettingsTabTest extends TestCase {
 		Editor::reset();
 		$GLOBALS['bwpe_stub']['post_types']   = [ 'bw_sport' ];
 		$GLOBALS['bwpe_stub']['capabilities'] = [ 'manage_options' ];
+		// Editor::load() now checks the id resolves to a real post of this
+		// screen's own post type — see PostTypeGuardTest. The record-screen
+		// tests here all load id 7, so it needs to exist as a bw_sport post.
+		$GLOBALS['bwpe_stub']['posts'][7]     = [ 'post_type' => 'bw_sport' ];
 	}
 
 	private function register( string $store = 'post' ): void {

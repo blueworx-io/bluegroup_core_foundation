@@ -40,7 +40,7 @@ final class Editor {
 		}
 		if ( 'post' === $screen['store'] && ! post_type_exists( $screen['post_type'] ) ) {
 			self::$problems[ $slug ] = sprintf(
-				'This editor saves a record to the "%s" post type, and nothing has registered that post type. Register it with register_post_type() before this screen can open.',
+				'This editor is not ready. It saves a "%s" record, and that record type has not been set up on this site yet. Ask whoever installed the plugin to finish setting it up.',
 				$screen['post_type']
 			);
 			return false;
@@ -51,6 +51,38 @@ final class Editor {
 
 	public static function problem( string $slug ): string {
 		return self::$problems[ $slug ] ?? '';
+	}
+
+	/**
+	 * For a record ("post") screen, confirms the id is a real post of this
+	 * screen's own post type, and that the current user may edit that
+	 * specific post — not merely that they hold the screen's own capability.
+	 * Without this, any user who can open one editor screen could post an
+	 * arbitrary id and overwrite an unrelated post's columns and meta: the
+	 * capability check above only ever looks at the screen, and an int cast
+	 * on its own proves nothing about which post that id belongs to.
+	 *
+	 * An option screen has no record id at all, so this never applies to it.
+	 *
+	 * The same refusal covers "no such id" and "a post of a different type":
+	 * telling those apart would let a caller use the endpoint to find out
+	 * what exists on the site.
+	 */
+	private static function authoriseRecord( array $screen, int $id ): ?string {
+		if ( 'post' !== $screen['store'] ) {
+			return null;
+		}
+		if ( $id <= 0 ) {
+			return 'That record could not be found.';
+		}
+		$post = get_post( $id );
+		if ( null === $post || ! isset( $post->post_type ) || $screen['post_type'] !== $post->post_type ) {
+			return 'That record could not be found.';
+		}
+		if ( ! current_user_can( 'edit_post', $id ) ) {
+			return 'You do not have permission to edit this record.';
+		}
+		return null;
 	}
 
 	/**
@@ -84,6 +116,10 @@ final class Editor {
 			return [ 'schema' => null, 'values' => [], 'problem' => self::problem( $slug ) ];
 		}
 		$merged  = self::screenFor( $slug );
+		$refusal = self::authoriseRecord( $merged, $id );
+		if ( null !== $refusal ) {
+			return [ 'schema' => null, 'values' => [], 'problem' => $refusal ];
+		}
 		$visible = Capabilities::filterSchema( $merged );
 		$values  = Store::for( $merged )->read( $id );
 
@@ -113,7 +149,12 @@ final class Editor {
 			return [ 'ok' => false, 'errors' => [ '_screen' => self::problem( $slug ) ] ];
 		}
 
-		$merged   = self::screenFor( $slug );
+		$merged  = self::screenFor( $slug );
+		$refusal = self::authoriseRecord( $merged, $id );
+		if ( null !== $refusal ) {
+			return [ 'ok' => false, 'errors' => [ '_screen' => $refusal ] ];
+		}
+
 		$writable = Capabilities::filterValues( $merged, $values );
 		$clean    = Sanitise::values( $merged, $writable );
 		$errors   = Validate::run( $merged, $clean );
