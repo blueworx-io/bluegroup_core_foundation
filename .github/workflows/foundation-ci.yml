@@ -68,7 +68,7 @@ jobs:
   # The job branch protection requires. Keep this name.
   test:
     if: always()
-    needs: [checks]
+    needs: [checks, php]
     runs-on: ubuntu-latest
     steps:
       # A skipped or cancelled dependency counts as a pass to branch protection,
@@ -80,5 +80,15 @@ jobs:
           echo "checks: $CHECKS"
           if [ "$CHECKS" != "success" ]; then
             echo "::error title=Foundation CI failed::The 'checks' matrix did not succeed (result: $CHECKS)."
+            exit 1
+          fi
+
+      - name: Check the PHP job passed
+        env:
+          PHP: ${{ needs.php.result }}
+        run: |
+          echo "php: $PHP"
+          if [ "$PHP" != "success" ]; then
+            echo "::error title=Foundation CI failed::The 'php' job did not succeed (result: $PHP)."
             exit 1
           fi
