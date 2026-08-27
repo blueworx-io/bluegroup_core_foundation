@@ -10,11 +10,23 @@ $GLOBALS['bwpe_stub'] = [
 	'capabilities' => [],
 	'meta'         => [],
 	'options'      => [],
+	'posts'        => [],
+	'terms'        => [],
+	'thumbnails'   => [],
 	'fail_writes'  => false,
 ];
 
 function bwpe_stub_reset(): void {
-	$GLOBALS['bwpe_stub'] = [ 'post_types' => [], 'capabilities' => [], 'meta' => [], 'options' => [], 'fail_writes' => false ];
+	$GLOBALS['bwpe_stub'] = [
+		'post_types'   => [],
+		'capabilities' => [],
+		'meta'         => [],
+		'options'      => [],
+		'posts'        => [],
+		'terms'        => [],
+		'thumbnails'   => [],
+		'fail_writes'  => false,
+	];
 }
 
 if ( ! function_exists( 'post_type_exists' ) ) {
@@ -72,6 +84,14 @@ if ( ! function_exists( 'update_post_meta' ) ) {
 		if ( $GLOBALS['bwpe_stub']['fail_writes'] ) {
 			return false;
 		}
+		// Real WordPress returns false both on a genuine failure and whenever
+		// the new value is identical to the one already stored — the stub has
+		// to reproduce that quirk, or a bug that only shows up on a no-op
+		// re-save could never be caught here.
+		$current = $GLOBALS['bwpe_stub']['meta'][ $id ][ $key ] ?? '';
+		if ( $current === $value ) {
+			return false;
+		}
 		$GLOBALS['bwpe_stub']['meta'][ $id ][ $key ] = $value;
 		return true;
 	}
@@ -86,7 +106,65 @@ if ( ! function_exists( 'update_option' ) ) {
 		if ( $GLOBALS['bwpe_stub']['fail_writes'] ) {
 			return false;
 		}
+		// Same no-op-returns-false quirk as update_post_meta().
+		$current = $GLOBALS['bwpe_stub']['options'][ $name ] ?? false;
+		if ( $current === $value ) {
+			return false;
+		}
 		$GLOBALS['bwpe_stub']['options'][ $name ] = $value;
 		return true;
+	}
+}
+if ( ! function_exists( 'get_post' ) ) {
+	function get_post( $id ) {
+		if ( ! isset( $GLOBALS['bwpe_stub']['posts'][ $id ] ) ) {
+			return null;
+		}
+		return (object) $GLOBALS['bwpe_stub']['posts'][ $id ];
+	}
+}
+if ( ! function_exists( 'wp_update_post' ) ) {
+	function wp_update_post( $postarr ) {
+		if ( $GLOBALS['bwpe_stub']['fail_writes'] ) {
+			return 0;
+		}
+		$id       = (int) ( $postarr['ID'] ?? 0 );
+		$existing = $GLOBALS['bwpe_stub']['posts'][ $id ] ?? [];
+		$GLOBALS['bwpe_stub']['posts'][ $id ] = array_merge( $existing, $postarr );
+		return $id;
+	}
+}
+if ( ! function_exists( 'wp_set_post_terms' ) ) {
+	function wp_set_post_terms( $id, $terms, $taxonomy ) {
+		if ( $GLOBALS['bwpe_stub']['fail_writes'] ) {
+			return false;
+		}
+		$GLOBALS['bwpe_stub']['terms'][ $id ][ $taxonomy ] = $terms;
+		return $terms;
+	}
+}
+if ( ! function_exists( 'wp_get_post_terms' ) ) {
+	function wp_get_post_terms( $id, $taxonomy, $args = [] ) {
+		return $GLOBALS['bwpe_stub']['terms'][ $id ][ $taxonomy ] ?? [];
+	}
+}
+if ( ! function_exists( 'set_post_thumbnail' ) ) {
+	function set_post_thumbnail( $id, $thumbnail_id ) {
+		if ( $GLOBALS['bwpe_stub']['fail_writes'] ) {
+			return false;
+		}
+		$GLOBALS['bwpe_stub']['thumbnails'][ $id ] = (int) $thumbnail_id;
+		return true;
+	}
+}
+if ( ! function_exists( 'delete_post_thumbnail' ) ) {
+	function delete_post_thumbnail( $id ) {
+		unset( $GLOBALS['bwpe_stub']['thumbnails'][ $id ] );
+		return true;
+	}
+}
+if ( ! function_exists( 'get_post_thumbnail_id' ) ) {
+	function get_post_thumbnail_id( $id ) {
+		return $GLOBALS['bwpe_stub']['thumbnails'][ $id ] ?? 0;
 	}
 }

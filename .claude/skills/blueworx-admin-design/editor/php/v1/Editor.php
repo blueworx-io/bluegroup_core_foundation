@@ -54,6 +54,27 @@ final class Editor {
 	}
 
 	/**
+	 * The registered screen with the Publish and settings tab (Settings::tab())
+	 * appended, when one applies. This is the one place that merge happens;
+	 * load() and save() both work from this, and everything downstream of them
+	 * — Capabilities, Sanitise, Validate, Store — sees only the merged screen,
+	 * never the plugin's bare one. Reading or saving from the bare screen would
+	 * mean the settings tab renders but its values are never read back and are
+	 * dropped on the way in, which is exactly the bug this exists to prevent.
+	 */
+	private static function screenFor( string $slug ): ?array {
+		$screen = self::get( $slug );
+		if ( null === $screen ) {
+			return null;
+		}
+		$extra = Settings::tab( $screen );
+		if ( null !== $extra ) {
+			$screen['tabs'][] = $extra;
+		}
+		return $screen;
+	}
+
+	/**
 	 * Everything the screen needs to draw itself: the schema this user is
 	 * allowed to see, and the values behind it.
 	 */
@@ -62,17 +83,13 @@ final class Editor {
 		if ( null === $screen || ! self::ready( $slug ) ) {
 			return [ 'schema' => null, 'values' => [], 'problem' => self::problem( $slug ) ];
 		}
-		$visible = Capabilities::filterSchema( $screen );
-		$values  = Store::for( $screen )->read( $id );
-
-		$extra = Settings::tab( $screen );
-		if ( null !== $extra ) {
-			$visible['tabs'][] = Capabilities::filterSchema( [ 'tabs' => [ $extra ] ] )['tabs'][0];
-		}
+		$merged  = self::screenFor( $slug );
+		$visible = Capabilities::filterSchema( $merged );
+		$values  = Store::for( $merged )->read( $id );
 
 		return [
 			'schema' => $visible,
-			'values' => Capabilities::filterValues( $screen, $values ),
+			'values' => Capabilities::filterValues( $merged, $values ),
 		];
 	}
 
@@ -92,16 +109,20 @@ final class Editor {
 			return [ 'ok' => false, 'errors' => [ '_screen' => self::problem( $slug ) ] ];
 		}
 
-		$writable = Capabilities::filterValues( $screen, $values );
-		$clean    = Sanitise::values( $screen, $writable );
-		$errors   = Validate::run( $screen, $clean );
+		$merged   = self::screenFor( $slug );
+		$writable = Capabilities::filterValues( $merged, $values );
+		$clean    = Sanitise::values( $merged, $writable );
+		$errors   = Validate::run( $merged, $clean );
 
 		if ( $errors ) {
 			return [ 'ok' => false, 'errors' => $errors ];
 		}
 
-		if ( ! Store::for( $screen )->write( $clean, $id ) ) {
-			return [ 'ok' => false, 'errors' => [ '_screen' => 'This could not be saved. Nothing was changed. Try again.' ] ];
+		if ( ! Store::for( $merged )->write( $clean, $id ) ) {
+			return [
+				'ok'     => false,
+				'errors' => [ '_screen' => 'Some of your changes may not have saved. Reload the screen to see what changed, then try again.' ],
+			];
 		}
 
 		return [ 'ok' => true, 'values' => $clean ];

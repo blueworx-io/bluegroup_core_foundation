@@ -5,8 +5,12 @@ namespace Blueworx\PageEditor\v1;
  * Two places a screen's values can live, behind one door.
  *
  * A record's values are post meta keyed by post type and field id, so two
- * screens on one site cannot collide. A settings screen keeps everything in a
- * single option, because it is one thing.
+ * screens on one site cannot collide — except for the handful of ids that are
+ * WordPress's own post columns, tags and featured image (see
+ * PostStore::POST_COLUMNS), which have to be read and written through the
+ * post itself or they do nothing: a status stored as meta does not publish
+ * anything, and a slug stored as meta does not change the address. A settings
+ * screen keeps everything in a single option, because it is one thing.
  */
 abstract class Store {
 
@@ -33,22 +37,103 @@ abstract class Store {
 
 final class PostStore extends Store {
 
+	/**
+	 * Field ids that are columns on the post itself, not post meta. This is
+	 * the one place that decides what is a column and what is meta — kept as
+	 * a single list rather than duplicated between reading and writing.
+	 */
+	const POST_COLUMNS = [
+		'post_status', 'post_name', 'post_excerpt', 'post_author',
+		'post_date', 'post_parent', 'menu_order', 'comment_status',
+	];
+
 	public function read( int $id = 0 ): array {
-		$out = [];
+		$out  = [];
+		$post = null;
+
 		foreach ( $this->fields() as $field ) {
-			$out[ $field['id'] ] = get_post_meta( $id, $this->key( $field['id'] ), true );
+			$key = $field['id'];
+
+			if ( in_array( $key, self::POST_COLUMNS, true ) ) {
+				if ( null === $post ) {
+					$post = get_post( $id );
+				}
+				$out[ $key ] = ( $post && isset( $post->$key ) ) ? $post->$key : '';
+				continue;
+			}
+
+			if ( 'post_tags' === $key ) {
+				$out[ $key ] = wp_get_post_terms( $id, 'post_tag', [ 'fields' => 'names' ] );
+				continue;
+			}
+
+			if ( 'featured_image' === $key ) {
+				$out[ $key ] = get_post_thumbnail_id( $id );
+				continue;
+			}
+
+			$out[ $key ] = get_post_meta( $id, $this->key( $key ), true );
 		}
+
 		return $out;
 	}
 
+	/**
+	 * Post meta, and the post itself, have no transaction: a real failure
+	 * part-way through leaves whatever came before it already committed. This
+	 * stops at the first genuine failure rather than carrying on and
+	 * pretending the fields after it were never attempted.
+	 */
 	public function write( array $values, int $id = 0 ): bool {
-		$ok = true;
+		$columns = [];
+
 		foreach ( $values as $key => $value ) {
-			if ( ! update_post_meta( $id, $this->key( $key ), $value ) ) {
-				$ok = false;
+			if ( in_array( $key, self::POST_COLUMNS, true ) ) {
+				$columns[ $key ] = $value;
+				continue;
+			}
+
+			if ( 'post_tags' === $key ) {
+				if ( false === wp_set_post_terms( $id, (array) $value, 'post_tag' ) ) {
+					return false;
+				}
+				continue;
+			}
+
+			if ( 'featured_image' === $key ) {
+				if ( (int) $value > 0 ) {
+					if ( ! set_post_thumbnail( $id, (int) $value ) ) {
+						return false;
+					}
+				} else {
+					delete_post_thumbnail( $id );
+				}
+				continue;
+			}
+
+			if ( ! $this->writeMeta( $id, $this->key( $key ), $value ) ) {
+				return false;
 			}
 		}
-		return $ok;
+
+		if ( $columns && ! wp_update_post( array_merge( $columns, [ 'ID' => $id ] ) ) ) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * update_post_meta() returns false both on a genuine failure and, in real
+	 * WordPress, whenever the new value is identical to the one already
+	 * stored. Comparing first means a false return here always means a real
+	 * failure — and a no-op re-save is never mistaken for one.
+	 */
+	private function writeMeta( int $id, string $key, $value ): bool {
+		if ( get_post_meta( $id, $key, true ) === $value ) {
+			return true;
+		}
+		return (bool) update_post_meta( $id, $key, $value );
 	}
 
 	private function key( string $field ): string {
@@ -68,9 +153,20 @@ final class OptionStore extends Store {
 		return $out;
 	}
 
+	/**
+	 * update_option() has the same no-op-returns-false quirk as
+	 * update_post_meta() — see PostStore::writeMeta() — so this only calls it
+	 * once the merged value genuinely differs from what is already saved.
+	 */
 	public function write( array $values, int $id = 0 ): bool {
-		$saved = get_option( $this->screen['option_name'], [] );
-		$saved = is_array( $saved ) ? $saved : [];
-		return update_option( $this->screen['option_name'], array_merge( $saved, $values ) );
+		$saved  = get_option( $this->screen['option_name'], [] );
+		$saved  = is_array( $saved ) ? $saved : [];
+		$merged = array_merge( $saved, $values );
+
+		if ( $merged === $saved ) {
+			return true;
+		}
+
+		return update_option( $this->screen['option_name'], $merged );
 	}
 }
