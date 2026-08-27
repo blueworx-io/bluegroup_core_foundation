@@ -50,4 +50,26 @@ final class SanitiseTest extends TestCase {
 		$out = Sanitise::field( $field, [ [ 'day' => '<i>Monday</i>', 'seats' => 99, 'sneaky' => 'x' ] ] );
 		$this->assertSame( [ [ 'day' => 'Monday', 'seats' => 30 ] ], $out );
 	}
+
+	public function test_a_repeater_row_missing_a_declared_key_gets_its_cleaned_default(): void {
+		$field = [ 'kind' => 'repeater', 'fields' => [
+			[ 'id' => 'day', 'kind' => 'text' ],
+			[ 'id' => 'seats', 'kind' => 'number', 'min' => 0, 'max' => 30 ],
+		] ];
+		$out = Sanitise::field( $field, [ [ 'day' => 'Monday' ] ] );
+		$this->assertSame( [ [ 'day' => 'Monday', 'seats' => 0 ] ], $out );
+	}
+
+	public function test_a_repeater_row_that_is_not_an_array_is_skipped(): void {
+		$field = [ 'kind' => 'repeater', 'fields' => [
+			[ 'id' => 'day', 'kind' => 'text' ],
+		] ];
+		$out = Sanitise::field( $field, [ 'not-a-row', [ 'day' => 'Monday' ] ] );
+		$this->assertSame( [ [ 'day' => 'Monday' ] ], $out );
+	}
+
+	public function test_copytext_is_display_only_and_never_writable(): void {
+		$this->assertNull( Sanitise::field( [ 'kind' => 'copytext' ], 'anything at all' ) );
+		$this->assertNull( Sanitise::field( [ 'kind' => 'copytext' ], '<script>bad()</script>' ) );
+	}
 }

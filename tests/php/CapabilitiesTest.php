@@ -56,6 +56,14 @@ final class CapabilitiesTest extends TestCase {
 		$this->assertSame( [ 'name' => 'Rugby' ], $values );
 	}
 
+	public function test_a_value_for_a_kept_but_locked_field_is_still_dropped(): void {
+		// 'note' is shown on the screen, read-only, once capability is missing.
+		// Being visible must not make it writable: a submitted value for it is
+		// refused exactly like a field that never reached the browser at all.
+		$values = Capabilities::filterValues( $this->screen(), [ 'name' => 'Rugby', 'note' => 'Forged' ] );
+		$this->assertSame( [ 'name' => 'Rugby' ], $values );
+	}
+
 	public function test_an_empty_capability_means_the_screen_capability_governs(): void {
 		$allowed = Capabilities::allowed( $this->screen() );
 		$this->assertSame( [ 'name' ], $allowed );

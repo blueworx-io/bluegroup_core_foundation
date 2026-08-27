@@ -112,9 +112,11 @@ final class Sanitise {
 				}
 				return $out;
 
-			// facts and table are read-only on the screen; nothing comes back.
+			// facts, table and copytext are display-only on the screen; nothing
+			// comes back, so nothing is accepted back.
 			case 'facts':
 			case 'table':
+			case 'copytext':
 				return null;
 
 			default:
