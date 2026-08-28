@@ -11,6 +11,7 @@ const BW_CLASS = /\bbw-[a-z]/;
 
 const SKILL_DIR = '.claude/skills/blueworx-admin-design/';
 const SHIPPED_CSS = 'assets/blueworx-admin-design.css';
+const EDITOR_LIB_DIR = 'blueworx-page-editor/';
 
 // The only styling a plugin may keep of its own: the chrome overrides the
 // system's readme documents for a full-bleed screen. Anything else in an admin
@@ -247,6 +248,27 @@ export function findViolations({ path, kind, content, vocab, whole = true }) {
     !rendersDsComponent(content, vocab.components)
   ) {
     add(0, 'no-bw-class', 'warn', 'You have built this admin screen without the design system — use its components rather than starting from scratch.');
+  }
+
+  // Tabs and a save bar on the same screen is an editor, and editors come from
+  // the page editor library — one shell, one save model, one set of controls.
+  // A save bar on its own is an ordinary settings screen and is left alone.
+  //
+  // Whole files only: an edit fragment carrying one of the two says nothing
+  // about what the finished file holds.
+  //
+  // Warning, not error: existing settings screens across the plugin repos may
+  // already combine bw-tabs and bw-savebar legitimately, and this repo cannot
+  // see those repos to know. It becomes an error once a release has shown
+  // what it actually catches.
+  if (
+    whole &&
+    kind !== 'css' &&
+    !p.includes(EDITOR_LIB_DIR) &&
+    /class(?:Name)?\s*=\s*["'][^"']*\bbw-tabs\b/.test(content) &&
+    /class(?:Name)?\s*=\s*["'][^"']*\bbw-savebar\b/.test(content)
+  ) {
+    add(0, 'hand-written-editor', 'warn', 'You have hand-written an editor screen — tabs and a save bar together are an editor, and those come from the page editor library. Declare the screen as a field schema and let the library render it.');
   }
 
   return problems;

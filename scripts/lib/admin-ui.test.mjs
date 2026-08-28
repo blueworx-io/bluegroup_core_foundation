@@ -342,3 +342,52 @@ test('findViolations: a screen rendering a design system component from a local 
     false,
   );
 });
+
+const EDITOR_VOCAB = { classes: new Set(['bw-tabs', 'bw-savebar', 'bw-card', 'bw-input']), tokens: new Set(), components: new Set() };
+
+test('findViolations: tabs plus a save bar in a plugin is a hand-written editor', () => {
+  const problems = findViolations({
+    path: 'includes/admin/class-sport-editor.php',
+    kind: 'php',
+    content: [
+      '<div class="bw-tabs"><button class="bw-tab">Content</button></div>',
+      '<div class="bw-savebar"><button class="bw-btn">Save changes</button></div>',
+    ].join('\n'),
+    vocab: EDITOR_VOCAB,
+  });
+  const found = problems.filter((p) => p.rule === 'hand-written-editor');
+  assert.equal(found.length, 1);
+  assert.equal(found[0].severity, 'warn');
+  assert.match(found[0].message, /page editor library/);
+});
+
+test('findViolations: a settings screen with a save bar and no tabs is left alone', () => {
+  const problems = findViolations({
+    path: 'includes/admin/class-settings.php',
+    kind: 'php',
+    content: '<div class="bw-savebar"><button class="bw-btn">Save changes</button></div>',
+    vocab: EDITOR_VOCAB,
+  });
+  assert.equal(problems.filter((p) => p.rule === 'hand-written-editor').length, 0);
+});
+
+test('findViolations: the rule never fires on an edit fragment', () => {
+  const problems = findViolations({
+    path: 'includes/admin/class-sport-editor.php',
+    kind: 'php',
+    content: '<div class="bw-tabs"></div><div class="bw-savebar"></div>',
+    vocab: EDITOR_VOCAB,
+    whole: false,
+  });
+  assert.equal(problems.filter((p) => p.rule === 'hand-written-editor').length, 0);
+});
+
+test('findViolations: the library itself is not a consumer of itself', () => {
+  const problems = findViolations({
+    path: 'blueworx-page-editor/v1/Screen.php',
+    kind: 'php',
+    content: '<div class="bw-tabs"></div><div class="bw-savebar"></div>',
+    vocab: EDITOR_VOCAB,
+  });
+  assert.equal(problems.filter((p) => p.rule === 'hand-written-editor').length, 0);
+});
