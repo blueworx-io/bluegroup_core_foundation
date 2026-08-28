@@ -5,7 +5,13 @@
 # The disposable WordPress the shared harness provisions. It appears in
 # whichever repo runs wp-test-env.mjs, and that includes this one when the
 # harness is being worked on — 16,000 files of WordPress core, one `git add -A`
-# away from the history.
-.wp-test/
+# away from the history. This repo also keeps its own worked example plugin
+# and its Playwright spec under .wp-test/ (the harness's default --plugin
+# location), so only the runtime WordPress tree and server bookkeeping are
+# ignored, not the whole directory.
+.wp-test/wp/
+.wp-test/*.zip
+.wp-test/server.pid
+.wp-test/php-server.log
 .wp-test-client/
 .wp-test-client-plugin/
