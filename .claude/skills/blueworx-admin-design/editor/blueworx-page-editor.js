@@ -96,6 +96,50 @@
     return '/' + root.blueworxPageEditor.namespace + '/' + slug;
   }
 
+  function allFields(schema) {
+    return (schema.tabs || []).reduce(function (all, tab) {
+      return all.concat(fieldsIn(tab));
+    }, []);
+  }
+
+  // A repeater row has no id of its own — Sanitise::field() rebuilds each row
+  // from scratch using only the cells the schema declares, so a stray key
+  // survives nowhere on the server. That makes it safe to stamp one on here:
+  // it is a client-only rendering concern, used purely as a React key so a
+  // reordered row keeps its own identity instead of the position it happens
+  // to sit in (see Repeater's move()). Assigned once when a record is loaded
+  // or just saved — both are the moments rows arrive fresh from the server
+  // with no id of their own — and again whenever a row is added.
+  let nextRowId = 0;
+
+  function assignRowIds(schema, values) {
+    const next = Object.assign({}, values);
+    allFields(schema).forEach(function (field) {
+      if (field.kind !== 'repeater' || !Array.isArray(next[field.id])) return;
+      next[field.id] = next[field.id].map(function (row) {
+        return row && row.__rid ? row : Object.assign({}, row, { __rid: 'r' + (++nextRowId) });
+      });
+    });
+    return next;
+  }
+
+  // The mirror of assignRowIds, run just before a save leaves the browser:
+  // the id is a rendering concern, not data, so it never goes out over the
+  // wire even though the server would have dropped it anyway.
+  function stripRowIds(schema, values) {
+    const next = Object.assign({}, values);
+    allFields(schema).forEach(function (field) {
+      if (field.kind !== 'repeater' || !Array.isArray(next[field.id])) return;
+      next[field.id] = next[field.id].map(function (row) {
+        if (!row || !('__rid' in row)) return row;
+        const clean = Object.assign({}, row);
+        delete clean.__rid;
+        return clean;
+      });
+    });
+    return next;
+  }
+
   function useRecord(slug, id) {
     const el = wp().element;
     const [schema, setSchema] = el.useState(null);
@@ -111,9 +155,10 @@
       wp().apiFetch({ path: restPath(slug) + '?id=' + id })
         .then(function (data) {
           if (!data.schema) { setProblem(data.problem || ''); setLoading(false); return; }
+          const withIds = assignRowIds(data.schema, data.values);
           setSchema(data.schema);
-          setSaved(data.values);
-          setValues(data.values);
+          setSaved(withIds);
+          setValues(withIds);
           setLoading(false);
         })
         .catch(function () {
@@ -136,10 +181,11 @@
       wp().apiFetch({
         path: restPath(slug),
         method: 'POST',
-        data: { id: id, values: values },
+        data: { id: id, values: stripRowIds(schema, values) },
       }).then(function (result) {
-        setSaved(result.values);
-        setValues(result.values);
+        const withIds = assignRowIds(schema, result.values);
+        setSaved(withIds);
+        setValues(withIds);
         setErrors({});
         setNotice({ kind: 'success', text: 'Saved. The site is showing these changes now.' });
         setSaving(false);
@@ -308,11 +354,22 @@
     const field = props.field;
     const error = props.record.errors[field.id];
     const wrap = 'bw-field' + (field.wide ? ' bw-field--wide' : '');
+    // radio, checkboxes and scrolllist have no single input carrying
+    // field.id — each option is its own labelled control — so a
+    // <label htmlFor> here would point at nothing. Head the group with a
+    // plain heading instead and have the group itself claim it via
+    // aria-labelledby (see the matching id in Control).
+    const isGroup = field.kind === 'radio' || field.kind === 'checkboxes' || field.kind === 'scrolllist';
 
     return h('div', { className: wrap },
-      field.kind !== 'title' ? h('label', { className: 'bw-field__label', htmlFor: field.id },
-        field.label,
-        field.required ? h('span', { className: 'bw-field__req' }, '*') : null) : null,
+      field.kind === 'title' ? null
+        : h(isGroup ? 'span' : 'label', {
+            className: 'bw-field__label',
+            htmlFor: isGroup ? undefined : field.id,
+            id: isGroup ? field.id + '-label' : undefined,
+          },
+          field.label,
+          field.required ? h('span', { className: 'bw-field__req' }, '*') : null),
       h(Control, { field: field, record: props.record, invalid: Boolean(error) }),
       error ? h('p', { className: 'bw-field__error' }, error)
             : field.help ? h('p', { className: 'bw-field__help' }, field.help) : null);
@@ -339,6 +396,9 @@
         return h('div', { className: 'bw-permalink' },
           h('code', null, (root.blueworxPageEditor && root.blueworxPageEditor.home) || '/'),
           h('input', Object.assign({}, common, { type: 'text', value: value || '', onChange: function (e) { set(e.target.value); } })));
+
+      case 'text':
+        return h('input', Object.assign({}, common, { type: 'text', value: value || '', onChange: function (e) { set(e.target.value); } }));
 
       case 'textarea':
         return h('textarea', { id: field.id, disabled: Boolean(field.readonly), rows: 5,
@@ -402,20 +462,23 @@
           h('i', { className: 'bw-icon bw-select__arrow', 'data-lucide': 'chevron-down' }));
 
       case 'radio':
-        return h('div', { className: 'bw-radiogroup bw-radiogroup--row' }, (field.options || []).map(function (o) {
-          return h('label', { key: o.value, className: 'bw-check' },
-            h('input', { type: 'radio', name: field.id, value: o.value, checked: value === o.value,
-              disabled: Boolean(field.readonly), onChange: function () { set(o.value); } }),
-            h('span', null, o.label),
-            o.help ? h('small', { className: 'bw-check__help' }, o.help) : null);
-        }));
+        return h('div', { className: 'bw-radiogroup bw-radiogroup--row', role: 'group', 'aria-labelledby': field.id + '-label' },
+          (field.options || []).map(function (o) {
+            return h('label', { key: o.value, className: 'bw-check', 'data-disabled': field.readonly ? 'true' : undefined },
+              h('input', { type: 'radio', name: field.id, value: o.value, checked: value === o.value,
+                disabled: Boolean(field.readonly), onChange: function () { set(o.value); } }),
+              h('span', null, o.label),
+              o.help ? h('small', { className: 'bw-check__help' }, o.help) : null);
+          }));
 
       case 'checkboxes':
       case 'scrolllist':
-        return h('div', { className: field.kind === 'scrolllist' ? 'bw-scrolllist' : 'bw-radiogroup bw-radiogroup--row' },
-          (field.options || []).map(function (o) {
+        return h('div', {
+          className: field.kind === 'scrolllist' ? 'bw-scrolllist' : 'bw-radiogroup bw-radiogroup--row',
+          role: 'group', 'aria-labelledby': field.id + '-label',
+        }, (field.options || []).map(function (o) {
             const picked = (value || []).indexOf(o.value) !== -1;
-            return h('label', { key: o.value, className: 'bw-check' },
+            return h('label', { key: o.value, className: 'bw-check', 'data-disabled': field.readonly ? 'true' : undefined },
               h('input', { type: 'checkbox', checked: picked, disabled: Boolean(field.readonly),
                 onChange: function () {
                   const next = (value || []).slice();
@@ -501,7 +564,10 @@
     return h('div', { className: 'bw-repeater' },
       rows.length === 0 ? h('div', { className: 'bw-repeater__empty' }, 'No rows yet.') : null,
       rows.map(function (row, i) {
-        return h('div', { key: i, className: 'bw-repeater__row' },
+        // Keyed on the row's own id, not its position: move() swaps whole
+        // row objects, so the id travels with the content, and the row the
+        // pointer is over stays the row that actually moved.
+        return h('div', { key: row.__rid || ('row-' + i), className: 'bw-repeater__row' },
           // Dragging is a nice-to-have; these two buttons are how a reorder is
           // actually done, so it works from the keyboard like everything else.
           h('span', { className: 'bw-repeater__grip' },
@@ -525,7 +591,7 @@
       }),
       h('div', { className: 'bw-repeater__foot' },
         h('button', { type: 'button', className: 'bw-btn bw-btn--secondary', disabled: locked,
-          onClick: function () { props.onChange(rows.concat([{}])); } }, 'Add a row')));
+          onClick: function () { props.onChange(rows.concat([{ __rid: 'r' + (++nextRowId) }])); } }, 'Add a row')));
   }
 
   function ComplexControl(props) {
@@ -538,25 +604,79 @@
     const locked = Boolean(field.readonly);
 
     switch (field.kind) {
-      case 'richtext':
+      case 'richtext': {
         // A shell, not a document editor: bold, italic, link, list, image and
         // nothing else, so what a site owner can produce stays inside what the
-        // front end is built to render.
+        // front end is built to render. This writes HTML directly, because
+        // HTML is what a richtext field stores — Sanitise::field() runs it
+        // through wp_kses_post, which keeps exactly the tags below and
+        // strips everything else, so what these buttons produce is what
+        // survives the save. There is no contentEditable and no
+        // execCommand: a plain textarea has no rich selection to format, so
+        // each button reads and rewrites the raw markup around the
+        // selection itself.
+        const areaRef = el.useRef(null);
+
+        function apply(kind) {
+          const node = areaRef.current;
+          if (!node || locked) return;
+          const start = node.selectionStart;
+          const end = node.selectionEnd;
+          const text = value || '';
+          const selected = text.slice(start, end);
+          let markup, caretStart, caretEnd;
+
+          if (kind === 'bold' || kind === 'italic') {
+            const tag = kind === 'bold' ? 'strong' : 'em';
+            markup = '<' + tag + '>' + selected + '</' + tag + '>';
+            caretStart = start;
+            caretEnd = start + markup.length;
+          } else if (kind === 'link') {
+            markup = '<a href="">' + selected + '</a>';
+            // Leave the cursor inside the empty quotes, ready for the URL.
+            caretStart = caretEnd = start + '<a href="'.length;
+          } else if (kind === 'list') {
+            const lines = selected.length ? selected.split('\n') : [''];
+            markup = '<ul>' + lines.map(function (line) { return '<li>' + line + '</li>'; }).join('') + '</ul>';
+            caretStart = start;
+            caretEnd = start + markup.length;
+          } else {
+            markup = '<img src="" alt="">';
+            // Same idea as the link button: land the cursor in the src quotes.
+            caretStart = caretEnd = start + '<img src="'.length;
+          }
+
+          set(text.slice(0, start) + markup + text.slice(end));
+
+          // The textarea's value only catches up once this re-renders, so
+          // the caret can only be placed on the far side of that repaint.
+          root.setTimeout(function () {
+            if (!areaRef.current) return;
+            areaRef.current.focus();
+            areaRef.current.setSelectionRange(caretStart, caretEnd);
+          }, 0);
+        }
+
         return h('div', { className: 'bw-richtext' },
           h('div', { className: 'bw-richtext__bar' },
             ['bold', 'italic'].map(function (cmd) {
               return h('button', { key: cmd, type: 'button', className: 'bw-richtext__btn', disabled: locked,
                 title: cmd === 'bold' ? 'Bold' : 'Italic',
-                onClick: function () { root.document.execCommand(cmd); } }, cmd === 'bold' ? 'B' : 'I');
+                onMouseDown: function (e) { e.preventDefault(); },
+                onClick: function () { apply(cmd); } }, cmd === 'bold' ? 'B' : 'I');
             }),
             h('span', { className: 'bw-richtext__sep' }),
             ['link', 'list', 'image'].map(function (name) {
-              return h('button', { key: name, type: 'button', className: 'bw-richtext__btn', title: name, disabled: locked,
-                onClick: function () { root.document.execCommand(name === 'list' ? 'insertUnorderedList' : 'createLink'); } },
+              const label = name === 'link' ? 'Link' : name === 'list' ? 'Bulleted list' : 'Image';
+              return h('button', { key: name, type: 'button', className: 'bw-richtext__btn', title: label,
+                'aria-label': label, disabled: locked,
+                onMouseDown: function (e) { e.preventDefault(); },
+                onClick: function () { apply(name); } },
                 h('i', { className: 'bw-icon', 'data-lucide': name === 'link' ? 'external-link' : name === 'list' ? 'file-text' : 'image' }));
             })),
-          h('textarea', { id: field.id, className: 'bw-textarea', rows: 6, disabled: locked,
+          h('textarea', { id: field.id, ref: areaRef, className: 'bw-textarea', rows: 6, disabled: locked,
             value: value || '', onChange: function (e) { set(e.target.value); } }));
+      }
 
       case 'tokens':
         return h(Tokens, { field: field, value: value || [], onChange: set });
