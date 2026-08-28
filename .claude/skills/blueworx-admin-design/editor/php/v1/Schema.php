@@ -21,6 +21,16 @@ final class Schema {
 	const CHOICE_KINDS = [ 'select', 'radio', 'checkboxes', 'scrolllist', 'record' ];
 
 	/**
+	 * What a repeater row may hold. Far narrower than KINDS on purpose: the
+	 * browser draws every cell in a row as a text box, or a number box for a
+	 * number, and nothing else. Accepting the full list here let a plugin
+	 * register a toggle or a select cell that registered cleanly, rendered as
+	 * a plain text box and saved whatever was typed into it. A narrow, honest
+	 * list beats a wide one the screen cannot keep to.
+	 */
+	const REPEATER_KINDS = [ 'text', 'number' ];
+
+	/**
 	 * The Publish and settings tab the library appends to every record screen
 	 * (see Settings::tab()) uses these ids. A plugin's own screen is rejected
 	 * if it tries to reuse one, so the appended tab never collides with a
@@ -391,6 +401,16 @@ final class Schema {
 		}
 		if ( null !== $repeater_id && 'repeater' === $field['kind'] ) {
 			throw new InvalidArgumentException( sprintf( 'The repeater "%s" on the "%s" editor screen contains another repeater, "%s". A repeater cannot contain a repeater.', $repeater_id, $slug, $field['id'] ) );
+		}
+		if ( null !== $repeater_id && ! in_array( $field['kind'], self::REPEATER_KINDS, true ) ) {
+			throw new InvalidArgumentException( sprintf(
+				'The field "%s" in the repeater "%s" on the "%s" editor screen is a "%s". A repeater row can only hold: %s. Move it out of the repeater, or use one of those.',
+				$field['id'],
+				$repeater_id,
+				$slug,
+				$field['kind'],
+				implode( ', ', self::REPEATER_KINDS )
+			) );
 		}
 		if ( empty( $field['label'] ) ) {
 			throw new InvalidArgumentException( sprintf( 'The field "%s" on the "%s" editor screen needs a label.', $field['id'], $slug ) );

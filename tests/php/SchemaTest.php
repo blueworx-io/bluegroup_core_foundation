@@ -56,6 +56,47 @@ final class SchemaTest extends TestCase {
 		] ) );
 	}
 
+	/**
+	 * The browser draws a repeater cell as a text box or a number box and
+	 * nothing else, so those are the only kinds a row may hold. Anything else
+	 * registered cleanly and then rendered as a text box saving nonsense —
+	 * the schema has to refuse what the screen cannot draw.
+	 */
+	public function test_a_repeater_sub_field_of_a_kind_a_row_cannot_hold_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'toggle' );
+		Schema::validate( $this->screen( [
+			'id'     => 'days',
+			'kind'   => 'repeater',
+			'label'  => 'Days',
+			'fields' => [ [ 'id' => 'on', 'kind' => 'toggle', 'label' => 'On' ] ],
+		] ) );
+	}
+
+	public function test_a_rejected_repeater_sub_field_names_what_a_row_may_hold(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'text, number' );
+		Schema::validate( $this->screen( [
+			'id'     => 'days',
+			'kind'   => 'repeater',
+			'label'  => 'Days',
+			'fields' => [ [ 'id' => 'venue', 'kind' => 'select', 'label' => 'Venue', 'options' => [ [ 'value' => 'a', 'label' => 'A' ] ] ] ],
+		] ) );
+	}
+
+	public function test_a_repeater_row_may_hold_text_and_number_cells(): void {
+		$screen = Schema::validate( $this->screen( [
+			'id'     => 'days',
+			'kind'   => 'repeater',
+			'label'  => 'Days',
+			'fields' => [
+				[ 'id' => 'day', 'kind' => 'text', 'label' => 'Day' ],
+				[ 'id' => 'seats', 'kind' => 'number', 'label' => 'Seats' ],
+			],
+		] ) );
+		$this->assertSame( [ 'text', 'number' ], array_column( $screen['tabs'][0]['panels'][0]['fields'][0]['fields'], 'kind' ) );
+	}
+
 	public function test_a_repeater_sub_field_without_a_label_is_rejected(): void {
 		$this->expectException( \InvalidArgumentException::class );
 		$this->expectExceptionMessage( 'needs a label' );
