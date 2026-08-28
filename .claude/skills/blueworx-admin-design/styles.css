@@ -335,7 +335,6 @@
 .bw-input--sm{height:var(--bw-control-h-sm);font-size:var(--bw-size-body);padding:0 10px}
 
 .bw-inputwrap{position:relative;display:flex;align-items:center}
-.bw-inputwrap .bw-input{padding-left:var(--bw-space-6)}
 .bw-inputwrap__icon{position:absolute;left:10px;color:var(--bw-text-faint);pointer-events:none}
 .bw-inputwrap__affix{position:absolute;right:12px;font-size:var(--bw-size-sm);color:var(--bw-text-faint)}
 
@@ -374,7 +373,11 @@
 .bw-input[type="number"]::-webkit-inner-spin-button,.bw-input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .bw-input[type="number"]{appearance:textfield}
 .bw-inputwrap:has(.bw-inputwrap__affix) .bw-input{padding-right:76px}
-.bw-inputwrap .bw-inputwrap__icon ~ .bw-input{padding-left:34px}
+/* Room for the leading icon, and only when there is one: the icon's own left
+   offset, its width, then a gap before the text. An input with no icon keeps
+   the standard control padding rather than being indented twice — once here
+   and once by a raw override further down, which is what this replaced. */
+.bw-inputwrap .bw-inputwrap__icon ~ .bw-input{padding-left:calc(var(--bw-space-5) + var(--bw-space-7) + var(--bw-space-4))}
 
 /* --- Components — forms, extended controls ----------------------------------- */
 /* WP-style form rows, colour, copy, range, upload and repeaters */
@@ -453,9 +456,24 @@
 
 /* --- Components — layout ----------------------------------------------------- */
 /* Page-level furniture */
+
+/* The hook a full-bleed admin screen attaches to WordPress's own .wrap
+   container, so the screen starts hard against wp-admin's chrome and supplies
+   its own gutter from there. Declared here, not only named in the readme's
+   copy-paste markup, so a plugin carrying styles.css alone still has it. */
+.bw-wrap{margin:0}
+
 .bw-page{display:flex;flex-direction:column;min-height:100vh;background:var(--bw-surface-page);color:var(--bw-text-body);font-family:var(--bw-font-body)}
 .bw-page__body{display:flex;align-items:flex-start;gap:var(--bw-space-9);padding:var(--bw-space-9) var(--bw-pad) 0;flex:1 1 auto}
 .bw-panels{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:var(--bw-stack-gap)}
+
+/* A panel column sitting straight on the page, with no .bw-page__body around
+   it to indent it — the shape the page editor renders. The header, tabs and
+   save bar above and below it all pad by --bw-pad, so without this the panels
+   alone would sit flush against the window. Scoped to a direct child so a
+   .bw-panels inside .bw-page__body, .bw-screen or .bw-panels-row still takes
+   its gutter from the container around it rather than doubling up. */
+.bw-page>.bw-panels{padding:var(--bw-space-9) var(--bw-pad) 0}
 
 /* One column, and narrow. A screen holding a single card is unreadable stretched
    across a wide monitor — the card's own content stops long before its right
