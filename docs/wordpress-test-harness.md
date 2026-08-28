@@ -115,6 +115,12 @@ $env:WP_ADMIN_PASS = "wptest-admin-pw"
 node scripts/wp-test-env.mjs down
 ```
 
+Foundation CI runs exactly these commands on every PR, in its `wordpress` job —
+the disposable Playwright install included, which is why that install is a
+documented step and not a dev dependency. A break in the save model, the field
+controls or the round trip now blocks the merge instead of waiting to be found
+by hand.
+
 `scripts/stage-example-plugin.mjs` copies the library and design system assets
 the example plugin needs from `.claude/skills/blueworx-admin-design/` into
 `.wp-test/example-plugin/`, validating every source exists before touching any

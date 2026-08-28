@@ -1,7 +1,8 @@
 name: Foundation CI
 
-# Self-CI for this repo: runs the check-script unit tests and syntax-checks every
-# script on each PR. This is the status check that main's branch protection
+# Self-CI for this repo: runs the check-script unit tests, syntax-checks every
+# script, and runs the page editor's own browser suite against a disposable
+# WordPress on each PR. This is the status check that main's branch protection
 # requires. (The ci-*.yml workflows are reusable and only run in consumer repos.)
 #
 # ## Why the gate is a separate job
@@ -69,10 +70,90 @@ jobs:
       - name: PHPUnit
         run: vendor/bin/phpunit
 
+  # The page editor is a browser library, and neither job above can see whether
+  # it actually saves: `checks` never opens a page, and `php` never runs
+  # WordPress. This job runs the library's own spec against the disposable
+  # WordPress the harness provisions, so the save model, the field controls and
+  # the round trip are a guardrail rather than something checked by hand.
+  #
+  # Playwright arrives as the same disposable, gitignored install under
+  # .wp-test/.pw that docs/wordpress-test-harness.md tells a person to make. A
+  # dev dependency would be less work per run, but it would mean a package.json
+  # here — and this repo is copied into every consumer, so that is a Node
+  # project every plugin would then carry. One `npm install --no-save --prefix`
+  # per run keeps it off the repo, and keeps CI running the same commands the
+  # docs do.
+  wordpress:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          # pdo_sqlite/sqlite3 back the local WordPress harness.
+          extensions: pdo_sqlite, sqlite3
+          coverage: none
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save --prefix .wp-test/.pw @playwright/test
+          .wp-test/.pw/node_modules/.bin/playwright install --with-deps chromium
+
+      # Staging has to run before `up`: coming up activates the example plugin,
+      # and that fatals on a library that is not staged yet. The config's
+      # globalSetup stages again before the suite starts; both are cheap.
+      - name: Stage the example plugin
+        run: node scripts/stage-example-plugin.mjs
+
+      - name: Start local WordPress
+        run: node scripts/wp-test-env.mjs up --plugin .wp-test/example-plugin
+
+      # NODE_PATH has to point at the very install the CLI came from — two
+      # physical copies of @playwright/test and it refuses to run at all. See
+      # the note at the top of playwright.config.js.
+      - name: Run the page editor suite
+        env:
+          NODE_PATH: ${{ github.workspace }}/.wp-test/.pw/node_modules
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:8881
+          WP_ADMIN_USER: admin
+          WP_ADMIN_PASS: wptest-admin-pw
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-report.json
+        run: |
+          .wp-test/.pw/node_modules/.bin/playwright test \
+            --workers=1 --reporter=list,json
+
+      # Playwright exits 0 when every test skips, so without this a suite that
+      # skipped itself wholesale would report green having asserted nothing.
+      - name: Tests actually ran check
+        run: node scripts/check-tests-ran.mjs
+
+      - name: Stop local WordPress
+        if: always()
+        run: node scripts/wp-test-env.mjs down || true
+
+      - name: Upload the WordPress debug log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wordpress-debug-log
+          path: |
+            .wp-test/php-server.log
+            .wp-test/wp/wp-content/debug.log
+          if-no-files-found: ignore
+          retention-days: 7
+
   # The job branch protection requires. Keep this name.
   test:
     if: always()
-    needs: [checks, php]
+    needs: [checks, php, wordpress]
     runs-on: ubuntu-latest
     steps:
       # A skipped or cancelled dependency counts as a pass to branch protection,
@@ -94,5 +175,15 @@ jobs:
           echo "php: $PHP"
           if [ "$PHP" != "success" ]; then
             echo "::error title=Foundation CI failed::The 'php' job did not succeed (result: $PHP)."
+            exit 1
+          fi
+
+      - name: Check the WordPress job passed
+        env:
+          WORDPRESS: ${{ needs.wordpress.result }}
+        run: |
+          echo "wordpress: $WORDPRESS"
+          if [ "$WORDPRESS" != "success" ]; then
+            echo "::error title=Foundation CI failed::The 'wordpress' job did not succeed (result: $WORDPRESS)."
             exit 1
           fi
