@@ -578,10 +578,19 @@
 /* Function card — one switch, its name and description, and a settings panel
    underneath that is only shown while the switch is on. The panel is sunken and
    carries the brand rail, which is what ties it to the switch above it when
-   twenty-seven of these are stacked. */
-.bw-fnstack{display:flex;flex-direction:column;gap:var(--bw-space-6)}
-.bw-fncard{background:var(--bw-surface-card);border:1px solid var(--bw-border);border-radius:var(--bw-radius-lg);box-shadow:var(--bw-shadow-card)}
-.bw-fncard__row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--bw-space-9);align-items:start;padding:var(--bw-space-7) var(--bw-panel-pad)}
+   twenty-seven of these are stacked.
+
+   Three of its measurements are the card's own rather than the scale's: a 14px
+   gap, a 10px corner and 18px of row padding. That is how the design was drawn,
+   and the nearest tokens (space-6, radius-lg, space-7) land at 12, 12 and 16 —
+   close enough to read as a mistake in a stack of twenty-seven, far enough to
+   be one. Moving the tokens would move every component in every project to suit
+   one card, so the card carries the numbers instead. The clip goes with the
+   corner: without it the sunken panel's square corners sit outside the card's
+   rounder ones. */
+.bw-fnstack{display:flex;flex-direction:column;gap:14px}
+.bw-fncard{background:var(--bw-surface-card);border:1px solid var(--bw-border);border-radius:10px;overflow:hidden;box-shadow:var(--bw-shadow-card)}
+.bw-fncard__row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--bw-space-9);align-items:start;padding:18px var(--bw-panel-pad)}
 .bw-fncard__name{display:block;font-size:var(--bw-size-body);font-weight:var(--bw-weight-semibold);color:var(--bw-text-heading)}
 .bw-fncard__desc{margin:var(--bw-space-2) 0 0;font-size:var(--bw-size-sm);color:var(--bw-text-muted);max-width:var(--bw-content-max)}
 .bw-fncard__panel{padding:0 var(--bw-panel-pad) var(--bw-space-8)}
