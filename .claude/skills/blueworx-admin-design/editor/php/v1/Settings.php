@@ -30,11 +30,25 @@ final class Settings {
 					'note'     => 'Where this sits on the site, and who can reach it.',
 					'hideable' => false,
 					'fields'   => [
-						[ 'id' => 'post_status', 'kind' => 'select', 'label' => 'Status', 'help' => 'A draft is only visible to you.', 'options' => [
-							[ 'value' => 'draft', 'label' => 'Draft' ],
-							[ 'value' => 'publish', 'label' => 'Published' ],
-							[ 'value' => 'private', 'label' => 'Private' ],
-						] ],
+						// wp_update_post() does no capability checking of its
+						// own, so this declaration is the only thing between
+						// a user who holds the screen's capability and a
+						// record they have just put live. Same shape as
+						// post_author below: shown, read-only, saying who
+						// can change it.
+						[
+							'id'          => 'post_status',
+							'kind'        => 'select',
+							'label'       => 'Status',
+							'help'        => 'A draft is only visible to you.',
+							'capability'  => 'publish_posts',
+							'locked_help' => 'Only someone who can publish can change the status.',
+							'options'     => [
+								[ 'value' => 'draft', 'label' => 'Draft' ],
+								[ 'value' => 'publish', 'label' => 'Published' ],
+								[ 'value' => 'private', 'label' => 'Private' ],
+							],
+						],
 						[ 'id' => 'post_date', 'kind' => 'datetime', 'label' => 'Published' ],
 						[ 'id' => 'post_author', 'kind' => 'record', 'label' => 'Author', 'capability' => 'edit_others_posts', 'locked_help' => 'Only an editor can change the author.' ],
 						[ 'id' => 'post_name', 'kind' => 'slug', 'label' => 'Slug', 'help' => 'Changing this breaks links already shared; the old address is not redirected.' ],

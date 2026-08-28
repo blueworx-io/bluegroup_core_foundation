@@ -11,7 +11,11 @@ final class SaveTest extends TestCase {
 		bwpe_stub_reset();
 		Editor::reset();
 		$GLOBALS['bwpe_stub']['post_types']   = [ 'bw_sport' ];
-		$GLOBALS['bwpe_stub']['capabilities'] = [ 'manage_options' ];
+		// publish_posts, because the Publish tab's status field now asks for
+		// it — wp_update_post() does no capability checking of its own, so
+		// without it the screen would let anyone holding the screen's own
+		// capability publish a record.
+		$GLOBALS['bwpe_stub']['capabilities'] = [ 'manage_options', 'publish_posts' ];
 		// Editor::load()/save() now check the id resolves to a real post of
 		// this screen's own post type before doing anything else — see
 		// PostTypeGuardTest. Every test in this file edits post 7, so it
@@ -236,6 +240,30 @@ final class SaveTest extends TestCase {
 		$this->assertArrayNotHasKey( 'bw_sport_post_title', $GLOBALS['bwpe_stub']['meta'][7] ?? [] );
 		$this->assertArrayNotHasKey( 'bw_sport_post_content', $GLOBALS['bwpe_stub']['meta'][7] ?? [] );
 		$this->assertSame( 'Rugby union', Editor::load( 'titled', 7 )['values']['post_title'] );
+	}
+
+	/**
+	 * wp_update_post() checks nothing itself, so the only thing standing
+	 * between a user holding the screen's capability and a published record
+	 * is the capability the status field declares.
+	 */
+	public function test_a_user_who_cannot_publish_never_changes_the_status(): void {
+		$GLOBALS['bwpe_stub']['capabilities'] = [ 'manage_options' ];
+		$GLOBALS['bwpe_stub']['posts'][7]     = [ 'post_type' => 'bw_sport', 'post_status' => 'draft' ];
+
+		$result = Editor::save( 'sports', [ 'name' => 'Rugby', 'post_status' => 'publish' ], 7 );
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 'draft', $GLOBALS['bwpe_stub']['posts'][7]['post_status'] );
+	}
+
+	public function test_a_user_who_cannot_publish_still_sees_the_status_read_only(): void {
+		$GLOBALS['bwpe_stub']['capabilities'] = [ 'manage_options' ];
+		$loaded   = Editor::load( 'sports', 7 );
+		$tabs     = $loaded['schema']['tabs'];
+		$readonly = array_column( end( $tabs )['panels'][0]['fields'], 'readonly', 'id' );
+
+		$this->assertTrue( $readonly['post_status'] );
 	}
 
 	public function test_resaving_an_unchanged_featured_image_reports_ok(): void {
