@@ -97,9 +97,17 @@
   }
 
   function allFields(schema) {
-    return (schema.tabs || []).reduce(function (all, tab) {
+    return ((schema && schema.tabs) || []).reduce(function (all, tab) {
       return all.concat(fieldsIn(tab));
     }, []);
+  }
+
+  // Looked up across the whole screen, not just the panel the field sits in:
+  // the schema lets a field depend on any other top-level field, including
+  // one on a different tab, and a lookup that only searched the same panel
+  // found nothing and printed the raw field id at a site owner instead.
+  function fieldById(schema, id) {
+    return allFields(schema).filter(function (field) { return field.id === id; })[0] || null;
   }
 
   // A repeater row has no id of its own — Sanitise::field() rebuilds each row
@@ -321,7 +329,7 @@
           : h('div', { className: 'bw-fields' }, fields.map(function (field) {
               const drawn = h(Field, { key: field.id, field: field, record: props.record });
               if (!field.depends_on) return drawn;
-              const on = (panel.fields || []).find(function (f) { return f.id === field.depends_on.field; });
+              const on = fieldById(props.record.schema, field.depends_on.field);
               return h('div', { key: field.id, className: 'bw-conditional bw-field--wide' },
                 h('p', { className: 'bw-fieldnote' },
                   h('i', { className: 'bw-icon', 'data-lucide': 'info' }),
@@ -728,6 +736,11 @@
     }
   }
 
+  // The view is exported alongside the pure logic so a test can render every
+  // field kind without a browser: a fake wp.element whose createElement
+  // records the tree is enough to prove each kind draws a control, which is
+  // the only thing that keeps this file's control list and the schema's own
+  // KINDS list from drifting apart.
   const api = {
     isDirty: isDirty,
     dependencyMet: dependencyMet,
@@ -737,6 +750,9 @@
     countLabel: countLabel,
     dirtyTabs: dirtyTabs,
     firstErrorTab: firstErrorTab,
+    Panel: Panel,
+    Field: Field,
+    Repeater: Repeater,
   };
 
   /* --- Bootstrap ----------------------------------------------------------- */
