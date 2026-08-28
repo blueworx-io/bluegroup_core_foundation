@@ -51,7 +51,7 @@ final class Editor {
 	 * A screen with no usable slug is the one case nothing can be done about:
 	 * there is no page to attach the message to and no menu item to reach it
 	 * by, so nothing is registered at all — only a _doing_it_wrong() trace, for
- * a developer running with WP_DEBUG on.
+	 * a developer running with WP_DEBUG on.
 	 */
 	private static function unavailable( array $screen, string $why ): void {
 		$slug = ( isset( $screen['slug'] ) && is_string( $screen['slug'] ) ) ? $screen['slug'] : '';
@@ -241,19 +241,26 @@ final class Editor {
 		$writable = Capabilities::writableSchema( $merged );
 		$given    = Capabilities::filterValues( $merged, $values );
 		$clean    = Sanitise::values( $writable, $given );
+		$store    = Store::for( $merged );
+
 		// Whether a conditional field is on the screen at all is a different
 		// question from whether this user may write it: a depends_on may name a
 		// field they are only allowed to look at, and resolving it against the
 		// writable schema alone would leave it unresolvable — see Validate::run().
-		// So the condition is resolved against the whole screen and everything
-		// the browser sent, while only $clean is ever validated or written.
-		$errors = Validate::run( $writable, $clean, $merged, Sanitise::values( $merged, $values ) );
+		//
+		// So conditions are read off the whole screen, from the record as
+		// stored, overlaid with the values this user is allowed to change. A
+		// locked field's condition therefore comes from the record and never
+		// from the request: a request reporting one falsely — or leaving it
+		// out — would otherwise skip a required dependent field's check, and
+		// the browser would be trusted for exactly the field this library
+		// goes to some length to stop it writing. Only $clean is ever
+		// validated or written.
+		$errors = Validate::run( $writable, $clean, $merged, array_merge( $store->read( $id ), $clean ) );
 
 		if ( $errors ) {
 			return [ 'ok' => false, 'errors' => $errors ];
 		}
-
-		$store = Store::for( $merged );
 
 		if ( ! $store->write( $clean, $id ) ) {
 			return [

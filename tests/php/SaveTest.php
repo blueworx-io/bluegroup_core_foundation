@@ -307,13 +307,38 @@ final class SaveTest extends TestCase {
 		$this->assertTrue( $result['ok'], 'the dependent field is off the screen, so it cannot be wrong' );
 	}
 
+	/**
+	 * The condition is read from the record, not from the request: this field
+	 * is locked, so the browser's copy of its value is not something the
+	 * library will act on.
+	 */
 	public function test_the_same_field_is_still_validated_once_its_condition_holds(): void {
 		$this->registerConditionalScreen();
+		$GLOBALS['bwpe_stub']['meta'][7]['bw_sport_promoted'] = '1';
 
-		$result = Editor::save( 'conditional', [ 'name' => 'Rugby', 'promoted' => true, 'promo_text' => '' ], 7 );
+		$result = Editor::save( 'conditional', [ 'name' => 'Rugby', 'promo_text' => '' ], 7 );
 
 		$this->assertFalse( $result['ok'] );
 		$this->assertArrayHasKey( 'promo_text', $result['errors'] );
+	}
+
+	/**
+	 * And a request cannot talk its way out of that check by reporting the
+	 * locked field as something it is not. Trusting the browser for a field
+	 * the library goes to some length to stop the browser writing would give
+	 * back, through the side door, exactly what capability filtering exists
+	 * to prevent.
+	 */
+	public function test_a_locked_fields_condition_comes_from_the_record_not_the_request(): void {
+		$this->registerConditionalScreen();
+		$GLOBALS['bwpe_stub']['meta'][7]['bw_sport_promoted'] = '1';
+
+		$result = Editor::save( 'conditional', [ 'name' => 'Rugby', 'promoted' => false, 'promo_text' => '' ], 7 );
+
+		$this->assertFalse( $result['ok'], 'the request claimed the condition was off; the record says otherwise' );
+		$this->assertArrayHasKey( 'promo_text', $result['errors'] );
+		$this->assertSame( '1', $GLOBALS['bwpe_stub']['meta'][7]['bw_sport_promoted'], 'a locked field is never written' );
+		$this->assertArrayNotHasKey( 'bw_sport_promo_text', $GLOBALS['bwpe_stub']['meta'][7], 'a refused save writes nothing at all' );
 	}
 
 	/** A required field behind a toggle only a shop manager may touch. */
