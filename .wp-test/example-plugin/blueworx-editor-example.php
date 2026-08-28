@@ -3,6 +3,29 @@
  * Plugin Name: BlueWorx editor example
  * Description: The worked page editor screen the foundation tests against, and the shape a plugin copies.
  * Version: 0.1.0
+ *
+ * How this screen is reached, and the one thing this file deliberately does
+ * not do.
+ *
+ * The editor edits a record that already exists. Its address is
+ * admin.php?page=bwx-sport-editor&id=123, where 123 is a bwx_sport post. Open
+ * it without an id, or with an id that is not a sport, and it says the record
+ * could not be found — which is the right answer, not a bug: an editor with
+ * no record to edit has nothing to save to.
+ *
+ * So the plugin has to supply the way in. This one does it the cheapest way
+ * there is: the post type below is registered with 'show_ui' => true, so
+ * WordPress draws its own "Sports" list and its own "Add New", and those
+ * create the records. What is missing from this example, and is the next
+ * thing to build in a real plugin, is the link from that list to this screen
+ * — a row action or a column, added with the post_row_actions filter,
+ * pointing at admin.php?page=bwx-sport-editor&id={$post->ID}. A plugin that
+ * would rather not show WordPress's own list at all sets 'show_ui' => false
+ * and builds its own list screen from the design system, with an "Add new"
+ * that calls wp_insert_post() and then redirects to the same address.
+ *
+ * Either way it is the post type's job, never the library's: the library
+ * edits records and does not create them.
  */
 
 defined( 'ABSPATH' ) || exit;

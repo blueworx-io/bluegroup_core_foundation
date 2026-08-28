@@ -103,6 +103,13 @@ hold regardless of whose machine opens it. Do not edit it to suit this project.
   JavaScript: the library owns all of it, so every plugin's editor behaves the same way. Anything
   record-like must be a registered post type; the library will not open a record editor without one.
   CI hash-checks both copies and warns on a hand-written editor screen.
+- **The editor opens an existing record, so give people a way to reach it.** Its URL is
+  `admin.php?page=<slug>&id=123`; without an id, or with one that is not a record of that post
+  type, the screen says the record could not be found instead of showing a blank editor. The
+  library edits records and never creates them — that is the post type's job. Register the post
+  type with `show_ui` so WordPress's own list and "Add New" screens create records, and link from
+  that list to the editor. Build your own list screen instead if you prefer, but build one:
+  nothing else supplies the way in.
 
 ## 3. Versioning files
 
