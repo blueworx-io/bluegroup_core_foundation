@@ -256,7 +256,11 @@ final class Editor {
 		// the browser would be trusted for exactly the field this library
 		// goes to some length to stop it writing. Only $clean is ever
 		// validated or written.
-		$errors = Validate::run( $writable, $clean, $merged, array_merge( $store->read( $id ), $clean ) );
+		//
+		// array_replace(), not array_merge(): a field id is only required to
+		// be non-empty, and array_merge() renumbers an integer-like key, so an
+		// all-numeric id would lose the overlay and read as null.
+		$errors = Validate::run( $writable, $clean, $merged, array_replace( $store->read( $id ), $clean ) );
 
 		if ( $errors ) {
 			return [ 'ok' => false, 'errors' => $errors ];
