@@ -26,7 +26,18 @@ add_action( 'plugins_loaded', function () {
 		'eyebrow'    => 'Collections · Sports',
 		'lede'       => 'One tab per area of the sport page. Nothing changes on the site until you save.',
 		'post_type'  => 'bwx_sport',
-		'capability' => 'manage_options',
+		// The post type's own capability (get_post_type_object('bwx_sport')
+		// ->cap->edit_posts) — WordPress's default capability_type for a post
+		// type reuses 'edit_posts', shared with every other default post
+		// type, but that is still the capability about editing content. A
+		// site owner able to edit sports should not also need
+		// manage_options — the capability for the site's own settings pages —
+		// just to open this screen. A post type with genuinely distinct
+		// capabilities per role would declare its own capability_type instead
+		// (register_post_type()'s 'capabilities' argument); that needs its
+		// own capabilities granted to a role somewhere, which is more than a
+		// reference schema should carry.
+		'capability' => 'edit_posts',
 		'tabs'       => [
 			[
 				'id'     => 'content',
@@ -34,7 +45,12 @@ add_action( 'plugins_loaded', function () {
 				'panels' => [
 					[
 						'id'      => 'basics',
-						'eyebrow' => 'Details · Section',
+						// Where on the live page this panel's fields surface —
+						// distinct per panel, unlike a placeholder repeated
+						// everywhere, because that is what an eyebrow is for:
+						// orienting the reader inside the record, not
+						// decorating the panel.
+						'eyebrow' => 'Sport page · Header',
 						'title'   => 'Basics',
 						'note'    => 'What this sport is called and how it is described.',
 						'fields'  => [
@@ -49,7 +65,7 @@ add_action( 'plugins_loaded', function () {
 					],
 					[
 						'id'       => 'schedule',
-						'eyebrow'  => 'Details · Section',
+						'eyebrow'  => 'Sport page · Schedule',
 						'title'    => 'Training times',
 						'note'     => 'Each row appears as a session on the sport page.',
 						'hideable' => true,
@@ -65,30 +81,3 @@ add_action( 'plugins_loaded', function () {
 		],
 	] );
 } );
-
-/**
- * Test-only convenience: the library now requires the id in the editor URL to
- * be a real post of the screen's own type, so the harness needs a stable one
- * to point Playwright at. Runs on every 'init', after the post type is
- * registered (priority 10 above) and after activation ever gets a chance to
- * run this same plugin's own hooks — activate_plugin() includes this file
- * after 'init' has already fired for that request, so the post type would
- * not exist yet if this ran at activation time instead.
- */
-function bwx_editor_example_ensure_post() {
-	$id = (int) get_option( 'bwx_editor_example_post_id' );
-	if ( $id && get_post( $id ) && 'bwx_sport' === get_post_type( $id ) ) {
-		return $id;
-	}
-	$id = wp_insert_post( [
-		'post_type'   => 'bwx_sport',
-		'post_title'  => 'Rugby union',
-		'post_status' => 'publish',
-	], true );
-	if ( is_wp_error( $id ) ) {
-		return 0;
-	}
-	update_option( 'bwx_editor_example_post_id', $id );
-	return $id;
-}
-add_action( 'init', 'bwx_editor_example_ensure_post', 20 );

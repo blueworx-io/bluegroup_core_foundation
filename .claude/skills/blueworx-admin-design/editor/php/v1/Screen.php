@@ -64,24 +64,32 @@ final class Screen {
 			return;
 		}
 
-		$base = self::url();
+		$base   = self::url();
+		$screen = Editor::get( $slug );
 
 		// A 'media' or 'file' field opens the library via wp.media() (see
 		// openLibrary() in blueworx-page-editor.js). That global only exists
 		// once WordPress's own media modal script is enqueued — without this,
 		// "Choose an image" and "Choose a file" render but silently do
-		// nothing when clicked.
-		wp_enqueue_media();
+		// nothing when clicked. wp_enqueue_media() pulls in roughly ten
+		// scripts and the whole media modal, so it is worth skipping on a
+		// screen whose schema has no such field.
+		if ( null !== $screen && self::hasMediaField( $screen ) ) {
+			wp_enqueue_media();
+		}
 
 		wp_enqueue_style( 'blueworx-admin-design', $base . 'assets/blueworx-admin-design.css', [], self::version() );
 		wp_enqueue_script( 'blueworx-page-editor', $base . 'assets/blueworx-page-editor.js', [ 'wp-element', 'wp-api-fetch', 'wp-i18n' ], self::version(), true );
 		// The design system's icons ship as a self-hosted ES module (see
-		// assets/blueworx-admin-icons.js), loaded as a script module so the
-		// browser's <i data-lucide="…"> markup turns into inline SVGs. Without
-		// this every icon on the screen is a bare, empty box.
-		if ( function_exists( 'wp_enqueue_script_module' ) ) {
-			wp_enqueue_script_module( 'blueworx-admin-icons', $base . 'assets/blueworx-admin-icons.js', [], self::version() );
-		}
+		// assets/blueworx-admin-icons.js): the browser's <i data-lucide="…">
+		// markup turns into inline SVGs only once it has run. It needs
+		// type="module", but wp_enqueue_script_module() only exists from
+		// WordPress 6.5 — this repo declares no WordPress floor, so "older"
+		// is not something the library can rule out. wp_enqueue_script() plus
+		// this filter is the same effect back to WP 4.1, where
+		// script_loader_tag was introduced.
+		wp_enqueue_script( 'blueworx-admin-icons', $base . 'assets/blueworx-admin-icons.js', [], self::version(), true );
+		add_filter( 'script_loader_tag', [ __CLASS__, 'moduleType' ], 10, 2 );
 
 		// The screen is full-bleed inside wp-admin's own chrome, and only here.
 		// Keyed off bw-full-bleed (added via admin_body_class(), see
@@ -121,6 +129,49 @@ final class Screen {
 	private static function slugForHook( string $hook ): ?string {
 		$slug = array_search( $hook, self::$hooks, true );
 		return false === $slug ? null : $slug;
+	}
+
+	/** Adds type="module" to exactly the icon script — see assets() above. */
+	public static function moduleType( string $tag, string $handle ): string {
+		if ( 'blueworx-admin-icons' !== $handle || false !== strpos( $tag, ' type=' ) ) {
+			return $tag;
+		}
+		return str_replace( ' src=', ' type="module" src=', $tag );
+	}
+
+	/**
+	 * Whether this screen's schema — the plugin's own, unmerged — has a
+	 * 'media' or 'file' field anywhere, including inside a repeater. A
+	 * post-store screen always counts: Settings::tab() adds its own
+	 * 'featured_image' media field to every one of those (see Settings.php),
+	 * so checking the plugin's bare schema alone would miss it without also
+	 * merging that tab in — cheaper to just know a post screen always has one.
+	 */
+	private static function hasMediaField( array $screen ): bool {
+		if ( 'post' === ( $screen['store'] ?? '' ) ) {
+			return true;
+		}
+		foreach ( $screen['tabs'] ?? [] as $tab ) {
+			foreach ( $tab['panels'] ?? [] as $panel ) {
+				foreach ( $panel['fields'] ?? [] as $field ) {
+					if ( self::isMediaKind( $field['kind'] ?? '' ) ) {
+						return true;
+					}
+					if ( 'repeater' === ( $field['kind'] ?? '' ) ) {
+						foreach ( $field['fields'] ?? [] as $sub_field ) {
+							if ( self::isMediaKind( $sub_field['kind'] ?? '' ) ) {
+								return true;
+							}
+						}
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	private static function isMediaKind( string $kind ): bool {
+		return in_array( $kind, [ 'media', 'file' ], true );
 	}
 
 	/**

@@ -49,6 +49,46 @@ never in the plugin, so it cannot reach a release.
 Leave it off when running the suite. Specs that assert what a signed-out visitor
 sees will pass against a site where nobody is ever signed out.
 
+## Running this repo's own worked example end to end
+
+`bluegroup_core_foundation` is the one repo where the harness tests itself: the
+page editor library's worked example lives at `.wp-test/example-plugin/` and its
+Playwright spec at `.wp-test/tests/page-editor.spec.js`, run against
+`playwright.config.js` in the repo root. This repo has no `package.json` and
+must not gain one, so there is no local `node_modules` for the config or the
+spec files to resolve `require('@playwright/test')` against — `npx
+@playwright/test` runs a CLI fine, but from its own separate on-demand cache.
+Pointing `NODE_PATH` at a different local install than that CLI itself came
+from loads two physical copies of the same package, and Playwright refuses to
+run ("test.beforeAll() did not expect to be called here" — its own way of
+detecting exactly this). The fix is a disposable, gitignored local install,
+run directly rather than through npx, with `NODE_PATH` pointed at that same
+install — not something to rediscover per person running the suite:
+
+```bash
+# Once per checkout:
+npm install --no-save --prefix .wp-test/.pw @playwright/test
+npx --yes playwright install chromium
+
+# Every run:
+node scripts/stage-example-plugin.mjs
+node scripts/wp-test-env.mjs up --plugin .wp-test/example-plugin
+NODE_PATH="$(pwd)/.wp-test/.pw/node_modules" \
+  PLAYWRIGHT_BASE_URL=http://127.0.0.1:8881 \
+  WP_ADMIN_USER=admin WP_ADMIN_PASS=wptest-admin-pw \
+  .wp-test/.pw/node_modules/.bin/playwright test --workers=1
+node scripts/wp-test-env.mjs down
+```
+
+`scripts/stage-example-plugin.mjs` copies the library and design system assets
+the example plugin needs from `.claude/skills/blueworx-admin-design/` into
+`.wp-test/example-plugin/` — run it before every `up`. Only
+`blueworx-editor-example.php` and `dev-fixture.php` are committed under
+`.wp-test/example-plugin/`; everything the staging script writes is
+gitignored, so a library fix can never leave the example running against a
+stale copy of itself — the failure mode that let this suite quietly stop
+proving anything the first time round.
+
 ## Why this exists
 
 WordPress CI used to point Playwright at a staging URL. When that URL was a

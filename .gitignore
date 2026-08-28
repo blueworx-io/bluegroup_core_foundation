@@ -2,20 +2,31 @@
 /vendor/
 .phpunit.result.cache
 
-# The disposable WordPress the shared harness provisions. It appears in
+# The disposable WordPress the shared harness provisions, plus everything
+# else wp-test-env.mjs or the Playwright suite generates. It appears in
 # whichever repo runs wp-test-env.mjs, and that includes this one when the
-# harness is being worked on — 16,000 files of WordPress core, one `git add -A`
-# away from the history. This repo also keeps its own worked example plugin
-# and its Playwright spec under .wp-test/ (the harness's default --plugin
-# location), so only the runtime WordPress tree and server bookkeeping are
-# ignored, not the whole directory.
-.wp-test/wp/
-.wp-test/*.zip
-.wp-test/server.pid
-.wp-test/php-server.log
-# Signed-in cookies the Playwright spec harvests for itself on each run —
-# a live admin session, never a fixture worth keeping in history.
-.wp-test/tests/.auth-state.json
+# harness is being worked on — 16,000 files of WordPress core, one
+# `git add -A` away from the history.
+#
+# This repo also keeps its own worked example plugin and Playwright spec
+# under .wp-test/ (the harness's default --plugin location), so this is a
+# denylist-by-default with an explicit allowlist carved out, rather than the
+# other way round — a future file dropped anywhere else under .wp-test/
+# (a staged library copy, a generated auth cookie, WordPress itself) is
+# ignored automatically, with nothing further to remember. The two earlier
+# attempts at this — ignoring the whole tree, then un-ignoring only the
+# runtime paths — both left it possible for something generated to become
+# committable by accident; only an allowlist over a denylisted tree rules
+# that out structurally.
+.wp-test/*
+!/.wp-test/example-plugin/
+/.wp-test/example-plugin/*
+!/.wp-test/example-plugin/blueworx-editor-example.php
+!/.wp-test/example-plugin/dev-fixture.php
+!/.wp-test/tests/
+/.wp-test/tests/*
+!/.wp-test/tests/page-editor.spec.js
+
 .wp-test-client/
 .wp-test-client-plugin/
 
