@@ -273,7 +273,14 @@
         fields.length === 0
           ? h('div', { className: 'bw-empty' }, h('p', null, 'Nothing here yet.'))
           : h('div', { className: 'bw-fields' }, fields.map(function (field) {
-              return h(Field, { key: field.id, field: field, record: props.record });
+              const drawn = h(Field, { key: field.id, field: field, record: props.record });
+              if (!field.depends_on) return drawn;
+              const on = (panel.fields || []).find(function (f) { return f.id === field.depends_on.field; });
+              return h('div', { key: field.id, className: 'bw-conditional bw-field--wide' },
+                h('p', { className: 'bw-fieldnote' },
+                  h('i', { className: 'bw-icon', 'data-lucide': 'info' }),
+                  'Shown because "' + (on ? on.label : field.depends_on.field) + '" is on.'),
+                drawn);
             }))) : null);
   }
 
@@ -430,11 +437,175 @@
     }
   }
 
-  function ComplexControl(props) {
+  function openLibrary(field, set) {
+    if (!root.wp || !root.wp.media) return;
+    const frame = root.wp.media({ title: field.label, multiple: false });
+    frame.on('select', function () { set(frame.state().get('selection').first().id); });
+    frame.open();
+  }
+
+  function Tokens(props) {
+    const el = wp().element;
+    const h = el.createElement;
+    const [draft, setDraft] = el.useState('');
+    const locked = Boolean(props.field.readonly);
+
+    function commit() {
+      const text = draft.trim();
+      if (text === '' || props.value.indexOf(text) !== -1) { setDraft(''); return; }
+      props.onChange(props.value.concat([text]));
+      setDraft('');
+    }
+
+    return h('div', { className: 'bw-tokens' },
+      props.value.map(function (token) {
+        return h('span', { key: token, className: 'bw-chip' }, token,
+          h('button', { type: 'button', className: 'bw-chip__x', 'aria-label': 'Remove ' + token, disabled: locked,
+            onClick: function () { props.onChange(props.value.filter(function (t) { return t !== token; })); } },
+            h('i', { className: 'bw-icon', 'data-lucide': 'x' })));
+      }),
+      h('input', { id: props.field.id, type: 'text', className: 'bw-tokens__input', value: draft,
+        placeholder: props.value.length ? '' : 'Type and press Enter',
+        disabled: locked,
+        onChange: function (e) { setDraft(e.target.value); },
+        onKeyDown: function (e) { if (e.key === 'Enter') { e.preventDefault(); commit(); } } }));
+  }
+
+  function Repeater(props) {
     const h = wp().element.createElement;
-    return h('input', { id: props.field.id, type: 'text', className: 'bw-input',
-      value: props.record.values[props.field.id] || '',
-      onChange: function (e) { props.record.setValue(props.field.id, e.target.value); } });
+    const rows = props.value;
+    const locked = Boolean(props.field.readonly);
+
+    // A repeater's own cells carry their kind (see Sanitise::field(), which
+    // sanitises each cell recursively): a 'number' cell round-trips as a real
+    // number, same as a top-level number field, so it has to be cast back to
+    // one here rather than left as the string an input hands back.
+    function change(index, cell, cellValue) {
+      const next = rows.slice();
+      next[index] = Object.assign({}, next[index]);
+      next[index][cell.id] = cell.kind === 'number' ? (Number(cellValue) || 0) : cellValue;
+      props.onChange(next);
+    }
+
+    function move(index, by) {
+      if (locked) return;
+      const target = index + by;
+      if (target < 0 || target >= rows.length) return;
+      const next = rows.slice();
+      const held = next[index];
+      next[index] = next[target];
+      next[target] = held;
+      props.onChange(next);
+    }
+
+    return h('div', { className: 'bw-repeater' },
+      rows.length === 0 ? h('div', { className: 'bw-repeater__empty' }, 'No rows yet.') : null,
+      rows.map(function (row, i) {
+        return h('div', { key: i, className: 'bw-repeater__row' },
+          // Dragging is a nice-to-have; these two buttons are how a reorder is
+          // actually done, so it works from the keyboard like everything else.
+          h('span', { className: 'bw-repeater__grip' },
+            h('button', { type: 'button', className: 'bw-iconbtn', 'aria-label': 'Move up', disabled: locked,
+              onClick: function () { move(i, -1); } },
+              h('i', { className: 'bw-icon', 'data-lucide': 'chevron-up' })),
+            h('button', { type: 'button', className: 'bw-iconbtn', 'aria-label': 'Move down', disabled: locked,
+              onClick: function () { move(i, 1); } },
+              h('i', { className: 'bw-icon', 'data-lucide': 'chevron-down' }))),
+          h('div', { className: 'bw-repeater__fields' }, (props.field.fields || []).map(function (cell) {
+            return h('div', { key: cell.id, className: 'bw-field' },
+              h('label', { className: 'bw-field__label', htmlFor: cell.id + '-' + i }, cell.label),
+              h('input', { id: cell.id + '-' + i, type: cell.kind === 'number' ? 'number' : 'text',
+                className: 'bw-input', disabled: locked,
+                value: row[cell.id] === undefined ? '' : row[cell.id],
+                onChange: function (e) { change(i, cell, e.target.value); } }));
+          })),
+          h('button', { type: 'button', className: 'bw-iconbtn bw-iconbtn--danger', 'aria-label': 'Remove this row', disabled: locked,
+            onClick: function () { props.onChange(rows.filter(function (_, j) { return j !== i; })); } },
+            h('i', { className: 'bw-icon', 'data-lucide': 'trash-2' })));
+      }),
+      h('div', { className: 'bw-repeater__foot' },
+        h('button', { type: 'button', className: 'bw-btn bw-btn--secondary', disabled: locked,
+          onClick: function () { props.onChange(rows.concat([{}])); } }, 'Add a row')));
+  }
+
+  function ComplexControl(props) {
+    const el = wp().element;
+    const h = el.createElement;
+    const field = props.field;
+    const record = props.record;
+    const value = record.values[field.id];
+    const set = function (v) { record.setValue(field.id, v); };
+    const locked = Boolean(field.readonly);
+
+    switch (field.kind) {
+      case 'richtext':
+        // A shell, not a document editor: bold, italic, link, list, image and
+        // nothing else, so what a site owner can produce stays inside what the
+        // front end is built to render.
+        return h('div', { className: 'bw-richtext' },
+          h('div', { className: 'bw-richtext__bar' },
+            ['bold', 'italic'].map(function (cmd) {
+              return h('button', { key: cmd, type: 'button', className: 'bw-richtext__btn', disabled: locked,
+                title: cmd === 'bold' ? 'Bold' : 'Italic',
+                onClick: function () { root.document.execCommand(cmd); } }, cmd === 'bold' ? 'B' : 'I');
+            }),
+            h('span', { className: 'bw-richtext__sep' }),
+            ['link', 'list', 'image'].map(function (name) {
+              return h('button', { key: name, type: 'button', className: 'bw-richtext__btn', title: name, disabled: locked,
+                onClick: function () { root.document.execCommand(name === 'list' ? 'insertUnorderedList' : 'createLink'); } },
+                h('i', { className: 'bw-icon', 'data-lucide': name === 'link' ? 'external-link' : name === 'list' ? 'file-text' : 'image' }));
+            })),
+          h('textarea', { id: field.id, className: 'bw-textarea', rows: 6, disabled: locked,
+            value: value || '', onChange: function (e) { set(e.target.value); } }));
+
+      case 'tokens':
+        return h(Tokens, { field: field, value: value || [], onChange: set });
+
+      case 'repeater':
+        return h(Repeater, { field: field, value: value || [], onChange: set });
+
+      case 'media':
+        // The stored value is only ever an attachment id (see
+        // Store::castByKind), never a URL, so there is nothing to render a
+        // preview image from — the empty-state icon stands in for both states
+        // and the button label carries whether something is chosen.
+        return h('div', { className: 'bw-media' },
+          h('span', { className: 'bw-media__empty' }, h('i', { className: 'bw-icon', 'data-lucide': 'image' })),
+          h('span', { className: 'bw-media__body' },
+            h('span', { className: 'bw-media__hint' }, field.help || 'Nothing chosen yet.'),
+            h('span', { className: 'bw-media__actions' },
+              h('button', { id: field.id, type: 'button', className: 'bw-btn bw-btn--secondary', disabled: locked,
+                onClick: function () { openLibrary(field, set); } }, value ? 'Change image' : 'Choose an image'),
+              value ? h('button', { type: 'button', className: 'bw-btn bw-btn--link', disabled: locked,
+                onClick: function () { set(0); } }, 'Remove') : null)));
+
+      case 'file':
+        return h('div', { className: 'bw-upload' },
+          h('i', { className: 'bw-icon bw-upload__icon', 'data-lucide': value ? 'file-text' : 'upload' }),
+          h('div', { className: 'bw-upload__body' },
+            h('p', { className: 'bw-upload__title' }, value ? 'File chosen' : 'No file chosen'),
+            h('p', { className: 'bw-upload__hint' }, field.help || '')),
+          h('button', { id: field.id, type: 'button', className: 'bw-btn bw-btn--secondary', disabled: locked,
+            onClick: function () { openLibrary(field, set); } }, value ? 'Change file' : 'Choose a file'),
+          value ? h('button', { type: 'button', className: 'bw-btn bw-btn--link', disabled: locked,
+            onClick: function () { set(0); } }, 'Remove') : null);
+
+      case 'facts':
+        return h('dl', { className: 'bw-dl' }, (field.rows || []).map(function (row) {
+          return h(el.Fragment, { key: row.label }, h('dt', null, row.label), h('dd', null, row.value));
+        }));
+
+      case 'table':
+        return h('table', { className: 'bw-table' },
+          h('thead', null, h('tr', null, (field.columns || []).map(function (c) { return h('th', { key: c }, c); }))),
+          h('tbody', null, (field.rows || []).map(function (row, i) {
+            return h('tr', { key: i }, row.map(function (cell, j) { return h('td', { key: j }, cell); }));
+          })));
+
+      default:
+        return h('input', { id: field.id, type: 'text', className: 'bw-input',
+          value: value || '', onChange: function (e) { set(e.target.value); } });
+    }
   }
 
   const api = {
