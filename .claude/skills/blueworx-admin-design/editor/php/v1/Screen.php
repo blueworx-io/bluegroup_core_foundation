@@ -131,10 +131,25 @@ final class Screen {
 		return false === $slug ? null : $slug;
 	}
 
-	/** Adds type="module" to exactly the icon script — see assets() above. */
+	/**
+	 * Forces the icon script's tag to type="module" — see assets() above.
+	 * WordPress 4.1–5.6 always prints type='text/javascript' on every
+	 * enqueued script, and 5.7–6.3 still do unless the active theme declares
+	 * HTML5 script support — so on any of those versions the tag already
+	 * carries a type attribute, just the wrong one. Bailing out when a type
+	 * attribute was already present (the previous version of this method)
+	 * left that wrong type in place on exactly the versions this fallback
+	 * exists for: the module keeps its top-level export, the browser throws
+	 * a syntax error on it, and every icon is the same empty box the
+	 * fallback was written to fix. This replaces whatever value is there
+	 * instead, and only adds the attribute outright when none exists at all.
+	 */
 	public static function moduleType( string $tag, string $handle ): string {
-		if ( 'blueworx-admin-icons' !== $handle || false !== strpos( $tag, ' type=' ) ) {
+		if ( 'blueworx-admin-icons' !== $handle ) {
 			return $tag;
+		}
+		if ( preg_match( '/\stype=([\'"])[^\'"]*\1/', $tag ) ) {
+			return preg_replace( '/\stype=([\'"])[^\'"]*\1/', ' type=$1module$1', $tag, 1 );
 		}
 		return str_replace( ' src=', ' type="module" src=', $tag );
 	}

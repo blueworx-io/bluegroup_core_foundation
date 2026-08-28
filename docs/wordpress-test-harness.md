@@ -61,14 +61,31 @@ spec files to resolve `require('@playwright/test')` against — `npx
 Pointing `NODE_PATH` at a different local install than that CLI itself came
 from loads two physical copies of the same package, and Playwright refuses to
 run ("test.beforeAll() did not expect to be called here" — its own way of
-detecting exactly this). The fix is a disposable, gitignored local install,
-run directly rather than through npx, with `NODE_PATH` pointed at that same
-install — not something to rediscover per person running the suite:
+detecting exactly this). Downloading the browser through yet another copy
+(`npx playwright install`) is the same mistake again. The fix is one
+disposable, gitignored local install, used for the CLI, `NODE_PATH` and the
+browser download alike — not something to rediscover per person running the
+suite.
+
+**Prerequisites:** PHP on PATH with `pdo_sqlite` (`wp-test-env.mjs` checks and
+fails clearly if either is missing), and port 8881 free — that is what the
+harness serves on by default and what `PLAYWRIGHT_BASE_URL` below points at.
+
+The commands below are **Git Bash** (this repo's shell of choice for the
+harness; a PowerShell equivalent follows). Staging still has to run before
+`up`: `wp-test-env.mjs` activates the plugin as part of coming up, and that
+fatals immediately if the library it requires is not there yet. What you no
+longer have to remember is staging again after that — `playwright.config.js`'s
+`globalSetup` runs `scripts/stage-example-plugin.mjs` automatically before
+the suite itself starts, so editing the library and re-running just the
+suite (harness already up from before) can never quietly test yesterday's
+copy. Running the script by hand stays useful on top of both, for poking at
+the screen outside the suite entirely.
 
 ```bash
 # Once per checkout:
 npm install --no-save --prefix .wp-test/.pw @playwright/test
-npx --yes playwright install chromium
+.wp-test/.pw/node_modules/.bin/playwright install chromium
 
 # Every run:
 node scripts/stage-example-plugin.mjs
@@ -80,9 +97,29 @@ NODE_PATH="$(pwd)/.wp-test/.pw/node_modules" \
 node scripts/wp-test-env.mjs down
 ```
 
+PowerShell:
+
+```powershell
+# Once per checkout:
+npm install --no-save --prefix .wp-test/.pw @playwright/test
+.\.wp-test\.pw\node_modules\.bin\playwright.cmd install chromium
+
+# Every run:
+node scripts/stage-example-plugin.mjs
+node scripts/wp-test-env.mjs up --plugin .wp-test/example-plugin
+$env:NODE_PATH = "$PWD\.wp-test\.pw\node_modules"
+$env:PLAYWRIGHT_BASE_URL = "http://127.0.0.1:8881"
+$env:WP_ADMIN_USER = "admin"
+$env:WP_ADMIN_PASS = "wptest-admin-pw"
+.\.wp-test\.pw\node_modules\.bin\playwright.cmd test --workers=1
+node scripts/wp-test-env.mjs down
+```
+
 `scripts/stage-example-plugin.mjs` copies the library and design system assets
 the example plugin needs from `.claude/skills/blueworx-admin-design/` into
-`.wp-test/example-plugin/` — run it before every `up`. Only
+`.wp-test/example-plugin/`, validating every source exists before touching any
+destination — a source missing partway through used to be able to wipe an
+earlier destination and then fail, leaving the plugin half-staged. Only
 `blueworx-editor-example.php` and `dev-fixture.php` are committed under
 `.wp-test/example-plugin/`; everything the staging script writes is
 gitignored, so a library fix can never leave the example running against a

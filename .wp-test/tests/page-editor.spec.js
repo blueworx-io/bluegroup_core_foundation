@@ -3,11 +3,14 @@ const path = require('node:path');
 
 // The library refuses an id that is not a real post of the screen's own post
 // type (see Editor::authoriseRecord()), so unlike an early draft of this
-// suite we cannot just point at a hardcoded id. beforeAll below signs in,
-// harvests a REST nonce from the editor's own bootstrap payload, and creates
-// a fresh "bwx_sport" post through the REST API — the example plugin's own
-// dev-fixture convenience is left alone, so a manual poke at it never leaks
-// into this run.
+// suite we cannot just point at a hardcoded id. beforeAll below only signs
+// in; beforeEach then creates a fresh "bwx_sport" post through the REST API
+// for EACH test — a single fixture shared across the whole file meant a
+// later test's write (e.g. saving 'Rugby' into #name) was still there for an
+// earlier-looking test under --repeat-each, since beforeAll only ever runs
+// once per file. A record per test is the only way one test can never see
+// another's writes. The example plugin's own dev-fixture convenience is left
+// alone throughout, so a manual poke at it never leaks into this run either.
 const USER = process.env.WP_ADMIN_USER || 'admin';
 const PASS = process.env.WP_ADMIN_PASS || 'wptest-admin-pw';
 
@@ -16,9 +19,7 @@ const PASS = process.env.WP_ADMIN_PASS || 'wptest-admin-pw';
 // from anywhere other than the repo root.
 const AUTH_STATE = path.join(__dirname, '.auth-state.json');
 
-let screen;
-
-test.beforeAll(async ({ browser, baseURL }) => {
+test.beforeAll(async ({ browser }) => {
   // Every test in this file loads storageState from AUTH_STATE (see
   // test.use()) — including, by default, the very context this hook creates
   // to go and produce that file in the first place. Overriding it back to
@@ -31,10 +32,18 @@ test.beforeAll(async ({ browser, baseURL }) => {
   await page.fill('#user_pass', PASS);
   await page.click('#wp-submit');
 
-  // Any load of the editor's own admin screen enqueues the bootstrap payload
-  // (see Screen::assets()) regardless of whether the id in the URL resolves,
-  // so this is enough to harvest a working REST nonce without a post to edit
-  // yet.
+  await context.storageState({ path: AUTH_STATE });
+  await context.close();
+});
+
+test.use({ storageState: AUTH_STATE });
+
+// Creates one fresh "bwx_sport" post and returns the editor URL for it. Any
+// load of the editor's own admin screen enqueues the bootstrap payload (see
+// Screen::assets()) regardless of whether the id in the URL resolves, so
+// loading the bare screen first is enough to harvest a working REST nonce
+// without a post to edit yet.
+async function freshScreen(page) {
   await page.goto('/wp-admin/admin.php?page=bwx-sport-editor');
   const nonce = await page.evaluate(() => window.blueworxPageEditor.nonce);
 
@@ -42,19 +51,14 @@ test.beforeAll(async ({ browser, baseURL }) => {
     headers: { 'X-WP-Nonce': nonce },
     data: { title: 'Playwright fixture sport', status: 'publish' },
   });
-  expect(created.ok(), 'creating the fixture record the suite edits').toBeTruthy();
+  expect(created.ok(), 'creating the fixture record this test edits').toBeTruthy();
   const post = await created.json();
 
-  screen = `/wp-admin/admin.php?page=bwx-sport-editor&id=${post.id}`;
-
-  await context.storageState({ path: AUTH_STATE });
-  await context.close();
-});
-
-test.use({ storageState: AUTH_STATE });
+  return `/wp-admin/admin.php?page=bwx-sport-editor&id=${post.id}`;
+}
 
 test.beforeEach(async ({ page }) => {
-  await page.goto(screen);
+  await page.goto(await freshScreen(page));
 });
 
 test('the screen opens clean, with one save bar', async ({ page }) => {
@@ -93,10 +97,12 @@ test('an invalid save writes nothing and says where to look', async ({ page }) =
   await expect(page.locator('.bw-field__error')).toContainText('domain');
 
   // Not `.not.toHaveValue('Rugby')`: that also passes if the field failed to
-  // hydrate, or the screen never loaded — and it inverts under
-  // --repeat-each, since a later test in this file saves 'Rugby' to this
-  // same shared fixture. Asserting the exact value the store's own default
-  // produces is the only version that actually proves nothing was written.
+  // hydrate, or the screen never loaded, or genuinely wrote some other
+  // string. Asserting the exact value the store's own default produces is
+  // the only version that actually proves nothing was written. Each test
+  // gets its own fresh fixture record (see freshScreen() above), so this
+  // does not depend on test order or on nothing else having saved 'Rugby'
+  // first — it would hold even if another test in this file had.
   await page.reload();
   await expect(page.locator('#name')).toHaveValue('');
 });
@@ -158,7 +164,12 @@ test('a switch has a visible thumb', async ({ page }) => {
 // remove controls are real <button> elements specifically so a keyboard user
 // can reach them, which is the whole reason the brief chose buttons over
 // drag-and-drop. A click-only version of this test would pass just as well
-// against a repeater no keyboard could ever operate.
+// against a repeater no keyboard could ever operate — and so, at first, did
+// a version of this test that used .focus() to jump straight to each
+// control before pressing a key: that proves the control responds to Enter,
+// never that Tab can actually land on it, which is the specific claim
+// "from the keyboard" makes. The block below Tabs there for real, from a
+// known starting point, and fails if it never arrives.
 test('a repeater row can be added, reordered and removed from the keyboard', async ({ page }) => {
   const addRow = page.getByRole('button', { name: 'Add a row' });
 
@@ -172,8 +183,25 @@ test('a repeater row can be added, reordered and removed from the keyboard', asy
   await page.locator('#day-1').focus();
   await page.keyboard.type('Tuesday');
 
-  const moveUp = page.locator('[aria-label="Move up"]').nth(1);
-  await moveUp.focus();
+  // Start at the first row's own "Move up" — a real, known-focusable point
+  // already on the page — and press Tab until focus lands on the second
+  // row's "Move up", the control under test. .focus()ing the starting point
+  // is fine: it is not the thing being proven reachable, and something has
+  // to establish where Tab begins.
+  const moveUpFirstRow = page.locator('[aria-label="Move up"]').first();
+  const moveUpSecondRow = page.locator('[aria-label="Move up"]').nth(1);
+  await moveUpFirstRow.focus();
+
+  let reachedByTab = false;
+  for (let presses = 0; presses < 10; presses += 1) {
+    await page.keyboard.press('Tab');
+    if (await moveUpSecondRow.evaluate((el) => el === document.activeElement)) {
+      reachedByTab = true;
+      break;
+    }
+  }
+  expect(reachedByTab, 'Tab never reached the second row’s "Move up" button').toBe(true);
+
   await page.keyboard.press('Enter');
   await expect(page.locator('#day-0')).toHaveValue('Tuesday');
 
@@ -192,6 +220,12 @@ test('a repeater row can be added, reordered and removed from the keyboard', asy
 // blueworx-admin-design.css fix to `.bw-switch input` and `.bw-switch` — so
 // this also stands in as the regression test for that.
 test('a hideable panel switched off, saved and reloaded is still off', async ({ page }) => {
+  // 'Name' is required, and this test's fixture is its own fresh record
+  // (see freshScreen() above) that has never had one set — the save below
+  // would otherwise fail validation for a reason that has nothing to do
+  // with the panel switch under test.
+  await page.fill('#name', 'Rugby');
+
   const card = page.locator('.bw-card:has-text("Training times")');
   const panelSwitch = card.locator('.bw-switch input');
   await expect(panelSwitch).toBeChecked();
