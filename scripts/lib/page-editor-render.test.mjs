@@ -180,24 +180,96 @@ test('a field the user may not change is drawn disabled', () => {
 
 /* --- Repeater cells --------------------------------------------------------- */
 
-test('every kind legal as a repeater cell renders a control in the row', () => {
+// What each cell kind must actually draw. Read against Schema.php's own
+// REPEATER_KINDS below, so widening that list fails here until Repeater() has
+// a case for the new kind — which is the whole reason the list is narrow.
+const CELL_CONTROLS = {
+  text: (node) => node.type === 'input' && node.props.type === 'text',
+  number: (node) => node.type === 'input' && node.props.type === 'number',
+  textarea: (node) => node.type === 'textarea',
+  select: (node) => node.type === 'select',
+  toggle: (node) => node.type === 'input' && node.props.type === 'checkbox',
+  media: (node) => node.type === 'button' && String(node.props.className || '').indexOf('bw-btn') !== -1,
+};
+
+test('every kind legal as a repeater cell renders its own control in the row', () => {
+  const missing = REPEATER_KINDS.filter((kind) => !CELL_CONTROLS[kind]);
+  assert.deepEqual(missing, [], 'a kind was added to REPEATER_KINDS with no control expected for it here');
+
+  REPEATER_KINDS.forEach((kind) => {
+    const field = {
+      id: 'sessions',
+      kind: 'repeater',
+      label: 'Sessions',
+      fields: [{ id: 'cell', kind, label: 'A ' + kind, options: [{ value: 'a', label: 'A' }] }],
+    };
+    const tree = render(h(pe.Repeater, { field, value: [{}], onChange() {} }));
+
+    let found = false;
+    walk(tree, (node) => {
+      if (CELL_CONTROLS[kind](node)) found = true;
+    });
+    assert.ok(found, `a ${kind} cell draws no control of its own — it would render as a text box and save whatever was typed`);
+  });
+});
+
+/* --- Suggestions ------------------------------------------------------------ */
+
+test('a text field offering suggestions renders a datalist the input points at', () => {
   const field = {
-    id: 'sessions',
+    id: 'href',
+    kind: 'text',
+    label: 'Link',
+    suggestions: [{ value: '/about/', label: 'About' }],
+  };
+  const tree = render(h(pe.Field, { field, record: { values: { href: '' }, errors: {}, setValue() {} } }));
+
+  let input = null;
+  let list = null;
+  walk(tree, (node) => {
+    if (node.type === 'input') input = node;
+    if (node.type === 'datalist') list = node;
+  });
+
+  assert.ok(list, 'no datalist rendered');
+  assert.ok(input, 'no input rendered');
+  assert.equal(input.props.list, list.props.id, 'the input does not point at the list');
+  assert.equal(list.children.length, 1);
+});
+
+test('a text field with no suggestions renders no datalist and no list attribute', () => {
+  const field = { id: 'name', kind: 'text', label: 'Name' };
+  const tree = render(h(pe.Field, { field, record: { values: { name: '' }, errors: {}, setValue() {} } }));
+
+  let input = null;
+  let list = null;
+  walk(tree, (node) => {
+    if (node.type === 'input') input = node;
+    if (node.type === 'datalist') list = node;
+  });
+
+  assert.equal(list, null);
+  assert.equal(input.props.list, undefined);
+});
+
+test('a repeater text cell offers its suggestions too', () => {
+  const field = {
+    id: 'tiles',
     kind: 'repeater',
-    label: 'Sessions',
-    fields: REPEATER_KINDS.map((kind) => ({ id: 'cell_' + kind, kind, label: 'A ' + kind })),
+    label: 'Tiles',
+    fields: [{ id: 'href', kind: 'text', label: 'Link', suggestions: [{ value: '/about/', label: 'About' }] }],
   };
   const tree = render(h(pe.Repeater, { field, value: [{}], onChange() {} }));
 
-  const inputs = [];
+  let input = null;
+  let list = null;
   walk(tree, (node) => {
-    if (node.type === 'input' && String(node.props.className || '').indexOf('bw-input') !== -1) inputs.push(node);
+    if (node.type === 'input') input = node;
+    if (node.type === 'datalist') list = node;
   });
 
-  assert.equal(inputs.length, REPEATER_KINDS.length, 'one control per cell the schema allows in a row');
-  REPEATER_KINDS.forEach((kind, i) => {
-    assert.equal(inputs[i].props.type, kind === 'number' ? 'number' : 'text');
-  });
+  assert.ok(list, 'no datalist in the row');
+  assert.equal(input.props.list, list.props.id);
 });
 
 /* --- The conditional field's note ------------------------------------------- */

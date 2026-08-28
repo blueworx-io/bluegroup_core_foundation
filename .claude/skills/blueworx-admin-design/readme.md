@@ -316,3 +316,33 @@ the plugin owns only what goes in it.
 | The record's title, and the slug beneath it | `bw-titleinput`, `bw-permalink` |
 | A small muted note with an icon | `bw-fieldnote` |
 | A collapsible group | `bw-accordion` (not a new control) |
+
+**What a repeater row may hold**
+
+`text`, `number`, `textarea`, `select`, `toggle`, `media`. That list is
+`Schema::REPEATER_KINDS`, and it is what the row actually draws — a kind may
+only be added to it once `Repeater()` in the browser file has a case for it,
+which a test enforces. A url or email cell is a `text` with a `format`, not a
+kind of its own. Anything wider than this list belongs outside the repeater.
+
+**A field that suggests without constraining**
+
+A `text` field may carry `suggestions` — a list of `{ value, label }` offered as
+a `<datalist>`. The field stays free text and nothing is checked against the
+list, because the case it exists for is a link field: most links point at one of
+the site's own pages, and plenty do not. Only `text` accepts it.
+
+**A screen that keeps its values somewhere else**
+
+A settings screen may supply `read` and `write` callbacks instead of an
+`option_name`, and the library will use them in place of its own store.
+Everything else — the schema, capability filtering both ways, sanitising,
+validation, the save bar and its states — is unchanged, and a value still
+reaches `write` already cleaned by its field's kind.
+
+Supply both or neither. Record screens may not: a record's values belong to its
+post, which is what "records are post types" means.
+
+Use it when the truth already lives somewhere and an option would be a second
+copy of it — a switch that is really a page's post status, say, where storing it
+twice means the two can disagree with no way to tell which is right.

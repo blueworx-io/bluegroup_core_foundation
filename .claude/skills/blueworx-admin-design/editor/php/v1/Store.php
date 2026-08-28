@@ -22,6 +22,9 @@ abstract class Store {
 	}
 
 	public static function for( array $screen ): Store {
+		if ( isset( $screen['read'], $screen['write'] ) ) {
+			return new CallbackStore( $screen );
+		}
 		return 'option' === $screen['store'] ? new OptionStore( $screen ) : new PostStore( $screen );
 	}
 
@@ -344,5 +347,51 @@ final class OptionStore extends Store {
 		}
 
 		return update_option( $this->screen['option_name'], $merged );
+	}
+}
+
+/**
+ * A screen that keeps its values somewhere this library does not know about.
+ *
+ * The case that asked for it: a settings screen whose switches are not
+ * settings at all. A page controller's switch IS a page's post status — stored
+ * as an option it would be a second copy of that fact, and publishing the page
+ * from anywhere else would make the two disagree with no way to tell which was
+ * right.
+ *
+ * The plugin supplies read() and write(); everything else the library does is
+ * unchanged — the schema, the capability filtering in both directions, the
+ * sanitising, the validation, the save bar and its states all still apply, and
+ * a value still reaches write() already cleaned by its field's kind.
+ *
+ * Values still go through castByKind() on the way out, so a plugin returning
+ * '1' for a toggle is corrected here rather than reading back as a dirty
+ * screen. A field the callback says nothing about falls back to its declared
+ * default, exactly as the other two stores do.
+ */
+final class CallbackStore extends Store {
+
+	public function read( int $id = 0 ): array {
+		$saved = call_user_func( $this->screen['read'], $id );
+		$saved = is_array( $saved ) ? $saved : [];
+
+		$out = [];
+		foreach ( $this->fields() as $field ) {
+			$out[ $field['id'] ] = array_key_exists( $field['id'], $saved )
+				? $this->castByKind( $field, $saved[ $field['id'] ] )
+				: $this->castByKind( $field, $field['default'] ?? '' );
+		}
+		return $out;
+	}
+
+	/**
+	 * Whatever the callback returns is taken as its own answer about whether
+	 * the write succeeded. A callback that returns nothing is treated as
+	 * having failed rather than as having quietly worked: this library tells
+	 * a site owner plainly when a save may not have landed, and it cannot do
+	 * that on a guess.
+	 */
+	public function write( array $values, int $id = 0 ): bool {
+		return true === call_user_func( $this->screen['write'], $values, $id );
 	}
 }
