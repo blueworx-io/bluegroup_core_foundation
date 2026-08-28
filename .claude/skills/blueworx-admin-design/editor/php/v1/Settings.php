@@ -41,7 +41,7 @@ final class Settings {
 							'kind'        => 'select',
 							'label'       => 'Status',
 							'help'        => 'A draft is only visible to you.',
-							'capability'  => 'publish_posts',
+							'capability'  => self::publishCapability( $screen ),
 							'locked_help' => 'Only someone who can publish can change the status.',
 							'options'     => [
 								[ 'value' => 'draft', 'label' => 'Draft' ],
@@ -82,5 +82,25 @@ final class Settings {
 		];
 
 		return Schema::normaliseTab( $tab, $screen['slug'] );
+	}
+
+	/**
+	 * Which capability a person needs to change this record's status. Taken
+	 * from the post type itself, because a post type registered with its own
+	 * capability_type has its own publisher: asking for the generic
+	 * publish_posts would lock the field for the person actually allowed to
+	 * a record of that type, and leave it open to a plain Author who happens
+	 * to hold publish_posts for ordinary posts.
+	 *
+	 * Falls back to publish_posts when there is nothing to derive from — a
+	 * post type registered without its own capabilities maps to exactly that
+	 * anyway, and at registration time (plugins_loaded, before init) no post
+	 * type exists yet, so the object is null and the tab is only being built
+	 * for its field ids.
+	 */
+	private static function publishCapability( array $screen ): string {
+		$type = get_post_type_object( $screen['post_type'] ?? '' );
+		$cap  = ( $type && isset( $type->cap->publish_posts ) ) ? $type->cap->publish_posts : '';
+		return ( is_string( $cap ) && '' !== $cap ) ? $cap : 'publish_posts';
 	}
 }

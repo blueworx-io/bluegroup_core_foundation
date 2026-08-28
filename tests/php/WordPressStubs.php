@@ -6,30 +6,32 @@
  */
 
 $GLOBALS['bwpe_stub'] = [
-	'post_types'   => [],
-	'capabilities' => [],
-	'edit_posts'   => [],
-	'meta'         => [],
-	'options'      => [],
-	'posts'        => [],
-	'terms'        => [],
-	'thumbnails'   => [],
-	'fail_writes'  => false,
-	'fail_key'     => null,
+	'post_types'     => [],
+	'post_type_caps' => [],
+	'capabilities'   => [],
+	'edit_posts'     => [],
+	'meta'           => [],
+	'options'        => [],
+	'posts'          => [],
+	'terms'          => [],
+	'thumbnails'     => [],
+	'fail_writes'    => false,
+	'fail_key'       => null,
 ];
 
 function bwpe_stub_reset(): void {
 	$GLOBALS['bwpe_stub'] = [
-		'post_types'   => [],
-		'capabilities' => [],
-		'edit_posts'   => [],
-		'meta'         => [],
-		'options'      => [],
-		'posts'        => [],
-		'terms'        => [],
-		'thumbnails'   => [],
-		'fail_writes'  => false,
-		'fail_key'     => null,
+		'post_types'     => [],
+		'post_type_caps' => [],
+		'capabilities'   => [],
+		'edit_posts'     => [],
+		'meta'           => [],
+		'options'        => [],
+		'posts'          => [],
+		'terms'          => [],
+		'thumbnails'     => [],
+		'fail_writes'    => false,
+		'fail_key'       => null,
 	];
 }
 
@@ -52,6 +54,23 @@ if ( ! function_exists( 'is_wp_error' ) ) {
 if ( ! function_exists( 'post_type_exists' ) ) {
 	function post_type_exists( $type ) {
 		return in_array( $type, $GLOBALS['bwpe_stub']['post_types'], true );
+	}
+}
+if ( ! function_exists( 'get_post_type_object' ) ) {
+	// Real WordPress hands back an object whose ->cap maps every capability for
+	// the type. A type registered with its own capability_type gets its own
+	// names ('publish_sports'); one registered without reuses the shared post
+	// ones ('publish_posts'). A type nobody has registered yet — which is every
+	// type at plugins_loaded, before init has run — is null.
+	function get_post_type_object( $type ) {
+		if ( ! post_type_exists( $type ) ) {
+			return null;
+		}
+		$caps = array_merge(
+			[ 'edit_posts' => 'edit_posts', 'edit_others_posts' => 'edit_others_posts', 'publish_posts' => 'publish_posts' ],
+			$GLOBALS['bwpe_stub']['post_type_caps'][ $type ] ?? []
+		);
+		return (object) [ 'name' => $type, 'cap' => (object) $caps ];
 	}
 }
 if ( ! function_exists( 'current_user_can' ) ) {

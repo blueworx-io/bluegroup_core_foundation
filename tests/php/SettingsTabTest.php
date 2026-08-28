@@ -3,6 +3,7 @@ namespace Blueworx\PageEditor\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Blueworx\PageEditor\v1\Editor;
+use Blueworx\PageEditor\v1\Settings;
 
 final class SettingsTabTest extends TestCase {
 
@@ -72,5 +73,49 @@ final class SettingsTabTest extends TestCase {
 				$this->assertArrayHasKey( 'locked_help', $field );
 			}
 		}
+	}
+
+	/**
+	 * A custom post type with its own capabilities has its own publisher —
+	 * 'publish_sports', not 'publish_posts'. Asking for the generic one locks
+	 * the status field for the person who is actually allowed to publish, and
+	 * still opens it to a plain Author who happens to hold publish_posts.
+	 */
+	public function test_the_status_field_asks_for_the_post_types_own_publish_capability(): void {
+		$GLOBALS['bwpe_stub']['post_type_caps']['bw_sport'] = [ 'publish_posts' => 'publish_sports' ];
+
+		$tab = Settings::tab( [ 'store' => 'post', 'slug' => 'sports', 'post_type' => 'bw_sport' ] );
+
+		$this->assertSame( 'publish_sports', $this->settingsField( $tab, 'post_status' )['capability'] );
+	}
+
+	public function test_the_status_field_uses_publish_posts_for_a_type_that_maps_nothing_of_its_own(): void {
+		$tab = Settings::tab( [ 'store' => 'post', 'slug' => 'sports', 'post_type' => 'bw_sport' ] );
+
+		$this->assertSame( 'publish_posts', $this->settingsField( $tab, 'post_status' )['capability'] );
+	}
+
+	/**
+	 * The tab is also built at registration, on plugins_loaded, where no post
+	 * type exists yet — get_post_type_object() answers null and there is
+	 * nothing to derive from.
+	 */
+	public function test_the_status_field_falls_back_when_the_post_type_is_not_registered_yet(): void {
+		$GLOBALS['bwpe_stub']['post_types'] = [];
+
+		$tab = Settings::tab( [ 'store' => 'post', 'slug' => 'sports', 'post_type' => 'bw_sport' ] );
+
+		$this->assertSame( 'publish_posts', $this->settingsField( $tab, 'post_status' )['capability'] );
+	}
+
+	private function settingsField( array $tab, string $id ): array {
+		foreach ( $tab['panels'] as $panel ) {
+			foreach ( $panel['fields'] as $field ) {
+				if ( $id === $field['id'] ) {
+					return $field;
+				}
+			}
+		}
+		$this->fail( sprintf( '"%s" is not on the Publish and settings tab.', $id ) );
 	}
 }
