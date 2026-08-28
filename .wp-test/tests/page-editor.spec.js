@@ -237,3 +237,45 @@ test('a hideable panel switched off, saved and reloaded is still off', async ({ 
   await expect(card.locator('.bw-switch__label')).toContainText('Hidden');
   await expect(card.locator('.bw-card__body')).toHaveCount(0);
 });
+
+test('a repeater row holds more than text, and every cell round-trips', async ({ page }) => {
+  // The row's cells are drawn by Repeater() and cleaned by Sanitise::field()
+  // per kind. What only a browser can show is the round trip: a toggle that
+  // came back as the string '1' rather than a real boolean would leave the
+  // screen reading dirty the moment it loaded, which no unit test sees.
+  await page.getByRole('button', { name: 'Add a row' }).first().click();
+
+  const row = page.locator('.bw-repeater__row').first();
+  await row.locator('input[type=text]').first().fill('Tuesday');
+  await row.locator('textarea').first().fill('Bring your own kit.');
+  await row.locator('input[type=checkbox]').first().check();
+  await row.locator('select').first().selectOption('beginner');
+
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.locator('.bw-savebar')).toContainText('Everything is saved');
+
+  await page.reload();
+  const saved = page.locator('.bw-repeater__row').first();
+  await expect(saved.locator('input[type=text]').first()).toHaveValue('Tuesday');
+  await expect(saved.locator('textarea').first()).toHaveValue('Bring your own kit.');
+  await expect(saved.locator('input[type=checkbox]').first()).toBeChecked();
+  await expect(saved.locator('select').first()).toHaveValue('beginner');
+
+  // Nothing came back in a shape that reads as an edit.
+  await expect(page.locator('.bw-savebar')).toContainText('Everything is saved');
+});
+
+test('a text field offers its suggestions without refusing anything else', async ({ page }) => {
+  const list = page.locator('datalist#more_info-suggestions');
+  await expect(list.locator('option')).toHaveCount(2);
+  await expect(page.locator('#more_info')).toHaveAttribute('list', 'more_info-suggestions');
+
+  // The list is a shortcut, not a constraint: an address that is not on it
+  // saves exactly like one that is.
+  await page.locator('#more_info').fill('https://somewhere.else/');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.locator('.bw-savebar')).toContainText('Everything is saved');
+
+  await page.reload();
+  await expect(page.locator('#more_info')).toHaveValue('https://somewhere.else/');
+});
