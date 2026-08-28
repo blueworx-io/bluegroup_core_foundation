@@ -405,8 +405,12 @@
           h('code', null, (root.blueworxPageEditor && root.blueworxPageEditor.home) || '/'),
           h('input', Object.assign({}, common, { type: 'text', value: value || '', onChange: function (e) { set(e.target.value); } })));
 
-      case 'text':
-        return h('input', Object.assign({}, common, { type: 'text', value: value || '', onChange: function (e) { set(e.target.value); } }));
+      case 'text': {
+        const input = h('input', Object.assign({}, common, suggestionProps(field, field.id),
+          { type: 'text', value: value || '', onChange: function (e) { set(e.target.value); } }));
+        const list = suggestionList(field, field.id);
+        return list === null ? input : h(wp().element.Fragment, null, input, list);
+      }
 
       case 'textarea':
         return h('textarea', { id: field.id, disabled: Boolean(field.readonly), rows: 5,
@@ -542,6 +546,87 @@
         onKeyDown: function (e) { if (e.key === 'Enter') { e.preventDefault(); commit(); } } }));
   }
 
+  // A text field may offer a list of addresses to pick from without becoming
+  // a select: plenty of links point somewhere the plugin does not own, so the
+  // input stays free text and the list is only a shortcut. That is a
+  // <datalist>, which needs two things — the list itself, and a `list`
+  // attribute on the input pointing at it.
+  function suggestionsId(id) {
+    return id + '-suggestions';
+  }
+
+  function suggestionProps(field, id) {
+    const list = field.suggestions || [];
+    return list.length === 0 ? {} : { list: suggestionsId(id) };
+  }
+
+  function suggestionList(field, id) {
+    const h = wp().element.createElement;
+    const list = field.suggestions || [];
+    if (list.length === 0) return null;
+    return h('datalist', { id: suggestionsId(id) }, list.map(function (s) {
+      // The label is the option's own text as well as its label attribute:
+      // browsers differ on which they show, and an address with no readable
+      // name beside it is not a shortcut anybody can use.
+      return h('option', { key: s.value, value: s.value, label: s.label }, s.label);
+    }));
+  }
+
+  // One cell of a repeater row. The kinds here are exactly
+  // Schema::REPEATER_KINDS, and the two lists are held together by a test —
+  // a kind the schema allows but this has no case for would draw as a text
+  // box and save whatever was typed into it, which is the failure the narrow
+  // list was there to prevent.
+  //
+  // Deliberately not Control(): that takes a whole record and sets a value by
+  // field id, and a cell belongs to a row rather than to the record.
+  function repeaterCell(cell, id, value, locked, onChange) {
+    const h = wp().element.createElement;
+
+    switch (cell.kind) {
+      case 'textarea':
+        return h('textarea', { id: id, rows: 3, className: 'bw-textarea', disabled: locked,
+          value: value === undefined ? '' : value,
+          onChange: function (e) { onChange(e.target.value); } });
+
+      case 'select':
+        return h('span', { className: 'bw-select' },
+          h('select', { id: id, className: 'bw-select__el', disabled: locked,
+            value: value === undefined ? '' : value,
+            onChange: function (e) { onChange(e.target.value); } },
+            h('option', { value: '' }, '—'),
+            (cell.options || []).map(function (o) { return h('option', { key: o.value, value: o.value }, o.label); })),
+          h('i', { className: 'bw-icon bw-select__arrow', 'data-lucide': 'chevron-down' }));
+
+      case 'toggle':
+        return h('label', { className: 'bw-switch' },
+          h('input', { id: id, type: 'checkbox', checked: Boolean(value), disabled: locked,
+            onChange: function (e) { onChange(e.target.checked); } }),
+          h('span', { className: 'bw-switch__track' }, h('span', { className: 'bw-switch__thumb' })),
+          h('span', { className: 'bw-switch__label' }, value ? 'On' : 'Off'));
+
+      case 'media':
+        // No preview, for the same reason the top-level media field has none:
+        // the stored value is an attachment id, never a URL.
+        return h('span', { className: 'bw-media__actions' },
+          h('button', { id: id, type: 'button', className: 'bw-btn bw-btn--secondary', disabled: locked,
+            onClick: function () { openLibrary(cell, onChange); } }, value ? 'Change image' : 'Choose an image'),
+          value ? h('button', { type: 'button', className: 'bw-btn bw-btn--link', disabled: locked,
+            onClick: function () { onChange(0); } }, 'Remove') : null);
+
+      default: {
+        const input = h('input', Object.assign(
+          { id: id, type: cell.kind === 'number' ? 'number' : 'text', className: 'bw-input', disabled: locked,
+            value: value === undefined ? '' : value,
+            onChange: function (e) { onChange(e.target.value); } },
+          suggestionProps(cell, id)
+        ));
+        const list = suggestionList(cell, id);
+        return list === null ? input : h(wp().element.Fragment, null, input, list);
+      }
+    }
+  }
+
   function Repeater(props) {
     const h = wp().element.createElement;
     const rows = props.value;
@@ -554,7 +639,12 @@
     function change(index, cell, cellValue) {
       const next = rows.slice();
       next[index] = Object.assign({}, next[index]);
-      next[index][cell.id] = cell.kind === 'number' ? (Number(cellValue) || 0) : cellValue;
+      // 'media' is stored as an attachment id, same as a top-level media
+      // field, so it is cast alongside 'number'. Everything else round-trips
+      // as whatever its control hands back — a string, or a real boolean from
+      // a toggle.
+      const numeric = cell.kind === 'number' || cell.kind === 'media';
+      next[index][cell.id] = numeric ? (Number(cellValue) || 0) : cellValue;
       props.onChange(next);
     }
 
@@ -588,10 +678,7 @@
           h('div', { className: 'bw-repeater__fields' }, (props.field.fields || []).map(function (cell) {
             return h('div', { key: cell.id, className: 'bw-field' },
               h('label', { className: 'bw-field__label', htmlFor: cell.id + '-' + i }, cell.label),
-              h('input', { id: cell.id + '-' + i, type: cell.kind === 'number' ? 'number' : 'text',
-                className: 'bw-input', disabled: locked,
-                value: row[cell.id] === undefined ? '' : row[cell.id],
-                onChange: function (e) { change(i, cell, e.target.value); } }));
+              repeaterCell(cell, cell.id + '-' + i, row[cell.id], locked, function (v) { change(i, cell, v); }));
           })),
           h('button', { type: 'button', className: 'bw-iconbtn bw-iconbtn--danger', 'aria-label': 'Remove this row', disabled: locked,
             onClick: function () { props.onChange(rows.filter(function (_, j) { return j !== i; })); } },

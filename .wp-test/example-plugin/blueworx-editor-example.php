@@ -100,10 +100,28 @@ add_action( 'plugins_loaded', function () {
 						'note'     => 'Each row appears as a session on the sport page.',
 						'hideable' => true,
 						'fields'   => [
+							// A row holds more than text: see
+							// Schema::REPEATER_KINDS. Each cell is drawn by its
+							// own control and cleaned by its own kind.
 							[ 'id' => 'sessions', 'kind' => 'repeater', 'label' => 'Sessions', 'fields' => [
 								[ 'id' => 'day', 'kind' => 'text', 'label' => 'Day' ],
 								[ 'id' => 'venue', 'kind' => 'text', 'label' => 'Venue' ],
+								[ 'id' => 'notes', 'kind' => 'textarea', 'label' => 'Notes' ],
+								[ 'id' => 'members_only', 'kind' => 'toggle', 'label' => 'Members only' ],
+								[ 'id' => 'level', 'kind' => 'select', 'label' => 'Level', 'options' => [
+									[ 'value' => 'all', 'label' => 'All levels' ],
+									[ 'value' => 'beginner', 'label' => 'Beginners' ],
+								] ],
 							] ],
+							// A link that suggests without constraining: the
+							// field stays free text, and the list is a
+							// shortcut to the pages this site already has.
+							[ 'id' => 'more_info', 'kind' => 'text', 'label' => 'More information', 'format' => 'url',
+								'help' => 'Where to read more. Pick one of your own pages, or type any address.',
+								'suggestions' => [
+									[ 'value' => '/about/', 'label' => 'About' ],
+									[ 'value' => '/membership/', 'label' => 'Membership' ],
+								] ],
 						],
 					],
 				],

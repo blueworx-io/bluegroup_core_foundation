@@ -21,14 +21,20 @@ final class Schema {
 	const CHOICE_KINDS = [ 'select', 'radio', 'checkboxes', 'scrolllist', 'record' ];
 
 	/**
-	 * What a repeater row may hold. Far narrower than KINDS on purpose: the
-	 * browser draws every cell in a row as a text box, or a number box for a
-	 * number, and nothing else. Accepting the full list here let a plugin
-	 * register a toggle or a select cell that registered cleanly, rendered as
-	 * a plain text box and saved whatever was typed into it. A narrow, honest
-	 * list beats a wide one the screen cannot keep to.
+	 * What a repeater row may hold. Still narrower than KINDS, and still for
+	 * the same reason: this list says what the browser actually draws in a
+	 * row, so a kind may only be added here once Repeater() in
+	 * blueworx-page-editor.js has a case for it. A wider list than the screen
+	 * can keep to is how a plugin ends up with a select that registers
+	 * cleanly, renders as a text box and saves whatever was typed into it —
+	 * which is what this list existed to prevent when it held two kinds.
+	 *
+	 * Sanitise::field() already cleans each cell by its own kind, so nothing
+	 * on the server side had to change to widen it.
+	 *
+	 * A url or email cell is a 'text' with a 'format', not a kind of its own.
 	 */
-	const REPEATER_KINDS = [ 'text', 'number' ];
+	const REPEATER_KINDS = [ 'text', 'number', 'textarea', 'select', 'toggle', 'media' ];
 
 	/**
 	 * The Publish and settings tab the library appends to every record screen
@@ -110,7 +116,11 @@ final class Schema {
 		if ( 'post' === $screen['store'] && empty( $screen['post_type'] ) ) {
 			throw new InvalidArgumentException( sprintf( 'The "%s" editor screen stores a record, so it needs a post_type.', $screen['slug'] ) );
 		}
-		if ( 'option' === $screen['store'] && empty( $screen['option_name'] ) ) {
+		$owns_storage = isset( $screen['read'] ) || isset( $screen['write'] );
+		if ( $owns_storage ) {
+			self::checkOwnStorage( $screen );
+		}
+		if ( 'option' === $screen['store'] && ! $owns_storage && empty( $screen['option_name'] ) ) {
 			throw new InvalidArgumentException( sprintf( 'The "%s" editor screen stores to options, so it needs an option_name.', $screen['slug'] ) );
 		}
 
@@ -293,6 +303,100 @@ final class Schema {
 	 * anyone saved it. Only min above zero or max below zero can ever move
 	 * this: any range straddling zero already accepts 0 as-is.
 	 */
+	/**
+	 * A screen may keep its values somewhere this library does not know about,
+	 * by supplying both a read and a write callback. See CallbackStore.
+	 *
+	 * Settings screens only. A record screen's values belong to its post —
+	 * that is what "records are post types" means, and a record editor that
+	 * quietly stored its values elsewhere would keep the post's own status,
+	 * slug and revisions while writing everything else out of reach of them.
+	 *
+	 * Both or neither: a screen that reads from one place and writes to
+	 * another loses every edit on reload, and does it silently.
+	 */
+	private static function checkOwnStorage( array $screen ): void {
+		if ( 'post' === $screen['store'] ) {
+			throw new InvalidArgumentException( sprintf(
+				'The "%s" editor screen supplies its own read and write, which only a settings screen may do. A record screen stores to its post.',
+				$screen['slug']
+			) );
+		}
+		if ( ! isset( $screen['read'], $screen['write'] ) ) {
+			throw new InvalidArgumentException( sprintf(
+				'The "%s" editor screen supplies only one of read and write. Supply both, or neither.',
+				$screen['slug']
+			) );
+		}
+		foreach ( [ 'read', 'write' ] as $which ) {
+			if ( ! is_callable( $screen[ $which ] ) ) {
+				throw new InvalidArgumentException( sprintf(
+					'The "%s" editor screen\'s %s is not callable.',
+					$screen['slug'],
+					$which
+				) );
+			}
+		}
+	}
+
+	/**
+	 * A text field's optional list of values to pick from, offered as a
+	 * <datalist>. Unlike options on a select these are a shortcut and not a
+	 * constraint — the field stays free text and Sanitise never checks a
+	 * value against them, because the whole point is a field whose likely
+	 * answers are known but whose possible answers are not. A link field is
+	 * the case that asked for it: most links point at one of the site's own
+	 * pages, and plenty do not.
+	 *
+	 * Only meaningful on a text field. Declared anywhere else it is a
+	 * mistake worth naming rather than ignoring, because the control that
+	 * kind draws has nowhere to put it.
+	 *
+	 * @return array<int,array{value:string,label:string}>
+	 */
+	private static function suggestions( array $field, string $slug ): array {
+		if ( ! array_key_exists( 'suggestions', $field ) ) {
+			return [];
+		}
+		if ( 'text' !== $field['kind'] ) {
+			throw new InvalidArgumentException( sprintf(
+				'The field "%s" on the "%s" editor screen offers suggestions, which only a "text" field can — this one is a "%s".',
+				$field['id'],
+				$slug,
+				$field['kind']
+			) );
+		}
+		if ( ! is_array( $field['suggestions'] ) ) {
+			throw new InvalidArgumentException( sprintf(
+				'The field "%s" on the "%s" editor screen declares suggestions that are not a list.',
+				$field['id'],
+				$slug
+			) );
+		}
+
+		$out = [];
+		foreach ( $field['suggestions'] as $suggestion ) {
+			if ( ! is_array( $suggestion ) || ! isset( $suggestion['value'] ) ) {
+				throw new InvalidArgumentException( sprintf(
+					'A suggestion on the field "%s" of the "%s" editor screen has no value. Each one needs a value, and a label to show beside it.',
+					$field['id'],
+					$slug
+				) );
+			}
+			$value = (string) $suggestion['value'];
+			if ( '' === $value ) {
+				continue;
+			}
+			$out[] = [
+				'value' => $value,
+				// A suggestion with no label of its own shows its own value,
+				// which is still usable — an address is readable, if plain.
+				'label' => (string) ( $suggestion['label'] ?? $value ),
+			];
+		}
+		return $out;
+	}
+
 	private static function defaultZeroClampedToRange( array $field ) {
 		$value = 0;
 		if ( isset( $field['min'] ) && (int) $field['min'] > $value ) {
@@ -442,6 +546,7 @@ final class Schema {
 		if ( in_array( $field['kind'], self::CHOICE_KINDS, true ) && empty( $field['options'] ) && 'record' !== $field['kind'] ) {
 			throw new InvalidArgumentException( sprintf( 'The field "%s" on the "%s" editor screen is a %s, so it needs options.', $field['id'], $slug, $field['kind'] ) );
 		}
+		$field['suggestions'] = self::suggestions( $field, $slug );
 
 		$field['help']        = $field['help'] ?? '';
 		$field['required']    = (bool) ( $field['required'] ?? false );

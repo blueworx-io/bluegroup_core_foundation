@@ -64,23 +64,128 @@ final class SchemaTest extends TestCase {
 	 */
 	public function test_a_repeater_sub_field_of_a_kind_a_row_cannot_hold_is_rejected(): void {
 		$this->expectException( \InvalidArgumentException::class );
-		$this->expectExceptionMessage( 'toggle' );
+		$this->expectExceptionMessage( 'richtext' );
 		Schema::validate( $this->screen( [
 			'id'     => 'days',
 			'kind'   => 'repeater',
 			'label'  => 'Days',
-			'fields' => [ [ 'id' => 'on', 'kind' => 'toggle', 'label' => 'On' ] ],
+			'fields' => [ [ 'id' => 'notes', 'kind' => 'richtext', 'label' => 'Notes' ] ],
 		] ) );
 	}
 
 	public function test_a_rejected_repeater_sub_field_names_what_a_row_may_hold(): void {
 		$this->expectException( \InvalidArgumentException::class );
-		$this->expectExceptionMessage( 'text, number' );
+		$this->expectExceptionMessage( 'text, number, textarea, select, toggle, media' );
 		Schema::validate( $this->screen( [
 			'id'     => 'days',
 			'kind'   => 'repeater',
 			'label'  => 'Days',
-			'fields' => [ [ 'id' => 'venue', 'kind' => 'select', 'label' => 'Venue', 'options' => [ [ 'value' => 'a', 'label' => 'A' ] ] ] ],
+			'fields' => [ [ 'id' => 'tags', 'kind' => 'tokens', 'label' => 'Tags' ] ],
+		] ) );
+	}
+
+	/**
+	 * The four kinds the row gained. Each is drawn by its own control in
+	 * Repeater(), and each is already cleaned by its own kind on the way in —
+	 * see Sanitise::field(), which recurses per cell.
+	 */
+	public function test_a_repeater_row_may_hold_the_wider_set_of_cells(): void {
+		$screen = Schema::validate( $this->screen( [
+			'id'     => 'tiers',
+			'kind'   => 'repeater',
+			'label'  => 'Tiers',
+			'fields' => [
+				[ 'id' => 'name', 'kind' => 'text', 'label' => 'Name' ],
+				[ 'id' => 'features', 'kind' => 'textarea', 'label' => 'Features' ],
+				[ 'id' => 'featured', 'kind' => 'toggle', 'label' => 'Most popular' ],
+				[ 'id' => 'photo', 'kind' => 'media', 'label' => 'Photo' ],
+				[ 'id' => 'sells', 'kind' => 'select', 'label' => 'Sells', 'options' => [ [ 'value' => 'a', 'label' => 'A' ] ] ],
+			],
+		] ) );
+
+		$cells = $screen['tabs'][0]['panels'][0]['fields'][0]['fields'];
+		$this->assertSame(
+			[ 'text', 'textarea', 'toggle', 'media', 'select' ],
+			array_column( $cells, 'kind' )
+		);
+	}
+
+	public function test_a_text_field_may_offer_suggestions(): void {
+		$screen = Schema::validate( $this->screen( [
+			'id'          => 'href',
+			'kind'        => 'text',
+			'label'       => 'Link',
+			'suggestions' => [
+				[ 'value' => '/about/', 'label' => 'About' ],
+				[ 'value' => '/membership/', 'label' => 'Membership' ],
+			],
+		] ) );
+
+		$field = $screen['tabs'][0]['panels'][0]['fields'][0];
+		$this->assertSame(
+			[ [ 'value' => '/about/', 'label' => 'About' ], [ 'value' => '/membership/', 'label' => 'Membership' ] ],
+			$field['suggestions']
+		);
+	}
+
+	/** Absent is the ordinary case, and reads as an empty list, not as missing. */
+	public function test_a_field_with_no_suggestions_gets_an_empty_list(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'name', 'kind' => 'text', 'label' => 'Name' ] ) );
+		$this->assertSame( [], $screen['tabs'][0]['panels'][0]['fields'][0]['suggestions'] );
+	}
+
+	public function test_a_suggestion_with_no_label_falls_back_to_its_value(): void {
+		$screen = Schema::validate( $this->screen( [
+			'id'          => 'href',
+			'kind'        => 'text',
+			'label'       => 'Link',
+			'suggestions' => [ [ 'value' => '/about/' ] ],
+		] ) );
+		$this->assertSame( [ [ 'value' => '/about/', 'label' => '/about/' ] ], $screen['tabs'][0]['panels'][0]['fields'][0]['suggestions'] );
+	}
+
+	public function test_suggestions_on_a_kind_that_cannot_show_them_are_refused(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'suggestions' );
+		Schema::validate( $this->screen( [
+			'id'          => 'body',
+			'kind'        => 'textarea',
+			'label'       => 'Body',
+			'suggestions' => [ [ 'value' => '/about/', 'label' => 'About' ] ],
+		] ) );
+	}
+
+	public function test_a_suggestion_with_no_value_is_refused(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'no value' );
+		Schema::validate( $this->screen( [
+			'id'          => 'href',
+			'kind'        => 'text',
+			'label'       => 'Link',
+			'suggestions' => [ [ 'label' => 'About' ] ],
+		] ) );
+	}
+
+	/** A suggestion list is a shortcut, never a constraint. */
+	public function test_a_value_outside_the_suggestions_is_still_saved(): void {
+		$field = [
+			'id'          => 'href',
+			'kind'        => 'text',
+			'label'       => 'Link',
+			'suggestions' => [ [ 'value' => '/about/', 'label' => 'About' ] ],
+		];
+		$this->assertSame( 'https://somewhere.else/', \Blueworx\PageEditor\v1\Sanitise::field( $field, 'https://somewhere.else/' ) );
+	}
+
+	/** A select cell is held to the same rule as a select field. */
+	public function test_a_select_cell_still_needs_options(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'options' );
+		Schema::validate( $this->screen( [
+			'id'     => 'tiers',
+			'kind'   => 'repeater',
+			'label'  => 'Tiers',
+			'fields' => [ [ 'id' => 'sells', 'kind' => 'select', 'label' => 'Sells' ] ],
 		] ) );
 	}
 

@@ -282,4 +282,118 @@ final class StoreTest extends TestCase {
 		$store = Store::for( $screen );
 		$this->assertSame( 0, $store->read( 99 )['seats'] );
 	}
+
+	/* --- A screen that owns its own storage ---------------------------------- */
+
+	/**
+	 * @param array<string,mixed> $held  Where the fake storage keeps its values.
+	 * @param array<string,mixed> $extra Screen keys to override.
+	 */
+	private function callbackScreen( array &$held, array $extra = [] ): array {
+		return Schema::validate( array_merge( [
+			'slug'  => 'pages',
+			'title' => 'Pages',
+			'store' => 'option',
+			'read'  => static function () use ( &$held ) {
+				return $held;
+			},
+			'write' => static function ( array $values ) use ( &$held ) {
+				$held = array_merge( $held, $values );
+				return true;
+			},
+			'tabs'  => [ [ 'id' => 'v', 'label' => 'Visibility', 'panels' => [
+				[ 'id' => 'p', 'title' => 'Pages', 'fields' => [
+					[ 'id' => 'home', 'kind' => 'toggle', 'label' => 'Home' ],
+					[ 'id' => 'about', 'kind' => 'toggle', 'label' => 'About' ],
+				] ],
+			] ] ],
+		], $extra ) );
+	}
+
+	public function test_a_screen_may_read_and_write_its_own_values(): void {
+		$held   = [];
+		$screen = $this->callbackScreen( $held );
+		$store  = Store::for( $screen );
+
+		$this->assertTrue( $store->write( [ 'home' => true, 'about' => false ] ) );
+		$this->assertSame( [ 'home' => true, 'about' => false ], $store->read() );
+		$this->assertSame( [ 'home' => true, 'about' => false ], $held );
+	}
+
+	/** No option is written — the whole point is that the values live elsewhere. */
+	public function test_owning_storage_writes_no_option(): void {
+		$held  = [];
+		$store = Store::for( $this->callbackScreen( $held ) );
+		$store->write( [ 'home' => true ] );
+		$this->assertSame( [], $GLOBALS['bwpe_stub']['options'] ?? [] );
+	}
+
+	/**
+	 * A plugin reading a status out of WordPress hands back whatever WordPress
+	 * had — 'publish', '1', an int. The field's kind still decides the shape,
+	 * so an untouched screen never reads as dirty because a boolean came back
+	 * as a string.
+	 */
+	public function test_a_value_from_the_callback_is_cast_by_its_kind(): void {
+		$held  = [ 'home' => '1', 'about' => '' ];
+		$store = Store::for( $this->callbackScreen( $held ) );
+		$this->assertSame( [ 'home' => true, 'about' => false ], $store->read() );
+	}
+
+	public function test_a_field_the_callback_says_nothing_about_falls_back_to_its_default(): void {
+		$held  = [ 'home' => true ];
+		$store = Store::for( $this->callbackScreen( $held ) );
+		$this->assertSame( [ 'home' => true, 'about' => false ], $store->read() );
+	}
+
+	/** A callback that does not say it worked has not worked. */
+	public function test_a_write_that_does_not_return_true_is_a_failure(): void {
+		$held   = [];
+		$screen = $this->callbackScreen( $held, [ 'write' => static function () {
+			// Returns null, the shape of a callback that forgot to answer.
+		} ] );
+		$this->assertFalse( Store::for( $screen )->write( [ 'home' => true ] ) );
+	}
+
+	public function test_a_record_screen_may_not_own_its_storage(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'settings screen' );
+		Schema::validate( [
+			'slug'      => 'sports',
+			'title'     => 'Edit sport',
+			'post_type' => 'bw_sport',
+			'read'      => static function () {
+				return [];
+			},
+			'write'     => static function () {
+				return true;
+			},
+			'tabs'      => [ [ 'id' => 'd', 'label' => 'Details', 'panels' => [
+				[ 'id' => 'b', 'title' => 'Basics', 'fields' => [ [ 'id' => 'name', 'kind' => 'text', 'label' => 'Name' ] ] ],
+			] ] ],
+		] );
+	}
+
+	public function test_a_screen_supplying_only_one_half_is_refused(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'both, or neither' );
+		Schema::validate( [
+			'slug'  => 'pages',
+			'title' => 'Pages',
+			'store' => 'option',
+			'read'  => static function () {
+				return [];
+			},
+			'tabs'  => [ [ 'id' => 'v', 'label' => 'V', 'panels' => [
+				[ 'id' => 'p', 'title' => 'P', 'fields' => [ [ 'id' => 'home', 'kind' => 'toggle', 'label' => 'Home' ] ] ],
+			] ] ],
+		] );
+	}
+
+	public function test_a_screen_owning_its_storage_needs_no_option_name(): void {
+		$held = [];
+		// The assertion is that this does not throw: option_name is what an
+		// ordinary settings screen needs, and this one stores nothing there.
+		$this->assertIsArray( $this->callbackScreen( $held ) );
+	}
 }
