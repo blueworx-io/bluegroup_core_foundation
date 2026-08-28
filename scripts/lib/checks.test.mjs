@@ -545,6 +545,51 @@ test('designSystemSync: fix instructions cover the icon file too', () => {
   assert.match(r.message, /cp .*lucide-icons\.js .*blueworx-admin-icons\.js/);
 });
 
+test('designSystemSync: a drifted editor library is a problem', () => {
+  const result = designSystemSync({
+    foundationFiles: new Map([['styles.css', 'a']]),
+    pluginFiles: new Map([['styles.css', 'a']]),
+    canonicalCss: 'a',
+    shippedCss: 'a',
+    canonicalEditorPhp: new Map([['v1/Editor.php', 'x']]),
+    shippedEditorPhp: new Map([['v1/Editor.php', 'y']]),
+  });
+  assert.equal(result.ok, false);
+  assert.ok(result.problems.some((p) => p.includes('v1/Editor.php')));
+});
+
+// The folder must be present before the script is checked against it — a
+// plugin that carries the folder but drops the script still fails.
+test('designSystemSync: a missing editor script is a problem', () => {
+  const result = designSystemSync({
+    foundationFiles: new Map([['styles.css', 'a']]),
+    pluginFiles: new Map([['styles.css', 'a']]),
+    canonicalCss: 'a',
+    shippedCss: 'a',
+    canonicalEditorPhp: new Map([['v1/Editor.php', 'x']]),
+    shippedEditorPhp: new Map([['v1/Editor.php', 'x']]),
+    canonicalEditorJs: 'x',
+    shippedEditorJs: null,
+  });
+  assert.equal(result.ok, false);
+  assert.ok(result.problems.some((p) => p.includes('assets/blueworx-page-editor.js')));
+});
+
+test('designSystemSync: a plugin with no editor library is left alone', () => {
+  const result = designSystemSync({
+    foundationFiles: new Map([['styles.css', 'a']]),
+    pluginFiles: new Map([['styles.css', 'a']]),
+    canonicalCss: 'a',
+    shippedCss: 'a',
+    canonicalEditorPhp: new Map([['v1/Editor.php', 'x']]),
+    shippedEditorPhp: null,
+    canonicalEditorJs: 'x',
+    shippedEditorJs: null,
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.problems, []);
+});
+
 const DS_VOCAB = { tokens: new Set(['--bw-brand']), classes: new Set(['bw-card', 'bw-btn']), components: new Set(['Button']) };
 const SCREEN = 'add_menu_page( "X", "X", "manage_options", "x", "render" );';
 
