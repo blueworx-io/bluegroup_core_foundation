@@ -23,16 +23,42 @@ namespace Blueworx\PageEditor\v1;
 final class Capabilities {
 
 	public static function filterSchema( array $screen ): array {
+		return self::reduce( $screen, 'isShown', true );
+	}
+
+	/**
+	 * The screen reduced to the fields this user may actually change. This is
+	 * what a save is sanitised and validated against, never the screen as
+	 * declared: filterValues() has already dropped every value the user may
+	 * not write, so a field validated from the bare screen always reads empty
+	 * — and a required one gated behind a capability the user lacks would then
+	 * fail every save for ever, naming a control the screen renders read-only.
+	 */
+	public static function writableSchema( array $screen ): array {
+		return self::reduce( $screen, 'mayWrite', false );
+	}
+
+	/**
+	 * The screen with every field the given rule drops removed. One walk,
+	 * shared by both filters above, so the two can never come to disagree
+	 * about the shape of a screen.
+	 *
+	 * @param string $rule mayWrite or isShown.
+	 * @param bool   $lock whether a field the user may not write is kept and
+	 *                     marked read-only. Only the outbound schema does
+	 *                     that; the writable one has no such field left in it.
+	 */
+	private static function reduce( array $screen, string $rule, bool $lock ): array {
 		foreach ( $screen['tabs'] as $t => $tab ) {
 			foreach ( $tab['panels'] as $p => $panel ) {
 				$kept = [];
 				foreach ( $panel['fields'] as $field ) {
-					if ( ! self::isShown( $field ) ) {
+					if ( ! self::$rule( $field ) ) {
 						continue;
 					}
 					// Where knowing the field exists matters, it is sent locked
 					// with a line naming who can change it — never editable.
-					if ( ! self::mayWrite( $field ) ) {
+					if ( $lock && ! self::mayWrite( $field ) ) {
 						$field['readonly'] = true;
 						$field['help']     = $field['locked_help'] ?? '';
 					}

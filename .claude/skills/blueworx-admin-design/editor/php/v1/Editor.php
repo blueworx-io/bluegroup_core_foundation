@@ -166,22 +166,35 @@ final class Editor {
 			return [ 'ok' => false, 'errors' => [ '_screen' => $refusal ] ];
 		}
 
-		$writable = Capabilities::filterValues( $merged, $values );
-		$clean    = Sanitise::values( $merged, $writable );
-		$errors   = Validate::run( $merged, $clean );
+		// Sanitised and validated against the fields this user may write, not
+		// against the screen as declared — see Capabilities::writableSchema().
+		$writable = Capabilities::writableSchema( $merged );
+		$given    = Capabilities::filterValues( $merged, $values );
+		$clean    = Sanitise::values( $writable, $given );
+		$errors   = Validate::run( $writable, $clean );
 
 		if ( $errors ) {
 			return [ 'ok' => false, 'errors' => $errors ];
 		}
 
-		if ( ! Store::for( $merged )->write( $clean, $id ) ) {
+		$store = Store::for( $merged );
+
+		if ( ! $store->write( $clean, $id ) ) {
 			return [
 				'ok'     => false,
 				'errors' => [ '_screen' => 'Some of your changes may not have saved. Reload the screen to see what changed, then try again.' ],
 			];
 		}
 
-		return [ 'ok' => true, 'values' => $clean ];
+		// The browser replaces its whole record with this, so it has to be the
+		// same shape load() sends: the record as stored, read back and filtered
+		// for display. Handing back $clean instead would drop every read-only
+		// field — capability filtering already stripped them — and the screen
+		// would empty them and still read clean.
+		return [
+			'ok'     => true,
+			'values' => Capabilities::filterValuesForDisplay( $merged, $store->read( $id ) ),
+		];
 	}
 
 	public static function reset(): void {

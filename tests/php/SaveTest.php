@@ -163,7 +163,53 @@ final class SaveTest extends TestCase {
 
 		$this->assertTrue( $result['ok'] );
 		$this->assertSame( 9, $GLOBALS['bwpe_stub']['posts'][7]['post_author'], 'a read-only field must never be written' );
-		$this->assertArrayNotHasKey( 'post_author', $result['values'] );
+		$this->assertSame( 9, $result['values']['post_author'], 'what comes back is what is stored, never what was sent' );
+	}
+
+	/**
+	 * The browser replaces its whole record with whatever save() hands back,
+	 * so anything missing from that reply empties on the screen. A read-only
+	 * field is rightly filtered out of what gets written, but it must still
+	 * come back with its value or every locked field blanks after a save —
+	 * and the screen then reads clean.
+	 */
+	public function test_a_locked_field_still_has_its_value_in_what_save_returns(): void {
+		$GLOBALS['bwpe_stub']['posts'][7] = [ 'post_type' => 'bw_sport', 'post_author' => 9 ];
+		$result = Editor::save( 'sports', [ 'name' => 'Rugby' ], 7 );
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertArrayHasKey( 'post_author', $result['values'] );
+		$this->assertSame( 9, $result['values']['post_author'] );
+	}
+
+	/**
+	 * Values are filtered by capability before they are validated, so a field
+	 * this user may not write always arrives empty. Validating it against the
+	 * screen as declared makes a required one impossible to satisfy: the save
+	 * fails for ever, naming a control the screen renders read-only.
+	 */
+	public function test_a_required_field_the_user_may_not_write_does_not_block_the_save(): void {
+		Editor::register( [
+			'slug' => 'gated', 'title' => 'Gated', 'post_type' => 'bw_sport',
+			'tabs' => [ [ 'id' => 'd', 'label' => 'Details', 'panels' => [
+				[ 'id' => 'b', 'title' => 'Basics', 'fields' => [
+					[ 'id' => 'name', 'kind' => 'text', 'label' => 'Name' ],
+					[
+						'id'          => 'fee',
+						'kind'        => 'text',
+						'label'       => 'Fee',
+						'required'    => true,
+						'capability'  => 'manage_woocommerce',
+						'locked_help' => 'Only a shop manager can change the fee.',
+					],
+				] ],
+			] ] ],
+		] );
+
+		$result = Editor::save( 'gated', [ 'name' => 'Rugby' ], 7 );
+
+		$this->assertTrue( $result['ok'], 'a field this user cannot write must not be validated against them' );
+		$this->assertArrayNotHasKey( 'fee', $result['errors'] ?? [] );
 	}
 
 	public function test_resaving_an_unchanged_featured_image_reports_ok(): void {
