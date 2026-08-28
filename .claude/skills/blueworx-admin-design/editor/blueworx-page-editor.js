@@ -619,6 +619,25 @@
     firstErrorTab: firstErrorTab,
   };
 
+  /* --- Bootstrap ----------------------------------------------------------- */
+  /* Guarded so this same file loads cleanly under node --test, which has no
+     window and no wp. */
+
+  if (typeof window !== 'undefined' && window.wp && window.wp.element && window.document) {
+    window.document.addEventListener('DOMContentLoaded', function () {
+      const mount = window.document.getElementById('bw-page-editor');
+      if (!mount) return;
+      const props = { slug: mount.getAttribute('data-screen'), id: Number(mount.getAttribute('data-record') || 0) };
+      const el = window.wp.element;
+      if (el.createRoot) {
+        el.createRoot(mount).render(el.createElement(Editor, props));
+      } else {
+        el.render(el.createElement(Editor, props), mount);
+      }
+      if (window.lucide) window.lucide.createIcons();
+    });
+  }
+
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
   }
