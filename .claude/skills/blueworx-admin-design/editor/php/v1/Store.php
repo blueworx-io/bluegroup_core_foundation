@@ -86,6 +86,12 @@ final class PostStore extends Store {
 	const POST_COLUMNS = [
 		'post_status', 'post_name', 'post_excerpt', 'post_author',
 		'post_date', 'post_parent', 'menu_order', 'comment_status',
+		// The record's own title and body. Not on the Publish tab — a title
+		// belongs at the top of the screen a plugin designs, not buried in
+		// settings — but every bit as much a column as the rest: stored as
+		// meta they set nothing, and the record stays "(no title)" in
+		// wp-admin for ever.
+		'post_title', 'post_content',
 	];
 
 	public function read( int $id = 0 ): array {

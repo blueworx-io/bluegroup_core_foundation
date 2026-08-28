@@ -212,6 +212,32 @@ final class SaveTest extends TestCase {
 		$this->assertArrayNotHasKey( 'fee', $result['errors'] ?? [] );
 	}
 
+	/**
+	 * The record's own title and body are columns on the post, not meta. A
+	 * screen that declared them got neither: the values went into post meta
+	 * nobody reads, and the record showed as "(no title)" in wp-admin.
+	 */
+	public function test_the_records_title_and_body_are_written_to_the_post_not_to_meta(): void {
+		Editor::register( [
+			'slug' => 'titled', 'title' => 'Edit sport', 'post_type' => 'bw_sport',
+			'tabs' => [ [ 'id' => 'd', 'label' => 'Details', 'panels' => [
+				[ 'id' => 'b', 'title' => 'Basics', 'fields' => [
+					[ 'id' => 'post_title', 'kind' => 'title', 'label' => 'Name' ],
+					[ 'id' => 'post_content', 'kind' => 'richtext', 'label' => 'Body' ],
+				] ],
+			] ] ],
+		] );
+
+		$result = Editor::save( 'titled', [ 'post_title' => 'Rugby union', 'post_content' => '<p>Every Tuesday.</p>' ], 7 );
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 'Rugby union', $GLOBALS['bwpe_stub']['posts'][7]['post_title'] );
+		$this->assertSame( '<p>Every Tuesday.</p>', $GLOBALS['bwpe_stub']['posts'][7]['post_content'] );
+		$this->assertArrayNotHasKey( 'bw_sport_post_title', $GLOBALS['bwpe_stub']['meta'][7] ?? [] );
+		$this->assertArrayNotHasKey( 'bw_sport_post_content', $GLOBALS['bwpe_stub']['meta'][7] ?? [] );
+		$this->assertSame( 'Rugby union', Editor::load( 'titled', 7 )['values']['post_title'] );
+	}
+
 	public function test_resaving_an_unchanged_featured_image_reports_ok(): void {
 		Editor::save( 'sports', [ 'name' => 'Rugby', 'featured_image' => 3 ], 7 );
 		$result = Editor::save( 'sports', [ 'name' => 'Rugby', 'featured_image' => 3 ], 7 );

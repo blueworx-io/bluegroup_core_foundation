@@ -324,6 +324,44 @@ final class SchemaTest extends TestCase {
 		] ) );
 	}
 
+	/**
+	 * The library routes post_title and post_content to the post's own
+	 * columns, so a record screen editing either declares it as an ordinary
+	 * field — that is how a record gets a title at all.
+	 */
+	public function test_a_record_screen_may_edit_the_records_own_title_and_body(): void {
+		$screen = Schema::validate( [
+			'slug'      => 'sports',
+			'title'     => 'Edit sport',
+			'post_type' => 'bw_sport',
+			'tabs'      => [
+				[ 'id' => 'details', 'label' => 'Details', 'panels' => [
+					[ 'id' => 'basics', 'title' => 'Basics', 'fields' => [
+						[ 'id' => 'post_title', 'kind' => 'title', 'label' => 'Name' ],
+						[ 'id' => 'post_content', 'kind' => 'richtext', 'label' => 'Body' ],
+					] ],
+				] ],
+			],
+		] );
+		$this->assertSame( [ 'post_title', 'post_content' ], array_column( $screen['tabs'][0]['panels'][0]['fields'], 'id' ) );
+	}
+
+	/**
+	 * Inside a repeater the same ids mean nothing: a row's cells are stored
+	 * nested, so a cell called post_title reads as if it set the record's
+	 * title and sets nothing at all.
+	 */
+	public function test_a_repeater_cell_cannot_be_called_post_title(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'post_title' );
+		Schema::validate( $this->screen( [
+			'id'     => 'sessions',
+			'kind'   => 'repeater',
+			'label'  => 'Sessions',
+			'fields' => [ [ 'id' => 'post_title', 'kind' => 'text', 'label' => 'Title' ] ],
+		] ) );
+	}
+
 	public function test_a_settings_screen_may_use_a_field_id_reserved_for_the_publish_tab(): void {
 		$screen = Schema::validate( [
 			'slug'        => 'general',

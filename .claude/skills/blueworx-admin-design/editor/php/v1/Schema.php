@@ -42,6 +42,17 @@ final class Schema {
 	const RESERVED_PANEL_IDS = [ 'status', 'taxonomies', 'parent' ];
 
 	/**
+	 * The two post columns the library owns that the Publish tab does not
+	 * carry: the record's own title and body. A record screen is expected to
+	 * declare them — that is how a record gets a title at all, and
+	 * PostStore::POST_COLUMNS routes them to the post rather than to meta.
+	 * So unlike the Publish tab's ids they are reserved only inside a
+	 * repeater, where a row's cells are stored nested and a cell with one of
+	 * these ids reads as if it set the record's title and sets nothing.
+	 */
+	const POST_COLUMN_FIELD_IDS = [ 'post_title', 'post_content' ];
+
+	/**
 	 * A hideable panel gets a field auto-declared on it — <panel_id>__shown —
 	 * so its shown/hidden state flows through Capabilities, Sanitise, Validate
 	 * and Store like any other value, rather than being invented by the
@@ -374,6 +385,19 @@ final class Schema {
 				'The "%s" editor screen uses the field id "%s", which is reserved for the Publish and settings tab the library adds. Choose a different id.',
 				$slug,
 				$field['id']
+			) );
+		}
+		// The record's own title and body are a screen's to declare — see
+		// POST_COLUMN_FIELD_IDS — but only at the top of it. $reserved_fields
+		// is empty on a settings screen, which has no post and so nothing to
+		// confuse, so this never fires there.
+		if ( null !== $repeater_id && $reserved_fields && in_array( $field['id'], self::POST_COLUMN_FIELD_IDS, true ) ) {
+			throw new InvalidArgumentException( sprintf(
+				'The field "%s" in the repeater "%s" on the "%s" editor screen has the same id as the record\'s own %s, which a row cannot set — a row\'s values are stored inside the row. Choose a different id.',
+				$field['id'],
+				$repeater_id,
+				$slug,
+				'post_title' === $field['id'] ? 'title' : 'body'
 			) );
 		}
 		$seen[ $field['id'] ] = true;

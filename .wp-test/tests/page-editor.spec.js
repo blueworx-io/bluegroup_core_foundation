@@ -6,7 +6,7 @@ const path = require('node:path');
 // suite we cannot just point at a hardcoded id. beforeAll below only signs
 // in; beforeEach then creates a fresh "bwx_sport" post through the REST API
 // for EACH test — a single fixture shared across the whole file meant a
-// later test's write (e.g. saving 'Rugby' into #name) was still there for an
+// later test's write (e.g. saving 'Rugby' into #post_title) was still there for an
 // earlier-looking test under --repeat-each, since beforeAll only ever runs
 // once per file. A record per test is the only way one test can never see
 // another's writes. The example plugin's own dev-fixture convenience is left
@@ -68,28 +68,28 @@ test('the screen opens clean, with one save bar', async ({ page }) => {
 });
 
 test('changing a field wakes the save bar and names the tab', async ({ page }) => {
-  await page.fill('#name', 'Rugby');
+  await page.fill('#post_title', 'Rugby');
   await expect(page.locator('.bw-savebar__hint')).toContainText('Content');
   await expect(page.locator('.bw-savebar .bw-btn--primary')).toBeEnabled();
 });
 
 test('switching tab keeps the change and does not save', async ({ page }) => {
-  await page.fill('#name', 'Rugby');
+  await page.fill('#post_title', 'Rugby');
   await page.getByRole('tab', { name: /Publish & settings/ }).click();
   await expect(page.locator('.bw-savebar .bw-btn--primary')).toBeEnabled();
   await page.getByRole('tab', { name: /Content/ }).click();
-  await expect(page.locator('#name')).toHaveValue('Rugby');
+  await expect(page.locator('#post_title')).toHaveValue('Rugby');
 
   // An implementation that autosaved on tab switch — nobody asked for this,
   // but nothing above would have caught it — would still pass everything
   // before this line. Reloading is the only way to tell "kept in memory"
   // from "written to the server".
   await page.reload();
-  await expect(page.locator('#name')).toHaveValue('');
+  await expect(page.locator('#post_title')).toHaveValue('Playwright fixture sport');
 });
 
 test('an invalid save writes nothing and says where to look', async ({ page }) => {
-  await page.fill('#name', 'Rugby');
+  await page.fill('#post_title', 'Rugby');
   await page.fill('#contact', 'dan');
   await page.click('.bw-savebar .bw-btn--primary');
 
@@ -98,17 +98,17 @@ test('an invalid save writes nothing and says where to look', async ({ page }) =
 
   // Not `.not.toHaveValue('Rugby')`: that also passes if the field failed to
   // hydrate, or the screen never loaded, or genuinely wrote some other
-  // string. Asserting the exact value the store's own default produces is
-  // the only version that actually proves nothing was written. Each test
-  // gets its own fresh fixture record (see freshScreen() above), so this
-  // does not depend on test order or on nothing else having saved 'Rugby'
-  // first — it would hold even if another test in this file had.
+  // string. Asserting the exact title this test's own fixture record was
+  // created with is the only version that actually proves nothing was
+  // written. Each test gets its own fresh record (see freshScreen() above),
+  // so this does not depend on test order or on nothing else having saved
+  // 'Rugby' first — it would hold even if another test in this file had.
   await page.reload();
-  await expect(page.locator('#name')).toHaveValue('');
+  await expect(page.locator('#post_title')).toHaveValue('Playwright fixture sport');
 });
 
 test('a valid save writes and the screen goes clean', async ({ page }) => {
-  await page.fill('#name', 'Rugby');
+  await page.fill('#post_title', 'Rugby');
   await page.fill('#contact', 'dan@coastalbloom.co');
   await page.click('.bw-savebar .bw-btn--primary');
 
@@ -116,7 +116,7 @@ test('a valid save writes and the screen goes clean', async ({ page }) => {
   await expect(page.locator('.bw-savebar__hint')).toContainText('Everything is saved.');
 
   await page.reload();
-  await expect(page.locator('#name')).toHaveValue('Rugby');
+  await expect(page.locator('#post_title')).toHaveValue('Rugby');
 });
 
 // The example screen's dependent field: a "Banner text" field that only
@@ -220,12 +220,6 @@ test('a repeater row can be added, reordered and removed from the keyboard', asy
 // blueworx-admin-design.css fix to `.bw-switch input` and `.bw-switch` — so
 // this also stands in as the regression test for that.
 test('a hideable panel switched off, saved and reloaded is still off', async ({ page }) => {
-  // 'Name' is required, and this test's fixture is its own fresh record
-  // (see freshScreen() above) that has never had one set — the save below
-  // would otherwise fail validation for a reason that has nothing to do
-  // with the panel switch under test.
-  await page.fill('#name', 'Rugby');
-
   const card = page.locator('.bw-card:has-text("Training times")');
   const panelSwitch = card.locator('.bw-switch input');
   await expect(panelSwitch).toBeChecked();

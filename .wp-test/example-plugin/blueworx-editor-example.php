@@ -54,7 +54,14 @@ add_action( 'plugins_loaded', function () {
 						'title'   => 'Basics',
 						'note'    => 'What this sport is called and how it is described.',
 						'fields'  => [
-							[ 'id' => 'name', 'kind' => 'text', 'label' => 'Name', 'required' => true, 'help' => 'Shown as the heading on the sport page.' ],
+							// The record's own title, not a field of its own:
+							// post_title is a column on the post (see
+							// PostStore::POST_COLUMNS), so this is what makes
+							// the sport show by name in wp-admin's own lists
+							// as well as here. A record screen that never
+							// declares it leaves every record reading
+							// "(no title)", however much else it edits.
+							[ 'id' => 'post_title', 'kind' => 'title', 'label' => 'Name', 'required' => true, 'help' => 'Shown as the heading on the sport page.' ],
 							[ 'id' => 'short_label', 'kind' => 'text', 'label' => 'Short label', 'max_length' => 12, 'help' => 'Used where space is tight, like the menu.' ],
 							[ 'id' => 'contact', 'kind' => 'text', 'label' => 'Contact email', 'format' => 'email' ],
 							[ 'id' => 'age_groups', 'kind' => 'tokens', 'label' => 'Age groups', 'help' => 'Press Enter after each one.' ],
