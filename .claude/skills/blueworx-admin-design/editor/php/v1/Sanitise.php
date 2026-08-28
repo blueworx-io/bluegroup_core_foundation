@@ -8,9 +8,20 @@ namespace Blueworx\PageEditor\v1;
  */
 final class Sanitise {
 
+	/**
+	 * Kinds that show something and take nothing back. field() answers null
+	 * for one of these however it is called; values() drops it altogether, so
+	 * a save never carries it as far as the store — writing the null as empty
+	 * post meta would be the field saved anyway, for a value nobody sent.
+	 */
+	const DISPLAY_ONLY_KINDS = [ 'facts', 'table', 'copytext' ];
+
 	public static function values( array $screen, array $values ): array {
 		$out = [];
 		foreach ( self::fields( $screen ) as $field ) {
+			if ( in_array( $field['kind'] ?? 'text', self::DISPLAY_ONLY_KINDS, true ) ) {
+				continue;
+			}
 			if ( array_key_exists( $field['id'], $values ) ) {
 				$out[ $field['id'] ] = self::field( $field, $values[ $field['id'] ] );
 			}
@@ -118,7 +129,9 @@ final class Sanitise {
 				return $out;
 
 			// facts, table and copytext are display-only on the screen; nothing
-			// comes back, so nothing is accepted back.
+			// comes back, so nothing is accepted back. values() never reaches
+			// this for one of them — see DISPLAY_ONLY_KINDS — but a direct
+			// caller still gets the same refusal.
 			case 'facts':
 			case 'table':
 			case 'copytext':

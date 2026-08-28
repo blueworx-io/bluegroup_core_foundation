@@ -266,6 +266,31 @@ final class SaveTest extends TestCase {
 		$this->assertTrue( $readonly['post_status'] );
 	}
 
+	/**
+	 * facts, table and copytext show something and take nothing back —
+	 * Sanitise refuses a value for them outright. Refusing it and then
+	 * writing the null it produced as empty post meta is the same field
+	 * saved anyway, one row per record, for a value nobody ever sent.
+	 */
+	public function test_a_display_only_field_is_never_written(): void {
+		Editor::register( [
+			'slug' => 'displays', 'title' => 'Displays', 'post_type' => 'bw_sport',
+			'tabs' => [ [ 'id' => 'd', 'label' => 'Details', 'panels' => [
+				[ 'id' => 'b', 'title' => 'Basics', 'fields' => [
+					[ 'id' => 'name', 'kind' => 'text', 'label' => 'Name' ],
+					[ 'id' => 'endpoint', 'kind' => 'copytext', 'label' => 'Endpoint' ],
+					[ 'id' => 'summary', 'kind' => 'facts', 'label' => 'Summary' ],
+				] ],
+			] ] ],
+		] );
+
+		$result = Editor::save( 'displays', [ 'name' => 'Rugby', 'endpoint' => 'anything', 'summary' => 'anything' ], 7 );
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertArrayNotHasKey( 'bw_sport_endpoint', $GLOBALS['bwpe_stub']['meta'][7] ?? [] );
+		$this->assertArrayNotHasKey( 'bw_sport_summary', $GLOBALS['bwpe_stub']['meta'][7] ?? [] );
+	}
+
 	public function test_resaving_an_unchanged_featured_image_reports_ok(): void {
 		Editor::save( 'sports', [ 'name' => 'Rugby', 'featured_image' => 3 ], 7 );
 		$result = Editor::save( 'sports', [ 'name' => 'Rugby', 'featured_image' => 3 ], 7 );
