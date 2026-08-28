@@ -465,20 +465,28 @@ export function designSystemSync({
   }
 
   // The page editor library. A plugin only carries it once it has an editor
-  // screen, so an absent folder is adoption, not drift — but a folder that is
-  // present must match, file for file, or two plugins on one site disagree
-  // about what an editor is.
-  if (canonicalEditorPhp !== null && shippedEditorPhp !== null) {
-    for (const [name, want] of [...canonicalEditorPhp.entries()].sort()) {
-      const got = shippedEditorPhp.get(name);
-      if (got === undefined) problems.push(`${editorPhpPath}/${name} — missing from this plugin`);
-      else if (got !== want) problems.push(`${editorPhpPath}/${name} — differs from the page editor library`);
-    }
-    for (const name of [...shippedEditorPhp.keys()].sort()) {
-      if (!canonicalEditorPhp.has(name)) problems.push(`${editorPhpPath}/${name} — not part of the page editor library; delete it`);
-    }
-    if (canonicalEditorJs !== null && shippedEditorJs !== canonicalEditorJs) {
-      problems.push(`${editorJsPath} — ${shippedEditorJs === null ? 'missing; the editor screen loads it' : 'differs from the page editor library'}`);
+  // screen, so neither artefact present is adoption, not drift — but a
+  // plugin that carries either one has adopted the editor and must carry
+  // both. A script with no folder behind it, or a folder with no script
+  // loading it, is exactly as broken as a stale file left inside the folder.
+  if (canonicalEditorPhp !== null) {
+    const adopted = shippedEditorPhp !== null || shippedEditorJs !== null;
+    if (adopted) {
+      if (shippedEditorPhp === null) {
+        problems.push(`${editorPhpPath} — missing; the editor screen renders its markup from this folder`);
+      } else {
+        for (const [name, want] of [...canonicalEditorPhp.entries()].sort()) {
+          const got = shippedEditorPhp.get(name);
+          if (got === undefined) problems.push(`${editorPhpPath}/${name} — missing from this plugin`);
+          else if (got !== want) problems.push(`${editorPhpPath}/${name} — differs from the page editor library`);
+        }
+        for (const name of [...shippedEditorPhp.keys()].sort()) {
+          if (!canonicalEditorPhp.has(name)) problems.push(`${editorPhpPath}/${name} — not part of the page editor library; delete it`);
+        }
+      }
+      if (canonicalEditorJs !== null && shippedEditorJs !== canonicalEditorJs) {
+        problems.push(`${editorJsPath} — ${shippedEditorJs === null ? 'missing; the editor screen loads it' : 'differs from the page editor library'}`);
+      }
     }
   }
 
@@ -503,8 +511,7 @@ export function designSystemSync({
     `  cp ${skillPath}/styles.css ${cssPath}`,
     `  mkdir -p ${fontsPath} && cp ${skillPath}/fonts/* ${fontsPath}/`,
     `  cp ${skillPath}/assets/icons/lucide-icons.js ${iconsPath}`,
-    `  [ -d ${editorPhpPath} ] && cp -R ${skillPath}/editor/php/. ${editorPhpPath}/`,
-    `  [ -d ${editorPhpPath} ] && cp ${skillPath}/editor/blueworx-page-editor.js ${editorJsPath}`,
+    `  if [ -d ${editorPhpPath} ] || [ -f ${editorJsPath} ]; then rm -rf ${editorPhpPath} && cp -R ${skillPath}/editor/php/. ${editorPhpPath}/ && cp ${skillPath}/editor/blueworx-page-editor.js ${editorJsPath}; fi`,
     '',
     `Pull ${foundationRef}, not main — CI compares against ${foundationRef}, so anything newer`,
     'than that fails this same check again.',

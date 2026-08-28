@@ -96,7 +96,8 @@ hold regardless of whose machine opens it. Do not edit it to suit this project.
   wp-admin only — the plugin's front-end design stays its own.
 - **Any screen where somebody edits content is a page editor screen.** Copy the design system's
   `editor/php/` to `blueworx-page-editor/` and `editor/blueworx-page-editor.js` to
-  `assets/blueworx-page-editor.js`, require the loader from the main plugin file, and register the
+  `assets/blueworx-page-editor.js`, require the loader
+  (`blueworx-page-editor/blueworx-page-editor.php`) from the main plugin file, and register the
   screen as a field schema — tabs, panels, fields, which capability each needs, and whether it stores
   to a post type or to options. Do not write the markup, the save handler, the dirty tracking or the
   JavaScript: the library owns all of it, so every plugin's editor behaves the same way. Anything
