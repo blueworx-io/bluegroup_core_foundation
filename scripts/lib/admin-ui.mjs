@@ -266,10 +266,9 @@ export function findViolations({ path, kind, content, vocab, whole = true }) {
   // Whole files only: an edit fragment carrying one of the two says nothing
   // about what the finished file holds.
   //
-  // Warning, not error: existing settings screens across the plugin repos may
-  // already combine bw-tabs and bw-savebar legitimately, and this repo cannot
-  // see those repos to know. It becomes an error once a release has shown
-  // what it actually catches.
+  // A failure, not a warning: every plugin repo carrying the design system was
+  // swept before this was turned up, and no existing screen combined the two
+  // classes. Nothing legitimate is caught, so there is nothing to soften.
   if (
     whole &&
     kind !== 'css' &&
@@ -277,7 +276,7 @@ export function findViolations({ path, kind, content, vocab, whole = true }) {
     /class(?:Name)?\s*=\s*["'][^"']*\bbw-tabs\b/.test(content) &&
     /class(?:Name)?\s*=\s*["'][^"']*\bbw-savebar\b/.test(content)
   ) {
-    add(0, 'hand-written-editor', 'warn', 'You have hand-written an editor screen — tabs and a save bar together are an editor, and those come from the page editor library. Declare the screen as a field schema and let the library render it.');
+    add(0, 'hand-written-editor', 'error', 'You have hand-written an editor screen — tabs and a save bar together are an editor, and those come from the page editor library. Declare the screen as a field schema and let the library render it.');
   }
 
   return problems;

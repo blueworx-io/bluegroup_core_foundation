@@ -102,7 +102,7 @@ hold regardless of whose machine opens it. Do not edit it to suit this project.
   to a post type or to options. Do not write the markup, the save handler, the dirty tracking or the
   JavaScript: the library owns all of it, so every plugin's editor behaves the same way. Anything
   record-like must be a registered post type; the library will not open a record editor without one.
-  CI hash-checks both copies and warns on a hand-written editor screen.
+  CI hash-checks both copies and fails a hand-written editor screen.
 - **The editor opens an existing record, so give people a way to reach it.** Its URL is
   `admin.php?page=<slug>&id=123`; without an id, or with one that is not a record of that post
   type, the screen says the record could not be found instead of showing a blank editor. The

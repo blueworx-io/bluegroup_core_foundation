@@ -184,10 +184,10 @@ editor screens come from the library.
 The seven new controls need no work here. The checker builds its vocabulary by reading
 `styles.css`, so adding them there is enough.
 
-**This one rule ships warning-only for one release.** Existing settings screens may already use
-those two classes legitimately, and this repo cannot see those repos to know. Turn it to a
-failure once one release has shown what it actually catches. Every other rule blocks from day
-one.
+**This rule blocks from day one, like every other.** It was written expecting a warning-only
+release first, on the assumption an existing settings screen might combine those two classes
+legitimately. Sweeping every plugin repo that carries the design system found none, so there was
+nothing to soften.
 
 ### 3.2 Sync
 

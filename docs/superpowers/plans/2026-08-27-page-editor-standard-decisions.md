@@ -140,6 +140,7 @@ Every plugin carrying the design system fails its sync check on the next CI run,
 folder now holds the editor and `styles.css` changed. That is expected, `DESIGN_SYSTEM_SYNC=warn`
 still defers it, and the printed fix is copy-pasteable and pinned to the compared ref.
 
-The new rule refusing a hand-written editor screen ships as a **warning** for one release, because
-existing settings screens may legitimately use tabs and a save bar together and this repo cannot see
-those repos to know. It becomes an error once one release has shown what it catches.
+The new rule refusing a hand-written editor screen was written as a **warning** for one release,
+because an existing settings screen might legitimately use tabs and a save bar together. Every
+plugin repo carrying the design system was then swept and none does, so the rule ships as a
+failure like the rest.

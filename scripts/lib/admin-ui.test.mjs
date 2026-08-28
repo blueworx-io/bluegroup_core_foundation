@@ -357,7 +357,7 @@ test('findViolations: tabs plus a save bar in a plugin is a hand-written editor'
   });
   const found = problems.filter((p) => p.rule === 'hand-written-editor');
   assert.equal(found.length, 1);
-  assert.equal(found[0].severity, 'warn');
+  assert.equal(found[0].severity, 'error');
   assert.match(found[0].message, /page editor library/);
 });
 
