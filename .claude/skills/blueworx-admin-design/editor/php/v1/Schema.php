@@ -74,6 +74,15 @@ final class Schema {
 		$screen['lede']       = $screen['lede'] ?? '';
 		$screen['tabs']       = $screen['tabs'] ?? [];
 
+		// Shape first, everything else after. A tabs list that is not a list —
+		// or, below, a tab, panel or field that is not an array — would
+		// otherwise reach a typed parameter and raise a raw PHP TypeError,
+		// which names an internal method and an argument position rather than
+		// the part of the schema that is wrong.
+		if ( ! is_array( $screen['tabs'] ) ) {
+			throw new InvalidArgumentException( sprintf( 'The "%s" editor screen has tabs that are not a list. Give it a list of tabs, each one an array.', $screen['slug'] ) );
+		}
+
 		if ( ! in_array( $screen['store'], [ 'post', 'option' ], true ) ) {
 			throw new InvalidArgumentException( sprintf( 'The "%s" editor screen stores to "%s". It must store to "post" or "option".', $screen['slug'], $screen['store'] ) );
 		}
@@ -92,6 +101,9 @@ final class Schema {
 		$check_reserved  = ( 'post' === $screen['store'] );
 		$reserved_fields = $check_reserved ? self::reservedFieldIds( $screen['slug'] ) : [];
 		foreach ( $screen['tabs'] as $t => $tab ) {
+			if ( ! is_array( $tab ) ) {
+				throw new InvalidArgumentException( sprintf( 'The "%s" editor screen has a tab that is not an array. Every tab is an array with an id, a label and panels.', $screen['slug'] ) );
+			}
 			$screen['tabs'][ $t ] = self::tab( $tab, $screen['slug'], $seen, $tab_ids, $panel_ids, $dependencies, $repeater_scopes, $check_reserved, $reserved_fields );
 		}
 
@@ -142,7 +154,13 @@ final class Schema {
 		$tab_ids[ $tab['id'] ] = true;
 
 		$tab['panels'] = $tab['panels'] ?? [];
+		if ( ! is_array( $tab['panels'] ) ) {
+			throw new InvalidArgumentException( sprintf( 'The tab "%s" on the "%s" editor screen has panels that are not a list. Give it a list of panels, each one an array.', $tab['id'], $slug ) );
+		}
 		foreach ( $tab['panels'] as $p => $panel ) {
+			if ( ! is_array( $panel ) ) {
+				throw new InvalidArgumentException( sprintf( 'The tab "%s" on the "%s" editor screen has a panel that is not an array. Every panel is an array with an id, a title and fields.', $tab['id'], $slug ) );
+			}
 			$tab['panels'][ $p ] = self::panel( $panel, $slug, $seen, $panel_ids, $dependencies, $repeater_scopes, $check_reserved, $reserved_fields );
 		}
 		return $tab;
@@ -168,6 +186,15 @@ final class Schema {
 		$panel['note']     = $panel['note'] ?? '';
 		$panel['hideable'] = (bool) ( $panel['hideable'] ?? false );
 		$panel['fields']   = $panel['fields'] ?? [];
+
+		if ( ! is_array( $panel['fields'] ) ) {
+			throw new InvalidArgumentException( sprintf( 'The panel "%s" on the "%s" editor screen has fields that are not a list. Give it a list of fields, each one an array.', $panel['id'], $slug ) );
+		}
+		foreach ( $panel['fields'] as $given ) {
+			if ( ! is_array( $given ) ) {
+				throw new InvalidArgumentException( sprintf( 'The panel "%s" on the "%s" editor screen has a field that is not an array. Every field is an array with an id, a kind and a label.', $panel['id'], $slug ) );
+			}
+		}
 
 		if ( $panel['hideable'] ) {
 			foreach ( $panel['fields'] as $existing ) {
@@ -401,8 +428,14 @@ final class Schema {
 			if ( empty( $field['fields'] ) ) {
 				throw new InvalidArgumentException( sprintf( 'The repeater "%s" on the "%s" editor screen needs at least one sub-field.', $field['id'], $slug ) );
 			}
+			if ( ! is_array( $field['fields'] ) ) {
+				throw new InvalidArgumentException( sprintf( 'The repeater "%s" on the "%s" editor screen has sub-fields that are not a list. Give it a list of sub-fields, each one an array.', $field['id'], $slug ) );
+			}
 			$sub_seen = [];
 			foreach ( $field['fields'] as $sf => $sub_field ) {
+				if ( ! is_array( $sub_field ) ) {
+					throw new InvalidArgumentException( sprintf( 'The repeater "%s" on the "%s" editor screen has a sub-field that is not an array. Every sub-field is an array with an id, a kind and a label.', $field['id'], $slug ) );
+				}
 				$field['fields'][ $sf ] = self::field( $sub_field, $slug, $sub_seen, $field['id'], $dependencies, $repeater_scopes, $reserved_fields );
 			}
 			$repeater_scopes[ $field['id'] ] = $sub_seen;

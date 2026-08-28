@@ -13,9 +13,67 @@ final class Editor {
 	/** @var array<string,string> slug => why the screen will not run */
 	private static $problems = [];
 
+	/** @var array<string,string> slug => why the screen definition would not register */
+	private static $broken = [];
+
+	/**
+	 * Registration runs on plugins_loaded, where nothing catches anything: an
+	 * exception here would white-screen wp-admin and the front end together,
+	 * over a typo in one field's kind. So a screen definition this library
+	 * refuses is recorded as unavailable instead, with the reason, and the
+	 * screen says so when somebody opens it — exactly the way a record editor
+	 * whose post type nobody registered already does. Registration must never
+	 * be able to take a site down.
+	 *
+	 * Throwable, not just InvalidArgumentException: a tab, panel or field that
+	 * is not an array at all raises a TypeError before any of Schema's own
+	 * checks get to run.
+	 */
 	public static function register( array $screen ): void {
-		$screen = Schema::validate( $screen );
-		self::$screens[ $screen['slug'] ] = $screen;
+		try {
+			$valid = Schema::validate( $screen );
+		} catch ( \Throwable $e ) {
+			self::unavailable( $screen, $e->getMessage() );
+			return;
+		}
+		self::$screens[ $valid['slug'] ] = $valid;
+		unset( self::$broken[ $valid['slug'] ], self::$problems[ $valid['slug'] ] );
+	}
+
+	/**
+	 * Keeps just enough of a refused screen for its menu item to render and
+	 * carry the message. The title and capability are taken as given if they
+	 * are usable, because whatever else was wrong those two are what decide
+	 * where the item appears and who sees it; the store is forced to 'option'
+	 * so ready() never asks about a post type this screen may never have
+	 * named.
+	 *
+	 * A screen with no usable slug is the one case nothing can be done about:
+	 * there is no page to attach the message to and no menu item to reach it
+	 * by, so nothing is registered at all.
+	 */
+	private static function unavailable( array $screen, string $why ): void {
+		$slug = ( isset( $screen['slug'] ) && is_string( $screen['slug'] ) ) ? $screen['slug'] : '';
+		if ( '' === $slug ) {
+			return;
+		}
+
+		$title      = ( isset( $screen['title'] ) && is_string( $screen['title'] ) && '' !== $screen['title'] ) ? $screen['title'] : $slug;
+		$capability = ( isset( $screen['capability'] ) && is_string( $screen['capability'] ) && '' !== $screen['capability'] ) ? $screen['capability'] : 'manage_options';
+
+		self::$screens[ $slug ] = [
+			'slug'       => $slug,
+			'title'      => $title,
+			'capability' => $capability,
+			'store'      => 'option',
+			'eyebrow'    => '',
+			'lede'       => '',
+			'tabs'       => [],
+		];
+		self::$broken[ $slug ] = sprintf(
+			'This editor is not ready. Its screen was set up wrongly: %s Ask whoever installed the plugin to fix it.',
+			rtrim( $why, ' ' )
+		);
 	}
 
 	/** @return array<string,array> */
@@ -38,6 +96,11 @@ final class Editor {
 		if ( null === $screen ) {
 			return false;
 		}
+		// A screen this library refused to register at all: it exists only so
+		// its own menu item can say why — see unavailable() above.
+		if ( isset( self::$broken[ $slug ] ) ) {
+			return false;
+		}
 		if ( 'post' === $screen['store'] && ! post_type_exists( $screen['post_type'] ) ) {
 			self::$problems[ $slug ] = sprintf(
 				'This editor is not ready. It saves a "%s" record, and that record type has not been set up on this site yet. Ask whoever installed the plugin to finish setting it up.',
@@ -49,8 +112,13 @@ final class Editor {
 		return true;
 	}
 
+	/**
+	 * A screen refused at registration knows why from the moment it is
+	 * refused, so that reason is available without ready() having been asked
+	 * first, and it outranks anything ready() later works out.
+	 */
 	public static function problem( string $slug ): string {
-		return self::$problems[ $slug ] ?? '';
+		return self::$broken[ $slug ] ?? self::$problems[ $slug ] ?? '';
 	}
 
 	/**
@@ -198,8 +266,9 @@ final class Editor {
 	}
 
 	public static function reset(): void {
-		self::$screens = [];
+		self::$screens  = [];
 		self::$problems = [];
+		self::$broken   = [];
 	}
 
 	public static function boot(): void {
