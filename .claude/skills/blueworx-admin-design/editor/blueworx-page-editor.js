@@ -294,6 +294,149 @@
       h('button', { type: 'button', className: 'bw-btn bw-btn--primary', disabled: clean || record.saving, onClick: record.save }, record.saving ? 'Saving…' : 'Save changes'));
   }
 
+  /* --- Fields -------------------------------------------------------------- */
+
+  function Field(props) {
+    const h = wp().element.createElement;
+    const field = props.field;
+    const error = props.record.errors[field.id];
+    const wrap = 'bw-field' + (field.wide ? ' bw-field--wide' : '');
+
+    return h('div', { className: wrap },
+      field.kind !== 'title' ? h('label', { className: 'bw-field__label', htmlFor: field.id },
+        field.label,
+        field.required ? h('span', { className: 'bw-field__req' }, '*') : null) : null,
+      h(Control, { field: field, record: props.record, invalid: Boolean(error) }),
+      error ? h('p', { className: 'bw-field__error' }, error)
+            : field.help ? h('p', { className: 'bw-field__help' }, field.help) : null);
+  }
+
+  function Control(props) {
+    const h = wp().element.createElement;
+    const field = props.field;
+    const record = props.record;
+    const value = record.values[field.id];
+    const set = function (v) { record.setValue(field.id, v); };
+    const common = {
+      id: field.id,
+      disabled: Boolean(field.readonly),
+      className: 'bw-input' + (props.invalid ? ' bw-input--invalid' : ''),
+    };
+
+    switch (field.kind) {
+      case 'title':
+        return h('input', { id: field.id, type: 'text', className: 'bw-titleinput', placeholder: field.label,
+          disabled: Boolean(field.readonly), value: value || '', onChange: function (e) { set(e.target.value); } });
+
+      case 'slug':
+        return h('div', { className: 'bw-permalink' },
+          h('code', null, (root.blueworxPageEditor && root.blueworxPageEditor.home) || '/'),
+          h('input', Object.assign({}, common, { type: 'text', value: value || '', onChange: function (e) { set(e.target.value); } })));
+
+      case 'textarea':
+        return h('textarea', { id: field.id, disabled: Boolean(field.readonly), rows: 5,
+          className: 'bw-textarea' + (props.invalid ? ' bw-textarea--invalid' : ''),
+          value: value || '', onChange: function (e) { set(e.target.value); } });
+
+      case 'number':
+        // The server always hands this back as a real number (never ''), and
+        // expects the same in return: Number(...) with a 0 fallback keeps
+        // every write numeric, so an untouched screen never reads as dirty
+        // because a digit came back as its own string.
+        return h('span', { className: 'bw-inputwrap' },
+          h('input', Object.assign({}, common, { type: 'number', min: field.min, max: field.max,
+            value: value === undefined ? 0 : value,
+            onChange: function (e) { set(Number(e.target.value) || 0); } })),
+          field.unit ? h('span', { className: 'bw-inputwrap__affix' }, field.unit) : null);
+
+      case 'range':
+        return h('div', { className: 'bw-range' },
+          h('input', { id: field.id, type: 'range', min: field.min || 0, max: field.max || 10,
+            disabled: Boolean(field.readonly), value: Number(value || 0),
+            onChange: function (e) { set(Number(e.target.value)); } }),
+          h('span', { className: 'bw-range__value' }, String(value || 0)));
+
+      case 'colour':
+        return h('div', { className: 'bw-colorfield' },
+          h('input', { type: 'color', className: 'bw-colorfield__swatch', disabled: Boolean(field.readonly),
+            value: value || '#4F46E5', onChange: function (e) { set(e.target.value); } }),
+          h('input', Object.assign({}, common, { type: 'text', className: common.className + ' bw-colorfield__hex bw-input--mono',
+            value: value || '', onChange: function (e) { set(e.target.value); } })),
+          h('div', { className: 'bw-colorfield__presets' }, (field.presets || []).map(function (hex) {
+            return h('button', { key: hex, type: 'button', title: hex,
+              className: 'bw-colorfield__preset' + (value === hex ? ' is-active' : ''),
+              style: { background: hex }, onClick: function () { set(hex); } });
+          })));
+
+      case 'date':
+      case 'datetime':
+        return h('input', Object.assign({}, common, {
+          type: field.kind === 'date' ? 'date' : 'datetime-local',
+          value: value || '', onChange: function (e) { set(e.target.value); } }));
+
+      case 'copytext':
+        return h('div', { className: 'bw-copyfield' },
+          h('input', Object.assign({}, common, { className: common.className + ' bw-input--mono', readOnly: true, value: value || '' })),
+          h('button', { type: 'button', className: 'bw-btn bw-btn--secondary bw-copyfield__btn',
+            onClick: function () { root.navigator.clipboard.writeText(value || ''); } }, 'Copy'));
+
+      case 'select':
+      case 'record':
+        // 'record' is stored as an int (see Store::castByKind); 'select' is
+        // stored as the string its options already are. Same control, so the
+        // cast has to live here rather than in the field's own onChange.
+        return h('span', { className: 'bw-select' },
+          h('select', { id: field.id, className: 'bw-select__el' + (props.invalid ? ' bw-select__el--invalid' : ''),
+            disabled: Boolean(field.readonly),
+            value: value === undefined ? '' : value,
+            onChange: function (e) { set(field.kind === 'record' ? (Number(e.target.value) || 0) : e.target.value); } },
+            h('option', { value: '' }, '—'),
+            (field.options || []).map(function (o) { return h('option', { key: o.value, value: o.value }, o.label); })),
+          h('i', { className: 'bw-icon bw-select__arrow', 'data-lucide': 'chevron-down' }));
+
+      case 'radio':
+        return h('div', { className: 'bw-radiogroup bw-radiogroup--row' }, (field.options || []).map(function (o) {
+          return h('label', { key: o.value, className: 'bw-check' },
+            h('input', { type: 'radio', name: field.id, value: o.value, checked: value === o.value,
+              disabled: Boolean(field.readonly), onChange: function () { set(o.value); } }),
+            h('span', null, o.label),
+            o.help ? h('small', { className: 'bw-check__help' }, o.help) : null);
+        }));
+
+      case 'checkboxes':
+      case 'scrolllist':
+        return h('div', { className: field.kind === 'scrolllist' ? 'bw-scrolllist' : 'bw-radiogroup bw-radiogroup--row' },
+          (field.options || []).map(function (o) {
+            const picked = (value || []).indexOf(o.value) !== -1;
+            return h('label', { key: o.value, className: 'bw-check' },
+              h('input', { type: 'checkbox', checked: picked, disabled: Boolean(field.readonly),
+                onChange: function () {
+                  const next = (value || []).slice();
+                  if (picked) next.splice(next.indexOf(o.value), 1); else next.push(o.value);
+                  set(next);
+                } }),
+              h('span', null, o.label));
+          }));
+
+      case 'toggle':
+        return h('label', { className: 'bw-switch' },
+          h('input', { id: field.id, type: 'checkbox', checked: Boolean(value), disabled: Boolean(field.readonly),
+            onChange: function (e) { set(e.target.checked); } }),
+          h('span', { className: 'bw-switch__track' }),
+          h('span', { className: 'bw-switch__label' }, value ? 'On' : 'Off'));
+
+      default:
+        return h(ComplexControl, { field: field, record: props.record, invalid: props.invalid });
+    }
+  }
+
+  function ComplexControl(props) {
+    const h = wp().element.createElement;
+    return h('input', { id: props.field.id, type: 'text', className: 'bw-input',
+      value: props.record.values[props.field.id] || '',
+      onChange: function (e) { props.record.setValue(props.field.id, e.target.value); } });
+  }
+
   const api = {
     isDirty: isDirty,
     dependencyMet: dependencyMet,
