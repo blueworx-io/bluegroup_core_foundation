@@ -288,7 +288,7 @@ body.toplevel_page_<slug> #wpfooter { display: none; }
 ## Custom editor screens
 
 Any screen where a site owner edits a record or a set of page content is built by the
-**page editor library**, never by hand. The library owns the shape;
+**page editor library** (`editor/` in this skill), never by hand. The library owns the shape;
 the plugin owns only what goes in it.
 
 **The skeleton, always in this order:** page header (`bw-pagehead`) → tabs (`bw-tabs`, optional)

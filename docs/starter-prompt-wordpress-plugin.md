@@ -94,6 +94,14 @@ hold regardless of whose machine opens it. Do not edit it to suit this project.
   `bw-` class the system doesn't define. If a pattern is missing, add it to
   the design system rather than inventing a one-off here. This governs
   wp-admin only — the plugin's front-end design stays its own.
+- **Any screen where somebody edits content is a page editor screen.** Copy the design system's
+  `editor/php/` to `blueworx-page-editor/` and `editor/blueworx-page-editor.js` to
+  `assets/blueworx-page-editor.js`, require the loader from the main plugin file, and register the
+  screen as a field schema — tabs, panels, fields, which capability each needs, and whether it stores
+  to a post type or to options. Do not write the markup, the save handler, the dirty tracking or the
+  JavaScript: the library owns all of it, so every plugin's editor behaves the same way. Anything
+  record-like must be a registered post type; the library will not open a record editor without one.
+  CI hash-checks both copies and warns on a hand-written editor screen.
 
 ## 3. Versioning files
 
