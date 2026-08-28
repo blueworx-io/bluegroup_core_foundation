@@ -11,6 +11,8 @@ const BW_CLASS = /\bbw-[a-z]/;
 
 const SKILL_DIR = '.claude/skills/blueworx-admin-design/';
 const SHIPPED_CSS = 'assets/blueworx-admin-design.css';
+const EDITOR_LIB_DIR = 'blueworx-page-editor/';
+const SHIPPED_EDITOR_JS = 'assets/blueworx-page-editor.js';
 
 // The only styling a plugin may keep of its own: the chrome overrides the
 // system's readme documents for a full-bleed screen. Anything else in an admin
@@ -105,6 +107,14 @@ export function classifyAdminFile({ path, content, adminAssets = new Set() }) {
 
   // The system is the standard; it is not a consumer of itself.
   if (p.includes(SKILL_DIR) || p === SHIPPED_CSS) return null;
+
+  // Nor is the page editor library, which a plugin carries verbatim and is
+  // forbidden to edit — CI hash-checks both copies against the foundation. A
+  // finding here could only ever be fixed in the foundation, so reporting it
+  // against the plugin would be a hard failure with no action behind it. The
+  // exemption is here rather than only inside a single rule because any rule
+  // reaching these files has the same problem.
+  if (p.includes(EDITOR_LIB_DIR) || p === SHIPPED_EDITOR_JS) return null;
 
   if (p.endsWith('.php')) {
     if (ADMIN_PAGE_CALL.test(content) || ADMIN_HOOK.test(content) || ADMIN_MARKUP.test(content)) return 'php';
@@ -247,6 +257,26 @@ export function findViolations({ path, kind, content, vocab, whole = true }) {
     !rendersDsComponent(content, vocab.components)
   ) {
     add(0, 'no-bw-class', 'warn', 'You have built this admin screen without the design system — use its components rather than starting from scratch.');
+  }
+
+  // Tabs and a save bar on the same screen is an editor, and editors come from
+  // the page editor library — one shell, one save model, one set of controls.
+  // A save bar on its own is an ordinary settings screen and is left alone.
+  //
+  // Whole files only: an edit fragment carrying one of the two says nothing
+  // about what the finished file holds.
+  //
+  // A failure, not a warning: every plugin repo carrying the design system was
+  // swept before this was turned up, and no existing screen combined the two
+  // classes. Nothing legitimate is caught, so there is nothing to soften.
+  if (
+    whole &&
+    kind !== 'css' &&
+    !p.includes(EDITOR_LIB_DIR) &&
+    /class(?:Name)?\s*=\s*["'][^"']*\bbw-tabs\b/.test(content) &&
+    /class(?:Name)?\s*=\s*["'][^"']*\bbw-savebar\b/.test(content)
+  ) {
+    add(0, 'hand-written-editor', 'error', 'You have hand-written an editor screen — tabs and a save bar together are an editor, and those come from the page editor library. Declare the screen as a field schema and let the library render it.');
   }
 
   return problems;

@@ -9,6 +9,8 @@ CI guardrails, permissions, and skills. Only the *process* is shared — not the
 design, with one exception: **WordPress plugin admin screens**, which all come from the
 shared `blueworx-admin-design` system committed here at
 [`.claude/skills/blueworx-admin-design/`](.claude/skills/blueworx-admin-design/).
+That system also carries the **page editor** — the shared shell and behaviour for any screen where a
+site owner edits content, so every plugin's editing experience is the same one.
 
 ## Starter Prompt
 

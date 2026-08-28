@@ -39,15 +39,40 @@ jobs:
           node-version: ${{ matrix.node }}
 
       - name: Syntax-check all scripts
-        run: for f in scripts/*.mjs scripts/lib/*.mjs .claude/hooks/*.mjs; do node --check "$f"; done
+        run: |
+          for f in scripts/*.mjs scripts/lib/*.mjs .claude/hooks/*.mjs \
+                   .claude/skills/blueworx-admin-design/editor/*.js; do
+            node --check "$f"
+          done
 
       - name: Run unit tests
         run: node --test scripts/lib/*.test.mjs .claude/hooks/*.test.mjs
 
+  php:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+          coverage: none
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --no-progress
+
+      - name: Syntax-check the library
+        run: find .claude/skills/blueworx-admin-design/editor/php -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: PHPUnit
+        run: vendor/bin/phpunit
+
   # The job branch protection requires. Keep this name.
   test:
     if: always()
-    needs: [checks]
+    needs: [checks, php]
     runs-on: ubuntu-latest
     steps:
       # A skipped or cancelled dependency counts as a pass to branch protection,
@@ -59,5 +84,15 @@ jobs:
           echo "checks: $CHECKS"
           if [ "$CHECKS" != "success" ]; then
             echo "::error title=Foundation CI failed::The 'checks' matrix did not succeed (result: $CHECKS)."
+            exit 1
+          fi
+
+      - name: Check the PHP job passed
+        env:
+          PHP: ${{ needs.php.result }}
+        run: |
+          echo "php: $PHP"
+          if [ "$PHP" != "success" ]; then
+            echo "::error title=Foundation CI failed::The 'php' job did not succeed (result: $PHP)."
             exit 1
           fi

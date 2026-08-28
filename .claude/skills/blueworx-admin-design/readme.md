@@ -284,3 +284,35 @@ body.toplevel_page_<slug> #wpcontent { padding-left: 0; }
 body.toplevel_page_<slug> #wpbody-content { padding-bottom: 0; }
 body.toplevel_page_<slug> #wpfooter { display: none; }
 ```
+
+## Custom editor screens
+
+Any screen where a site owner edits a record or a set of page content is built by the
+**page editor library** (`editor/` in this skill), never by hand. The library owns the shape;
+the plugin owns only what goes in it.
+
+**The skeleton, always in this order:** page header (`bw-pagehead`) → tabs (`bw-tabs`, optional)
+→ panels (`bw-card`, stacked full width) → save bar (`bw-savebar`, sticky, one per screen).
+
+**Rules that are not negotiable**
+
+- No second navigation column. The only left-hand nav is WordPress's own admin menu.
+- One save bar per screen, whatever the tab. Tabs are views of one record; nothing saves on its own.
+- One to three field groups: no tabs. Several areas: a tab each. More than about five panels in a
+  tab: split the tab. WordPress's own settings: their own tab, last.
+- Optional or expert settings go in a closed `bw-accordion`. Required fields are never hidden.
+- Tab and panel counts come from the data. An empty group reads "empty", never "0".
+- Records are WordPress post types. The library refuses to run a record editor whose post type
+  nobody registered.
+
+**Editor controls**
+
+| Job | Class |
+|---|---|
+| Rich text — bold, italic, link, list, image, nothing else | `bw-richtext` |
+| Free-text list or tags | `bw-tokens` with `bw-chip` |
+| Long taxonomy list, capped so it never grows the panel | `bw-scrolllist` |
+| Fields that only exist while a condition holds | `bw-conditional` |
+| The record's title, and the slug beneath it | `bw-titleinput`, `bw-permalink` |
+| A small muted note with an icon | `bw-fieldnote` |
+| A collapsible group | `bw-accordion` (not a new control) |

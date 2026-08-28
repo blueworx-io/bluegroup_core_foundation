@@ -342,3 +342,71 @@ test('findViolations: a screen rendering a design system component from a local 
     false,
   );
 });
+
+const EDITOR_VOCAB = { classes: new Set(['bw-tabs', 'bw-savebar', 'bw-card', 'bw-input']), tokens: new Set(), components: new Set() };
+
+test('findViolations: tabs plus a save bar in a plugin is a hand-written editor', () => {
+  const problems = findViolations({
+    path: 'includes/admin/class-sport-editor.php',
+    kind: 'php',
+    content: [
+      '<div class="bw-tabs"><button class="bw-tab">Content</button></div>',
+      '<div class="bw-savebar"><button class="bw-btn">Save changes</button></div>',
+    ].join('\n'),
+    vocab: EDITOR_VOCAB,
+  });
+  const found = problems.filter((p) => p.rule === 'hand-written-editor');
+  assert.equal(found.length, 1);
+  assert.equal(found[0].severity, 'error');
+  assert.match(found[0].message, /page editor library/);
+});
+
+test('findViolations: a settings screen with a save bar and no tabs is left alone', () => {
+  const problems = findViolations({
+    path: 'includes/admin/class-settings.php',
+    kind: 'php',
+    content: '<div class="bw-savebar"><button class="bw-btn">Save changes</button></div>',
+    vocab: EDITOR_VOCAB,
+  });
+  assert.equal(problems.filter((p) => p.rule === 'hand-written-editor').length, 0);
+});
+
+test('findViolations: the rule never fires on an edit fragment', () => {
+  const problems = findViolations({
+    path: 'includes/admin/class-sport-editor.php',
+    kind: 'php',
+    content: '<div class="bw-tabs"></div><div class="bw-savebar"></div>',
+    vocab: EDITOR_VOCAB,
+    whole: false,
+  });
+  assert.equal(problems.filter((p) => p.rule === 'hand-written-editor').length, 0);
+});
+
+test('findViolations: the library itself is not a consumer of itself', () => {
+  const problems = findViolations({
+    path: 'blueworx-page-editor/v1/Screen.php',
+    kind: 'php',
+    content: '<div class="bw-tabs"></div><div class="bw-savebar"></div>',
+    vocab: EDITOR_VOCAB,
+  });
+  assert.equal(problems.filter((p) => p.rule === 'hand-written-editor').length, 0);
+});
+
+// The page editor library is vendored into a plugin verbatim and may not be
+// edited there, so it can never be the plugin's problem to fix. Judging it
+// would hand a plugin a hard failure on a file whose only remedy is to
+// re-pull the identical copy.
+test('classifyAdminFile: the vendored page editor library is never judged', () => {
+  assert.equal(
+    classifyAdminFile({ path: 'blueworx-page-editor/v1/Screen.php', content: '<div class="wrap bw-wrap bw-admin">' }),
+    null,
+  );
+  assert.equal(
+    classifyAdminFile({
+      path: 'assets/blueworx-page-editor.js',
+      content: "h('div', { className: 'bw-page' })",
+      adminAssets: new Set(['assets/blueworx-page-editor.js']),
+    }),
+    null,
+  );
+});

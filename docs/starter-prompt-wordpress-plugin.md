@@ -94,6 +94,22 @@ hold regardless of whose machine opens it. Do not edit it to suit this project.
   `bw-` class the system doesn't define. If a pattern is missing, add it to
   the design system rather than inventing a one-off here. This governs
   wp-admin only — the plugin's front-end design stays its own.
+- **Any screen where somebody edits content is a page editor screen.** Copy the design system's
+  `editor/php/` to `blueworx-page-editor/` and `editor/blueworx-page-editor.js` to
+  `assets/blueworx-page-editor.js`, require the loader
+  (`blueworx-page-editor/blueworx-page-editor.php`) from the main plugin file, and register the
+  screen as a field schema — tabs, panels, fields, which capability each needs, and whether it stores
+  to a post type or to options. Do not write the markup, the save handler, the dirty tracking or the
+  JavaScript: the library owns all of it, so every plugin's editor behaves the same way. Anything
+  record-like must be a registered post type; the library will not open a record editor without one.
+  CI hash-checks both copies and fails a hand-written editor screen.
+- **The editor opens an existing record, so give people a way to reach it.** Its URL is
+  `admin.php?page=<slug>&id=123`; without an id, or with one that is not a record of that post
+  type, the screen says the record could not be found instead of showing a blank editor. The
+  library edits records and never creates them — that is the post type's job. Register the post
+  type with `show_ui` so WordPress's own list and "Add New" screens create records, and link from
+  that list to the editor. Build your own list screen instead if you prefer, but build one:
+  nothing else supplies the way in.
 
 ## 3. Versioning files
 

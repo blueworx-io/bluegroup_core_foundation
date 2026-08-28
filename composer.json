@@ -1,0 +1,19 @@
+{
+  "name": "blueworx/core-foundation",
+  "description": "Shared guardrails and the page editor library.",
+  "type": "project",
+  "license": "proprietary",
+  "require": { "php": ">=7.4" },
+  "require-dev": { "phpunit/phpunit": "^9.6" },
+  "autoload": {
+    "classmap": [
+      ".claude/skills/blueworx-admin-design/editor/php/Registry.php",
+      ".claude/skills/blueworx-admin-design/editor/php/v1/"
+    ]
+  },
+  "autoload-dev": { "psr-4": { "Blueworx\\PageEditor\\Tests\\": "tests/php/" } },
+  "config": {
+    "optimize-autoloader": true,
+    "platform": { "php": "7.4" }
+  }
+}

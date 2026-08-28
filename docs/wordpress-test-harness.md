@@ -49,6 +49,83 @@ never in the plugin, so it cannot reach a release.
 Leave it off when running the suite. Specs that assert what a signed-out visitor
 sees will pass against a site where nobody is ever signed out.
 
+## Running this repo's own worked example end to end
+
+`bluegroup_core_foundation` is the one repo where the harness tests itself: the
+page editor library's worked example lives at `.wp-test/example-plugin/` and its
+Playwright spec at `.wp-test/tests/page-editor.spec.js`, run against
+`playwright.config.js` in the repo root. This repo has no `package.json` and
+must not gain one, so there is no local `node_modules` for the config or the
+spec files to resolve `require('@playwright/test')` against — `npx
+@playwright/test` runs a CLI fine, but from its own separate on-demand cache.
+Pointing `NODE_PATH` at a different local install than that CLI itself came
+from loads two physical copies of the same package, and Playwright refuses to
+run ("test.beforeAll() did not expect to be called here" — its own way of
+detecting exactly this). Downloading the browser through yet another copy
+(`npx playwright install`) is the same mistake again. The fix is one
+disposable, gitignored local install, used for the CLI, `NODE_PATH` and the
+browser download alike — not something to rediscover per person running the
+suite.
+
+**Prerequisites:** PHP on PATH with `pdo_sqlite` (`wp-test-env.mjs` checks and
+fails clearly if either is missing), and port 8881 free — that is what the
+harness serves on by default and what `PLAYWRIGHT_BASE_URL` below points at.
+
+The commands below are **Git Bash** (this repo's shell of choice for the
+harness; a PowerShell equivalent follows). Staging still has to run before
+`up`: `wp-test-env.mjs` activates the plugin as part of coming up, and that
+fatals immediately if the library it requires is not there yet. What you no
+longer have to remember is staging again after that — `playwright.config.js`'s
+`globalSetup` runs `scripts/stage-example-plugin.mjs` automatically before
+the suite itself starts, so editing the library and re-running just the
+suite (harness already up from before) can never quietly test yesterday's
+copy. Running the script by hand stays useful on top of both, for poking at
+the screen outside the suite entirely.
+
+```bash
+# Once per checkout:
+npm install --no-save --prefix .wp-test/.pw @playwright/test
+.wp-test/.pw/node_modules/.bin/playwright install chromium
+
+# Every run:
+node scripts/stage-example-plugin.mjs
+node scripts/wp-test-env.mjs up --plugin .wp-test/example-plugin
+NODE_PATH="$(pwd)/.wp-test/.pw/node_modules" \
+  PLAYWRIGHT_BASE_URL=http://127.0.0.1:8881 \
+  WP_ADMIN_USER=admin WP_ADMIN_PASS=wptest-admin-pw \
+  .wp-test/.pw/node_modules/.bin/playwright test --workers=1
+node scripts/wp-test-env.mjs down
+```
+
+PowerShell:
+
+```powershell
+# Once per checkout:
+npm install --no-save --prefix .wp-test/.pw @playwright/test
+.\.wp-test\.pw\node_modules\.bin\playwright.cmd install chromium
+
+# Every run:
+node scripts/stage-example-plugin.mjs
+node scripts/wp-test-env.mjs up --plugin .wp-test/example-plugin
+$env:NODE_PATH = "$PWD\.wp-test\.pw\node_modules"
+$env:PLAYWRIGHT_BASE_URL = "http://127.0.0.1:8881"
+$env:WP_ADMIN_USER = "admin"
+$env:WP_ADMIN_PASS = "wptest-admin-pw"
+.\.wp-test\.pw\node_modules\.bin\playwright.cmd test --workers=1
+node scripts/wp-test-env.mjs down
+```
+
+`scripts/stage-example-plugin.mjs` copies the library and design system assets
+the example plugin needs from `.claude/skills/blueworx-admin-design/` into
+`.wp-test/example-plugin/`, validating every source exists before touching any
+destination — a source missing partway through used to be able to wipe an
+earlier destination and then fail, leaving the plugin half-staged. Only
+`blueworx-editor-example.php` and `dev-fixture.php` are committed under
+`.wp-test/example-plugin/`; everything the staging script writes is
+gitignored, so a library fix can never leave the example running against a
+stale copy of itself — the failure mode that let this suite quietly stop
+proving anything the first time round.
+
 ## Why this exists
 
 WordPress CI used to point Playwright at a staging URL. When that URL was a

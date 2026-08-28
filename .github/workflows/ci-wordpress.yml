@@ -292,8 +292,10 @@ jobs:
 
       # Both copies of the shared admin design system — the skill folder Claude
       # Code reads, and the stylesheet the plugin enqueues — must match the
-      # foundation's. The foundation is already fetched above, so this is a
-      # local comparison. A plugin that has not adopted it yet passes.
+      # foundation's, and so must a plugin's copy of the page editor library
+      # (blueworx-page-editor/ and assets/blueworx-page-editor.js), where it
+      # has one. The foundation is already fetched above, so this is a local
+      # comparison. A plugin that has not adopted a given piece yet passes.
       - name: Design system sync (shared admin UI)
         env:
           DESIGN_SYSTEM_SYNC: ${{ inputs.design_system_sync }}

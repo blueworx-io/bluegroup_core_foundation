@@ -545,6 +545,88 @@ test('designSystemSync: fix instructions cover the icon file too', () => {
   assert.match(r.message, /cp .*lucide-icons\.js .*blueworx-admin-icons\.js/);
 });
 
+test('designSystemSync: a drifted editor library is a problem', () => {
+  const result = designSystemSync({
+    foundationFiles: new Map([['styles.css', 'a']]),
+    pluginFiles: new Map([['styles.css', 'a']]),
+    canonicalCss: 'a',
+    shippedCss: 'a',
+    canonicalEditorPhp: new Map([['v1/Editor.php', 'x']]),
+    shippedEditorPhp: new Map([['v1/Editor.php', 'y']]),
+  });
+  assert.equal(result.ok, false);
+  assert.ok(result.problems.some((p) => p.includes('v1/Editor.php')));
+});
+
+// A plugin that has adopted the editor (it carries the folder) but drops the
+// script still fails.
+test('designSystemSync: a missing editor script is a problem', () => {
+  const result = designSystemSync({
+    foundationFiles: new Map([['styles.css', 'a']]),
+    pluginFiles: new Map([['styles.css', 'a']]),
+    canonicalCss: 'a',
+    shippedCss: 'a',
+    canonicalEditorPhp: new Map([['v1/Editor.php', 'x']]),
+    shippedEditorPhp: new Map([['v1/Editor.php', 'x']]),
+    canonicalEditorJs: 'x',
+    shippedEditorJs: null,
+  });
+  assert.equal(result.ok, false);
+  assert.ok(result.problems.some((p) => p.includes('assets/blueworx-page-editor.js')));
+});
+
+test('designSystemSync: a plugin with no editor library is left alone', () => {
+  const result = designSystemSync({
+    foundationFiles: new Map([['styles.css', 'a']]),
+    pluginFiles: new Map([['styles.css', 'a']]),
+    canonicalCss: 'a',
+    shippedCss: 'a',
+    canonicalEditorPhp: new Map([['v1/Editor.php', 'x']]),
+    shippedEditorPhp: null,
+    canonicalEditorJs: 'x',
+    shippedEditorJs: null,
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.problems, []);
+});
+
+test('designSystemSync: a file in the plugin that is not part of the editor library is a problem', () => {
+  const result = designSystemSync({
+    foundationFiles: new Map([['styles.css', 'a']]),
+    pluginFiles: new Map([['styles.css', 'a']]),
+    canonicalCss: 'a',
+    shippedCss: 'a',
+    canonicalEditorPhp: new Map([['v1/Editor.php', 'x']]),
+    shippedEditorPhp: new Map([['v1/Editor.php', 'x'], ['v1/local-hack.php', 'z']]),
+  });
+  assert.equal(result.ok, false);
+  assert.ok(result.problems.some((p) => p.includes('v1/local-hack.php') && p.includes('delete it')));
+});
+
+// Adoption is either artefact, not the folder specifically — a plugin that
+// enqueues the script but never copied the folder has still adopted the
+// editor, and gets no pass for the folder it is missing.
+test('designSystemSync: a script with no folder behind it is a problem', () => {
+  const result = designSystemSync({
+    foundationFiles: new Map([['styles.css', 'a']]),
+    pluginFiles: new Map([['styles.css', 'a']]),
+    canonicalCss: 'a',
+    shippedCss: 'a',
+    canonicalEditorPhp: new Map([['v1/Editor.php', 'x']]),
+    shippedEditorPhp: null,
+    canonicalEditorJs: 'y',
+    shippedEditorJs: 'y',
+  });
+  assert.equal(result.ok, false);
+  assert.ok(result.problems.some((p) => p.includes('blueworx-page-editor') && p.includes('missing')));
+});
+
+test('designSystemSync: fix instructions cover the editor library too, and remove a stray file before recreating it', () => {
+  const r = designSystemSync({ ...inSync, shippedIcons: null });
+  assert.match(r.message, /rm -rf blueworx-page-editor && cp -R .*editor\/php\/\. blueworx-page-editor\//);
+  assert.match(r.message, /cp .*editor\/blueworx-page-editor\.js assets\/blueworx-page-editor\.js/);
+});
+
 const DS_VOCAB = { tokens: new Set(['--bw-brand']), classes: new Set(['bw-card', 'bw-btn']), components: new Set(['Button']) };
 const SCREEN = 'add_menu_page( "X", "X", "manage_options", "x", "render" );';
 
