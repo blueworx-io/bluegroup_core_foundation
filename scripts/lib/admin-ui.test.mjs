@@ -391,3 +391,22 @@ test('findViolations: the library itself is not a consumer of itself', () => {
   });
   assert.equal(problems.filter((p) => p.rule === 'hand-written-editor').length, 0);
 });
+
+// The page editor library is vendored into a plugin verbatim and may not be
+// edited there, so it can never be the plugin's problem to fix. Judging it
+// would hand a plugin a hard failure on a file whose only remedy is to
+// re-pull the identical copy.
+test('classifyAdminFile: the vendored page editor library is never judged', () => {
+  assert.equal(
+    classifyAdminFile({ path: 'blueworx-page-editor/v1/Screen.php', content: '<div class="wrap bw-wrap bw-admin">' }),
+    null,
+  );
+  assert.equal(
+    classifyAdminFile({
+      path: 'assets/blueworx-page-editor.js',
+      content: "h('div', { className: 'bw-page' })",
+      adminAssets: new Set(['assets/blueworx-page-editor.js']),
+    }),
+    null,
+  );
+});
