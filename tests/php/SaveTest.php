@@ -291,6 +291,57 @@ final class SaveTest extends TestCase {
 		$this->assertArrayNotHasKey( 'bw_sport_summary', $GLOBALS['bwpe_stub']['meta'][7] ?? [] );
 	}
 
+	/**
+	 * A field may depend on one the user is not allowed to edit. Validation
+	 * runs against the fields this user may write, so that dependency is not
+	 * among them — and Validate fails safe on a reference it cannot resolve,
+	 * which would validate a required field the browser is hiding and block
+	 * the save for ever. Resolving a dependency and deciding what may be
+	 * written are two different questions.
+	 */
+	public function test_a_required_field_depending_on_a_locked_field_is_not_validated_while_hidden(): void {
+		$this->registerConditionalScreen();
+
+		$result = Editor::save( 'conditional', [ 'name' => 'Rugby', 'promoted' => false, 'promo_text' => '' ], 7 );
+
+		$this->assertTrue( $result['ok'], 'the dependent field is off the screen, so it cannot be wrong' );
+	}
+
+	public function test_the_same_field_is_still_validated_once_its_condition_holds(): void {
+		$this->registerConditionalScreen();
+
+		$result = Editor::save( 'conditional', [ 'name' => 'Rugby', 'promoted' => true, 'promo_text' => '' ], 7 );
+
+		$this->assertFalse( $result['ok'] );
+		$this->assertArrayHasKey( 'promo_text', $result['errors'] );
+	}
+
+	/** A required field behind a toggle only a shop manager may touch. */
+	private function registerConditionalScreen(): void {
+		Editor::register( [
+			'slug' => 'conditional', 'title' => 'Conditional', 'post_type' => 'bw_sport',
+			'tabs' => [ [ 'id' => 'd', 'label' => 'Details', 'panels' => [
+				[ 'id' => 'b', 'title' => 'Basics', 'fields' => [
+					[ 'id' => 'name', 'kind' => 'text', 'label' => 'Name' ],
+					[
+						'id'          => 'promoted',
+						'kind'        => 'toggle',
+						'label'       => 'Promoted',
+						'capability'  => 'manage_woocommerce',
+						'locked_help' => 'Only a shop manager can promote a sport.',
+					],
+					[
+						'id'         => 'promo_text',
+						'kind'       => 'text',
+						'label'      => 'Promo text',
+						'required'   => true,
+						'depends_on' => [ 'field' => 'promoted', 'value' => true ],
+					],
+				] ],
+			] ] ],
+		] );
+	}
+
 	public function test_resaving_an_unchanged_featured_image_reports_ok(): void {
 		Editor::save( 'sports', [ 'name' => 'Rugby', 'featured_image' => 3 ], 7 );
 		$result = Editor::save( 'sports', [ 'name' => 'Rugby', 'featured_image' => 3 ], 7 );

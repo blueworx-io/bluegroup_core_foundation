@@ -10,20 +10,38 @@ use Blueworx\PageEditor\v1\Sanitise;
  */
 final class Validate {
 
-	/** @return array<string,string> */
-	public static function run( array $screen, array $values ): array {
-		$errors = [];
-		$fields = Sanitise::fields( $screen );
+	/**
+	 * @param array      $screen       the fields to check — on a save, the ones this
+	 *                                 user may actually write.
+	 * @param array      $values       the cleaned values for those fields.
+	 * @param array|null $whole_screen every field on the screen, writable or not.
+	 *                                 A depends_on may name a field the user is not
+	 *                                 allowed to edit; resolving it against the
+	 *                                 writable schema alone would leave it
+	 *                                 unresolvable, and the fail-safe below would
+	 *                                 then validate a required field the browser is
+	 *                                 hiding and block the save for ever. Defaults
+	 *                                 to $screen.
+	 * @param array|null $whole_values the values behind $whole_screen, used only to
+	 *                                 decide whether a condition holds — never
+	 *                                 validated and never written. Defaults to
+	 *                                 $values.
+	 * @return array<string,string>
+	 */
+	public static function run( array $screen, array $values, ?array $whole_screen = null, ?array $whole_values = null ): array {
+		$errors       = [];
+		$fields       = Sanitise::fields( $screen );
+		$whole_values = null === $whole_values ? $values : $whole_values;
 
 		$field_ids = [];
-		foreach ( $fields as $field ) {
+		foreach ( Sanitise::fields( null === $whole_screen ? $screen : $whole_screen ) as $field ) {
 			$field_ids[ $field['id'] ] = true;
 		}
 
 		foreach ( $fields as $field ) {
 			$value = $values[ $field['id'] ] ?? '';
 
-			if ( ! self::applies( $field, $values, $field_ids ) ) {
+			if ( ! self::applies( $field, $whole_values, $field_ids ) ) {
 				continue;
 			}
 
@@ -72,11 +90,16 @@ final class Validate {
 		if ( ! isset( $field_ids[ $on['field'] ] ) ) {
 			// An unresolvable dependency means we do not know whether the field
 			// is on the screen. Schema::validate() rejects this at registration,
-			// but a screen built by hand — Task 12's does — never passes through
-			// it, so this cannot assume the reference resolves. Validating a
-			// field that turns out to be hidden is a visible, fixable error;
-			// skipping one that turns out to be visible lets bad data through
-			// silently, so we fail safe and validate it.
+			// but a screen built by hand never passes through it, so this cannot
+			// assume the reference resolves. Validating a field that turns out
+			// to be hidden is a visible, fixable error; skipping one that turns
+			// out to be visible lets bad data through silently, so we fail safe
+			// and validate it.
+			//
+			// This is meant to fire on a typo, never on a field the user simply
+			// may not edit — hence run()'s $whole_screen, which resolves every
+			// dependency against the whole screen rather than against the part
+			// of it this user may write.
 			return true;
 		}
 

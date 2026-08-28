@@ -117,6 +117,12 @@ if ( ! function_exists( 'wp_kses_post' ) ) {
 		return $value;
 	}
 }
+if ( ! function_exists( '_doing_it_wrong' ) ) {
+	// Real WordPress raises a PHP notice with a backtrace when WP_DEBUG is on,
+	// and says nothing otherwise. Nothing here asserts on it, so the stub only
+	// needs to exist.
+	function _doing_it_wrong( $function, $message, $version ) {}
+}
 if ( ! function_exists( '__' ) ) {
 	function __( $text, $domain = null ) { return $text; }
 }

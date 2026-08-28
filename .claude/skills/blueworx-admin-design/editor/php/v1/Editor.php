@@ -50,11 +50,13 @@ final class Editor {
 	 *
 	 * A screen with no usable slug is the one case nothing can be done about:
 	 * there is no page to attach the message to and no menu item to reach it
-	 * by, so nothing is registered at all.
+	 * by, so nothing is registered at all — only a _doing_it_wrong() trace, for
+ * a developer running with WP_DEBUG on.
 	 */
 	private static function unavailable( array $screen, string $why ): void {
 		$slug = ( isset( $screen['slug'] ) && is_string( $screen['slug'] ) ) ? $screen['slug'] : '';
 		if ( '' === $slug ) {
+			_doing_it_wrong( __METHOD__, $why, '1.0.0' );
 			return;
 		}
 
@@ -239,7 +241,13 @@ final class Editor {
 		$writable = Capabilities::writableSchema( $merged );
 		$given    = Capabilities::filterValues( $merged, $values );
 		$clean    = Sanitise::values( $writable, $given );
-		$errors   = Validate::run( $writable, $clean );
+		// Whether a conditional field is on the screen at all is a different
+		// question from whether this user may write it: a depends_on may name a
+		// field they are only allowed to look at, and resolving it against the
+		// writable schema alone would leave it unresolvable — see Validate::run().
+		// So the condition is resolved against the whole screen and everything
+		// the browser sent, while only $clean is ever validated or written.
+		$errors = Validate::run( $writable, $clean, $merged, Sanitise::values( $merged, $values ) );
 
 		if ( $errors ) {
 			return [ 'ok' => false, 'errors' => $errors ];
