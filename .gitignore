@@ -13,5 +13,13 @@
 .wp-test/*.zip
 .wp-test/server.pid
 .wp-test/php-server.log
+# Signed-in cookies the Playwright spec harvests for itself on each run —
+# a live admin session, never a fixture worth keeping in history.
+.wp-test/tests/.auth-state.json
 .wp-test-client/
 .wp-test-client-plugin/
+
+# Playwright's own run output, and the MCP browser tool's screenshots/logs
+# used to eyeball the screen by hand while building it.
+/test-results/
+/.playwright-mcp/
