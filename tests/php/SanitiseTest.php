@@ -68,6 +68,16 @@ final class SanitiseTest extends TestCase {
 		$this->assertSame( [ [ 'day' => 'Monday' ] ], $out );
 	}
 
+	/**
+	 * A slug is a web address, and WordPress makes one with sanitize_title(),
+	 * which keeps word boundaries as dashes. sanitize_key() throws the spaces
+	 * away entirely, so "Under 12s Team" became "under12steam" — unreadable,
+	 * and not the address WordPress itself would have given the record.
+	 */
+	public function test_a_slug_keeps_word_boundaries_as_dashes(): void {
+		$this->assertSame( 'under-12s-team', Sanitise::field( [ 'kind' => 'slug' ], 'Under 12s Team' ) );
+	}
+
 	public function test_copytext_is_display_only_and_never_writable(): void {
 		$this->assertNull( Sanitise::field( [ 'kind' => 'copytext' ], 'anything at all' ) );
 		$this->assertNull( Sanitise::field( [ 'kind' => 'copytext' ], '<script>bad()</script>' ) );

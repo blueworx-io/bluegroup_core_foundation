@@ -81,6 +81,21 @@ if ( ! function_exists( 'sanitize_key' ) ) {
 		return preg_replace( '/[^a-z0-9_\-]/', '', strtolower( (string) $value ) );
 	}
 }
+if ( ! function_exists( 'sanitize_title' ) ) {
+	// What WordPress itself makes a post slug with (sanitize_title_with_dashes):
+	// lowercase, punctuation dropped, every run of whitespace or underscore
+	// turned into a single dash, and no dash left at either end. Unlike
+	// sanitize_key() it keeps word boundaries, which is the whole difference
+	// between "under-12s-team" and "under12steam".
+	function sanitize_title( $value, $fallback = '', $context = 'save' ) {
+		$value = strtolower( strip_tags( (string) $value ) );
+		$value = preg_replace( '/[^a-z0-9\s\-_]/', '', $value );
+		$value = preg_replace( '/[\s_]+/', '-', $value );
+		$value = preg_replace( '/-+/', '-', $value );
+		$value = trim( $value, '-' );
+		return '' === $value ? (string) $fallback : $value;
+	}
+}
 if ( ! function_exists( 'esc_url_raw' ) ) {
 	function esc_url_raw( $value ) {
 		return filter_var( (string) $value, FILTER_VALIDATE_URL ) ? (string) $value : '';

@@ -68,7 +68,12 @@ final class Sanitise {
 				return (int) $value;
 
 			case 'slug':
-				return sanitize_key( (string) $value );
+				// sanitize_title(), not sanitize_key(): this is a web address,
+				// and it has to come out as the one WordPress itself would
+				// have made. sanitize_key() drops spaces rather than turning
+				// them into dashes, so "Under 12s Team" became
+				// "under12steam" instead of "under-12s-team".
+				return sanitize_title( (string) $value );
 
 			case 'select':
 			case 'radio':
