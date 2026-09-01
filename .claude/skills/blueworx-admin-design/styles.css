@@ -691,6 +691,24 @@
 .bw-table tbody tr:hover .bw-table__actions,.bw-table tbody tr:focus-within .bw-table__actions{opacity:1}
 .bw-table__check{width:36px;padding-right:0}
 .bw-table__check input{accent-color:var(--bw-brand);width:16px;height:16px;margin:0}
+/* Rows that fall into named groups — an estimate's phases, say. The group
+   header is a full-width row on the sunken surface carrying the group name and
+   its subtotal; the total row closes the table off. Both are ordinary rows, not
+   headers, so a screen reader reads them in document order with the rows they
+   belong to. A group's subtotal and the table's total are figures the caller
+   works out: the table never sums anything itself. */
+.bw-table__group>td{background:var(--bw-surface-sunken);padding:var(--bw-space-4) var(--bw-space-7)}
+.bw-table__group-title{font-size:var(--bw-size-xs);letter-spacing:var(--bw-track-label);text-transform:uppercase;font-weight:var(--bw-weight-semibold);color:var(--bw-brand)}
+.bw-table__group-total{float:right;font-variant-numeric:tabular-nums;color:var(--bw-text-muted);font-weight:var(--bw-weight-regular);text-transform:none;letter-spacing:normal}
+.bw-table__total>td{border-top:1px solid var(--bw-border);padding:var(--bw-space-7)}
+.bw-table__total-label{font-family:var(--bw-font-display);font-weight:var(--bw-weight-semibold);color:var(--bw-text-heading)}
+/* Neither a group header nor a total row is a record, so neither takes the
+   row hover the records above them use. */
+.bw-table tbody tr.bw-table__group:hover td,.bw-table tbody tr.bw-table__total:hover td{background:inherit}
+.bw-table__group:hover>td{background:var(--bw-surface-sunken)}
+/* An internal note on a row: for the administrator, never for the client. */
+.bw-table__note{display:flex;align-items:center;gap:var(--bw-space-3);font-size:var(--bw-size-sm);color:var(--bw-warning-deep)}
+.bw-table__legend{display:flex;flex-wrap:wrap;gap:var(--bw-space-7);font-size:var(--bw-size-sm);color:var(--bw-text-muted);padding:var(--bw-space-4) var(--bw-space-7)}
 
 .bw-toolbar{display:flex;align-items:center;gap:var(--bw-space-5);padding:var(--bw-space-6) var(--bw-space-7);border-bottom:1px solid var(--bw-border);flex-wrap:wrap}
 .bw-toolbar__search{flex:1 1 260px;max-width:320px}
