@@ -617,4 +617,30 @@ final class SchemaTest extends TestCase {
 		$screen = Schema::validate( $this->screen( [ 'id' => 'seats', 'kind' => 'number', 'label' => 'Seats', 'min' => -10, 'max' => 10 ] ) );
 		$this->assertSame( 0, $screen['tabs'][0]['panels'][0]['fields'][0]['default'] );
 	}
+
+	public function test_a_gantt_field_is_accepted_and_defaults_to_an_empty_list(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'timeline', 'kind' => 'gantt', 'label' => 'Project timeline' ] ) );
+		$field  = $screen['tabs'][0]['panels'][0]['fields'][0];
+		$this->assertSame( 'gantt', $field['kind'] );
+		$this->assertSame( [], $field['default'] );
+		$this->assertTrue( $field['wide'], 'a gantt is never half a row' );
+	}
+
+	public function test_a_gantt_cannot_live_inside_a_repeater(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'repeater row can only hold' );
+		Schema::validate( $this->screen( [
+			'id'     => 'rows',
+			'kind'   => 'repeater',
+			'label'  => 'Rows',
+			'fields' => [ [ 'id' => 'chart', 'kind' => 'gantt', 'label' => 'Chart' ] ],
+		] ) );
+	}
+	public function test_a_gantt_counts_its_dates_from_today_unless_given_an_origin(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'timeline', 'kind' => 'gantt', 'label' => 'Project timeline' ] ) );
+		$this->assertSame( '', $screen['tabs'][0]['panels'][0]['fields'][0]['origin'] );
+
+		$screen = Schema::validate( $this->screen( [ 'id' => 'timeline', 'kind' => 'gantt', 'label' => 'Project timeline', 'origin' => '2026-09-01' ] ) );
+		$this->assertSame( '2026-09-01', $screen['tabs'][0]['panels'][0]['fields'][0]['origin'] );
+	}
 }

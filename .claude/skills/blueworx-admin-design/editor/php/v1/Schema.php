@@ -15,7 +15,7 @@ final class Schema {
 	const KINDS = [
 		'text', 'textarea', 'richtext', 'number', 'range', 'colour', 'date', 'datetime',
 		'copytext', 'select', 'radio', 'checkboxes', 'toggle', 'tokens', 'scrolllist',
-		'media', 'file', 'repeater', 'record', 'facts', 'table', 'title', 'slug',
+		'media', 'file', 'repeater', 'record', 'facts', 'table', 'gantt', 'title', 'slug',
 	];
 
 	const CHOICE_KINDS = [ 'select', 'radio', 'checkboxes', 'scrolllist', 'record' ];
@@ -288,6 +288,7 @@ final class Schema {
 			case 'scrolllist':
 			case 'tokens':
 			case 'repeater':
+			case 'gantt':
 				return [];
 
 			default:
@@ -432,6 +433,7 @@ final class Schema {
 			case 'scrolllist':
 			case 'tokens':
 			case 'repeater':
+			case 'gantt':
 				return is_array( $value );
 
 			default:
@@ -455,6 +457,7 @@ final class Schema {
 			case 'scrolllist':
 			case 'tokens':
 			case 'repeater':
+			case 'gantt':
 				return 'an array';
 
 			default:
@@ -548,12 +551,21 @@ final class Schema {
 		}
 		$field['suggestions'] = self::suggestions( $field, $slug );
 
+		// A gantt numbers its phases in weeks, and can also show them as dates.
+		// It cannot work the dates out on its own — week 1 is whenever the
+		// screen's own record says the work starts — so the plugin names the
+		// day to count forward from. Empty means the browser counts from today,
+		// which is right for a schedule with no start date of its own.
+		if ( 'gantt' === $field['kind'] ) {
+			$field['origin'] = isset( $field['origin'] ) ? (string) $field['origin'] : '';
+		}
+
 		$field['help']        = $field['help'] ?? '';
 		$field['required']    = (bool) ( $field['required'] ?? false );
 		$field['capability']  = $field['capability'] ?? '';
 		$field['locked_help'] = $field['locked_help'] ?? '';
 		$field['depends_on']  = $field['depends_on'] ?? null;
-		$field['wide']        = (bool) ( $field['wide'] ?? in_array( $field['kind'], [ 'richtext', 'repeater', 'media', 'file', 'table', 'facts', 'title' ], true ) );
+		$field['wide']        = (bool) ( $field['wide'] ?? in_array( $field['kind'], [ 'richtext', 'repeater', 'media', 'file', 'table', 'facts', 'gantt', 'title' ], true ) );
 		// What Store::read() hands back for this field when it has never
 		// been saved. A plugin may declare its own; otherwise it follows the
 		// kind, so a never-touched toggle reads false and a never-touched
