@@ -685,11 +685,16 @@
   // Week n as a date, counted forward from the field's origin. Weeks are what
   // is stored; a date is only ever a way of reading one, so nothing here is
   // saved.
+  // en-GB rather than the browser's own locale, so a schedule reads "8 Sep"
+  // for everyone. The system is British English throughout, and a date on a
+  // bar sits beside a week number in a fixed-width label — a locale that put
+  // the month first would reflow the column for some administrators and not
+  // others, on the same screen, looking at the same record.
   function ganttWeekDate(origin, week) {
     const from = origin ? new Date(origin + 'T00:00:00') : new Date();
     if (isNaN(from.getTime())) return '';
     const on = new Date(from.getTime() + (week - 1) * MS_PER_WEEK);
-    return on.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    return on.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
   }
 
   function ganttPhaseRange(phase, mode, origin) {
