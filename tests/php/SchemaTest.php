@@ -643,4 +643,55 @@ final class SchemaTest extends TestCase {
 		$screen = Schema::validate( $this->screen( [ 'id' => 'timeline', 'kind' => 'gantt', 'label' => 'Project timeline', 'origin' => '2026-09-01' ] ) );
 		$this->assertSame( '2026-09-01', $screen['tabs'][0]['panels'][0]['fields'][0]['origin'] );
 	}
+	private function estimateRepeater( array $extra = [] ): array {
+		return array_merge( [
+			'id'     => 'items',
+			'kind'   => 'repeater',
+			'label'  => 'Line items',
+			'fields' => [
+				[ 'id' => 'title', 'kind' => 'text', 'label' => 'Work item' ],
+				[ 'id' => 'phase', 'kind' => 'select', 'label' => 'Phase', 'options' => [ [ 'value' => 'discovery', 'label' => 'Discovery' ] ] ],
+				[ 'id' => 'hours', 'kind' => 'number', 'label' => 'Hours' ],
+			],
+		], $extra );
+	}
+
+	public function test_a_repeater_may_group_by_one_of_its_own_select_cells(): void {
+		$screen = Schema::validate( $this->screen( $this->estimateRepeater( [
+			'group_by'    => 'phase',
+			'subtotal_of' => 'hours',
+		] ) ) );
+		$field = $screen['tabs'][0]['panels'][0]['fields'][0];
+
+		$this->assertSame( 'phase', $field['group_by'] );
+		$this->assertSame( 'hours', $field['subtotal_of'] );
+		$this->assertSame( 'Ungrouped', $field['group_empty_label'] );
+		$this->assertSame( '', $field['subtotal_suffix'] );
+	}
+
+	public function test_a_repeater_that_groups_nothing_still_answers_for_the_option(): void {
+		$screen = Schema::validate( $this->screen( $this->estimateRepeater() ) );
+		$field  = $screen['tabs'][0]['panels'][0]['fields'][0];
+
+		$this->assertSame( '', $field['group_by'] );
+		$this->assertSame( '', $field['subtotal_of'] );
+	}
+
+	public function test_grouping_by_a_cell_that_is_not_there_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'group_by' );
+		Schema::validate( $this->screen( $this->estimateRepeater( [ 'group_by' => 'nope' ] ) ) );
+	}
+
+	public function test_grouping_by_a_cell_that_is_not_a_select_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'has to be a "select" cell' );
+		Schema::validate( $this->screen( $this->estimateRepeater( [ 'group_by' => 'title' ] ) ) );
+	}
+
+	public function test_subtotalling_a_cell_that_is_not_a_number_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'has to be a "number" cell' );
+		Schema::validate( $this->screen( $this->estimateRepeater( [ 'subtotal_of' => 'title' ] ) ) );
+	}
 }

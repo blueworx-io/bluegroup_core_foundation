@@ -841,6 +841,40 @@
       help ? h('p', { className: 'bw-field__help' }, help) : null);
   }
 
+  // Rows in the order they will be drawn, under the group each one belongs to.
+  // Groups follow the group cell's own option order, so the headers read the
+  // same way the select does; rows whose group cell is empty, or holds a value
+  // the select no longer offers, fall into one last group rather than
+  // disappearing. Returns null when the repeater does not group, which is what
+  // keeps the ungrouped path byte-for-byte what it was.
+  function repeaterGroups(field, rows) {
+    if (!field.group_by) return null;
+
+    const cell = (field.fields || []).find(function (c) { return c.id === field.group_by; });
+    const options = (cell && cell.options) || [];
+    const groups = options.map(function (o) { return { value: o.value, label: o.label, rows: [] }; });
+    const other = { value: '', label: field.group_empty_label || 'Ungrouped', rows: [] };
+
+    rows.forEach(function (row, index) {
+      const at = groups.find(function (g) { return String(g.value) === String(row[field.group_by]); });
+      (at || other).rows.push({ row: row, index: index });
+    });
+
+    if (other.rows.length > 0) groups.push(other);
+    // A group nobody has put a row in yet is not drawn: an empty phase header
+    // reads as a mistake rather than as an invitation.
+    return groups.filter(function (g) { return g.rows.length > 0; });
+  }
+
+  // The caller works out the figure; this only formats it. Blank reads as zero
+  // in a subtotal, which is what a half-filled row should contribute.
+  function repeaterSubtotal(field, rows) {
+    const total = rows.reduce(function (sum, entry) {
+      return sum + (Number(entry.row[field.subtotal_of]) || 0);
+    }, 0);
+    return field.subtotal_suffix ? total + ' ' + field.subtotal_suffix : String(total);
+  }
+
   function Repeater(props) {
     const h = wp().element.createElement;
     const rows = props.value;
@@ -873,31 +907,48 @@
       props.onChange(next);
     }
 
+    // One row, drawn at its own index in the whole list. Position, not group
+    // position: move() and remove work on the list, so a grouped view must
+    // still hand each row the index it actually has.
+    function row(rowValue, i) {
+      // Keyed on the row's own id, not its position: move() swaps whole
+      // row objects, so the id travels with the content, and the row the
+      // pointer is over stays the row that actually moved.
+      return h('div', { key: rowValue.__rid || ('row-' + i), className: 'bw-repeater__row' },
+        // Dragging is a nice-to-have; these two buttons are how a reorder is
+        // actually done, so it works from the keyboard like everything else.
+        h('span', { className: 'bw-repeater__grip' },
+          h('button', { type: 'button', className: 'bw-iconbtn', 'aria-label': 'Move up', disabled: locked,
+            onClick: function () { move(i, -1); } },
+            h('i', { className: 'bw-icon', 'data-lucide': 'chevron-up' })),
+          h('button', { type: 'button', className: 'bw-iconbtn', 'aria-label': 'Move down', disabled: locked,
+            onClick: function () { move(i, 1); } },
+            h('i', { className: 'bw-icon', 'data-lucide': 'chevron-down' }))),
+        h('div', { className: 'bw-repeater__fields' }, (props.field.fields || []).map(function (cell) {
+          return h('div', { key: cell.id, className: 'bw-field' },
+            h('label', { className: 'bw-field__label', htmlFor: cell.id + '-' + i }, cell.label),
+            repeaterCell(cell, cell.id + '-' + i, rowValue[cell.id], locked, function (v) { change(i, cell, v); }));
+        })),
+        h('button', { type: 'button', className: 'bw-iconbtn bw-iconbtn--danger', 'aria-label': 'Remove this row', disabled: locked,
+          onClick: function () { props.onChange(rows.filter(function (_, j) { return j !== i; })); } },
+          h('i', { className: 'bw-icon', 'data-lucide': 'trash-2' })));
+    }
+
+    const groups = repeaterGroups(props.field, rows);
+
     return h('div', { className: 'bw-repeater' },
       rows.length === 0 ? h('div', { className: 'bw-repeater__empty' }, 'No rows yet.') : null,
-      rows.map(function (row, i) {
-        // Keyed on the row's own id, not its position: move() swaps whole
-        // row objects, so the id travels with the content, and the row the
-        // pointer is over stays the row that actually moved.
-        return h('div', { key: row.__rid || ('row-' + i), className: 'bw-repeater__row' },
-          // Dragging is a nice-to-have; these two buttons are how a reorder is
-          // actually done, so it works from the keyboard like everything else.
-          h('span', { className: 'bw-repeater__grip' },
-            h('button', { type: 'button', className: 'bw-iconbtn', 'aria-label': 'Move up', disabled: locked,
-              onClick: function () { move(i, -1); } },
-              h('i', { className: 'bw-icon', 'data-lucide': 'chevron-up' })),
-            h('button', { type: 'button', className: 'bw-iconbtn', 'aria-label': 'Move down', disabled: locked,
-              onClick: function () { move(i, 1); } },
-              h('i', { className: 'bw-icon', 'data-lucide': 'chevron-down' }))),
-          h('div', { className: 'bw-repeater__fields' }, (props.field.fields || []).map(function (cell) {
-            return h('div', { key: cell.id, className: 'bw-field' },
-              h('label', { className: 'bw-field__label', htmlFor: cell.id + '-' + i }, cell.label),
-              repeaterCell(cell, cell.id + '-' + i, row[cell.id], locked, function (v) { change(i, cell, v); }));
-          })),
-          h('button', { type: 'button', className: 'bw-iconbtn bw-iconbtn--danger', 'aria-label': 'Remove this row', disabled: locked,
-            onClick: function () { props.onChange(rows.filter(function (_, j) { return j !== i; })); } },
-            h('i', { className: 'bw-icon', 'data-lucide': 'trash-2' })));
-      }),
+      groups === null
+        ? rows.map(row)
+        : groups.map(function (group) {
+            return h(wp().element.Fragment, { key: 'g-' + group.value },
+              h('div', { className: 'bw-table__group' },
+                h('span', { className: 'bw-table__group-title' }, group.label),
+                props.field.subtotal_of
+                  ? h('span', { className: 'bw-table__group-total' }, repeaterSubtotal(props.field, group.rows))
+                  : null),
+              group.rows.map(function (entry) { return row(entry.row, entry.index); }));
+          }),
       h('div', { className: 'bw-repeater__foot' },
         h('button', { type: 'button', className: 'bw-btn bw-btn--secondary', disabled: locked,
           onClick: function () { props.onChange(rows.concat([{ __rid: 'r' + (++nextRowId) }])); } }, 'Add a row')));
@@ -1057,6 +1108,9 @@
     Panel: Panel,
     Field: Field,
     Repeater: Repeater,
+    repeaterGroups: repeaterGroups,
+    repeaterSubtotal: repeaterSubtotal,
+    ganttPhaseRange: ganttPhaseRange,
   };
 
   /* --- Bootstrap ----------------------------------------------------------- */

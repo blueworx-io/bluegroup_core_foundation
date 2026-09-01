@@ -296,3 +296,91 @@ test('a conditional field names its dependency even when that field is on anothe
   assert.equal(hasControl(tree, 'div', 'bw-conditional'), true);
   assert.match(textOf(tree), /Announcement bar/, 'the note must name the field, not print its raw id');
 });
+
+/* --- A repeater whose rows fall into groups --------------------------------- */
+
+const ESTIMATE = {
+  id: 'items',
+  kind: 'repeater',
+  label: 'Line items',
+  group_by: 'phase',
+  subtotal_of: 'hours',
+  subtotal_suffix: 'hrs',
+  group_empty_label: 'Ungrouped',
+  fields: [
+    { id: 'title', kind: 'text', label: 'Work item' },
+    { id: 'phase', kind: 'select', label: 'Phase', options: [{ value: 'discovery', label: 'Discovery' }, { value: 'design', label: 'UI design' }] },
+    { id: 'hours', kind: 'number', label: 'Hours' },
+  ],
+};
+
+const ESTIMATE_ROWS = [
+  { __rid: 'r1', title: 'Interviews', phase: 'discovery', hours: 16 },
+  { __rid: 'r2', title: 'Key screens', phase: 'design', hours: 30 },
+  { __rid: 'r3', title: 'Competitor review', phase: 'discovery', hours: 8 },
+  { __rid: 'r4', title: 'Not filed yet', phase: '', hours: 4 },
+];
+
+test('grouping follows the select\'s own option order, not the row order', () => {
+  const groups = pe.repeaterGroups(ESTIMATE, ESTIMATE_ROWS);
+  assert.deepEqual(groups.map((g) => g.label), ['Discovery', 'UI design', 'Ungrouped']);
+});
+
+test('a row keeps the index it has in the whole list, not its index in its group', () => {
+  const groups = pe.repeaterGroups(ESTIMATE, ESTIMATE_ROWS);
+  const discovery = groups.find((g) => g.label === 'Discovery');
+  assert.deepEqual(discovery.rows.map((e) => e.index), [0, 2], 'move and remove work on the whole list');
+});
+
+test('a group nobody has filed a row under is not drawn', () => {
+  const groups = pe.repeaterGroups(ESTIMATE, [{ __rid: 'r1', title: 'Interviews', phase: 'discovery', hours: 16 }]);
+  assert.deepEqual(groups.map((g) => g.label), ['Discovery']);
+});
+
+test('a row whose group cell is empty is kept, under the last group', () => {
+  const groups = pe.repeaterGroups(ESTIMATE, ESTIMATE_ROWS);
+  const other = groups[groups.length - 1];
+  assert.equal(other.label, 'Ungrouped');
+  assert.deepEqual(other.rows.map((e) => e.row.title), ['Not filed yet']);
+});
+
+test('a repeater that does not group returns no groups at all', () => {
+  const plain = Object.assign({}, ESTIMATE, { group_by: '' });
+  assert.equal(pe.repeaterGroups(plain, ESTIMATE_ROWS), null, 'the ungrouped path must stay exactly what it was');
+});
+
+test('a subtotal counts its own cell and carries its suffix', () => {
+  const groups = pe.repeaterGroups(ESTIMATE, ESTIMATE_ROWS);
+  const discovery = groups.find((g) => g.label === 'Discovery');
+  assert.equal(pe.repeaterSubtotal(ESTIMATE, discovery.rows), '24 hrs');
+});
+
+test('a blank number reads as zero in a subtotal', () => {
+  const rows = [{ row: { hours: '' } }, { row: { hours: 12 } }];
+  assert.equal(pe.repeaterSubtotal(ESTIMATE, rows), '12 hrs');
+});
+
+test('a grouped repeater draws a header per group with its subtotal', () => {
+  const tree = render(h(pe.Repeater, { field: ESTIMATE, value: ESTIMATE_ROWS, onChange() {} }));
+  assert.equal(hasControl(tree, 'div', 'bw-table__group'), true, 'no group header was drawn');
+  const text = textOf(tree);
+  assert.match(text, /Discovery/);
+  assert.match(text, /24 hrs/);
+  assert.match(text, /30 hrs/, 'the second group subtotals its own rows, not the whole list');
+});
+
+/* --- How a gantt phase reads its own range ---------------------------------- */
+
+test('a phase spanning one week reads as one week, not a range', () => {
+  assert.equal(pe.ganttPhaseRange({ start: 15, end: 15 }, 'weeks', ''), 'Week 15');
+});
+
+test('a phase with a milestone names it after the range', () => {
+  assert.equal(pe.ganttPhaseRange({ start: 4, end: 7, milestone: 'Design sign-off' }, 'weeks', ''), 'Weeks 4–7 · Design sign-off');
+});
+
+test('calendar mode counts weeks forward from the field origin', () => {
+  const range = pe.ganttPhaseRange({ start: 1, end: 3 }, 'dates', '2026-09-01');
+  assert.match(range, /1 Sep/, 'week 1 is the origin itself');
+  assert.match(range, /15 Sep/, 'week 3 is fourteen days later');
+});

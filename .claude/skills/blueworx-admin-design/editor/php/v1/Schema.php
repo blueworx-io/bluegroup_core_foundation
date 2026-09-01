@@ -600,9 +600,68 @@ final class Schema {
 				$field['fields'][ $sf ] = self::field( $sub_field, $slug, $sub_seen, $field['id'], $dependencies, $repeater_scopes, $reserved_fields );
 			}
 			$repeater_scopes[ $field['id'] ] = $sub_seen;
+			self::groupingOptions( $field, $slug );
 		}
 
 		return $field;
+	}
+
+	/**
+	 * A repeater whose rows fall into named groups, each with a subtotal — an
+	 * estimate's phases, say. Both options name one of the repeater's own
+	 * cells, so this runs after the sub-fields are walked and every cell id is
+	 * known.
+	 *
+	 * A repeater that sets neither still answers for both, so a consumer can
+	 * read the keys without checking they exist first.
+	 *
+	 * @param array  $field the repeater, by reference.
+	 * @param string $slug  the screen, for the error message.
+	 */
+	private static function groupingOptions( array &$field, string $slug ): void {
+		foreach ( [ 'group_by' => 'select', 'subtotal_of' => 'number' ] as $option => $wants ) {
+			if ( ! array_key_exists( $option, $field ) || null === $field[ $option ] || '' === $field[ $option ] ) {
+				$field[ $option ] = '';
+				continue;
+			}
+
+			$target = null;
+			foreach ( $field['fields'] as $sub_field ) {
+				if ( $sub_field['id'] === $field[ $option ] ) {
+					$target = $sub_field;
+					break;
+				}
+			}
+
+			if ( null === $target ) {
+				throw new InvalidArgumentException( sprintf(
+					'The repeater "%s" on the "%s" editor screen sets %s to "%s", which is not one of its own cells. Use the id of a cell inside this repeater.',
+					$field['id'],
+					$slug,
+					$option,
+					$field[ $option ]
+				) );
+			}
+			if ( $target['kind'] !== $wants ) {
+				throw new InvalidArgumentException( sprintf(
+					'The repeater "%s" on the "%s" editor screen sets %s to "%s", which is a "%s" cell. It has to be a "%s" cell.',
+					$field['id'],
+					$slug,
+					$option,
+					$field[ $option ],
+					$target['kind'],
+					$wants
+				) );
+			}
+
+			$field[ $option ] = (string) $field[ $option ];
+		}
+
+		// What a subtotal is counted in ("hrs"), and what the group of rows
+		// whose group cell is empty is called. Both are labels, so neither is
+		// checked against anything.
+		$field['subtotal_suffix']   = isset( $field['subtotal_suffix'] ) ? (string) $field['subtotal_suffix'] : '';
+		$field['group_empty_label'] = isset( $field['group_empty_label'] ) ? (string) $field['group_empty_label'] : 'Ungrouped';
 	}
 
 	/**
