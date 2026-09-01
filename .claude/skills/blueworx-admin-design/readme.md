@@ -186,7 +186,7 @@ has card HTML showing its states. **Open `components/index.html` for the live in
 `EmptyState` · `HelpTip`
 
 **`components/data/`** — records and figures
-`DataTable` · `StatCard` · `BulkActions` · `DescriptionList` · `ActivityLog`
+`DataTable` · `StatCard` · `SummaryStrip` · `Gantt` · `BulkActions` · `DescriptionList` · `ActivityLog`
 
 Styling lives in `.css` files beside each group (`core.css`, `forms.css` + `forms-extra.css`,
 `layout.css` + `layout-extra.css`, `navigation.css`, `feedback.css` + `feedback-extra.css`,
@@ -212,6 +212,8 @@ that cannot ship React can use the classes alone: `.bw-btn.bw-btn--primary`, `.b
 | Views of one screen | `Tabs` |
 | More than four settings sections | `SectionNav` |
 | Optional or advanced settings | `Accordion` |
+| Derived figures that stay put while tabs change | `SummaryStrip` |
+| Phases against a week or date scale | `Gantt` |
 
 ### Intentional additions
 

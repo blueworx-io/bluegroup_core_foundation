@@ -213,6 +213,9 @@
   --bw-focus-width:2px;
   --bw-focus-offset:1px;
   --bw-disabled-opacity:.5; /* @kind other */
+  /* Width below which a summary cell's label, figure and footnote stop reading
+     as one column and the strip wraps. A threshold, not a design value. */
+  --bw-summary-min:168px;
 }
 
 /* --- Components — core (button, badge, chip, icon, avatar, tooltip) ---------- */
@@ -703,6 +706,16 @@
 .bw-stat__delta--down{color:var(--bw-danger-deep)}
 .bw-stat__foot{font-size:var(--bw-size-sm);color:var(--bw-text-faint);margin:0}
 .bw-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:var(--bw-space-7)}
+/* Summary strip — the band of derived figures that sits under a page header and
+   stays put while the tabs beneath it change. Not .bw-stats: that is a grid of
+   cards on the canvas, this is one white band flush with the header above it,
+   divided by hairlines. Figures only — nothing here is editable or a link. */
+.bw-summary{display:flex;flex-wrap:wrap;gap:0;background:var(--bw-surface-card);border-bottom:1px solid var(--bw-border);padding:0 var(--bw-pad)}
+.bw-summary__cell{display:flex;flex-direction:column;gap:var(--bw-space-2);min-width:var(--bw-summary-min);padding:var(--bw-space-7) var(--bw-space-10) var(--bw-space-7) 0;margin-right:var(--bw-space-10);border-right:1px solid var(--bw-border)}
+.bw-summary__cell:last-child{border-right:0;margin-right:0}
+.bw-summary__label{font-size:var(--bw-size-xs);line-height:var(--bw-lh-tight);letter-spacing:var(--bw-track-label);text-transform:uppercase;color:var(--bw-text-muted);font-weight:var(--bw-weight-semibold)}
+.bw-summary__value{font-family:var(--bw-font-display);font-size:var(--bw-size-title);font-weight:var(--bw-weight-semibold);line-height:var(--bw-lh-tight);color:var(--bw-text-heading);font-variant-numeric:tabular-nums}
+.bw-summary__foot{font-size:var(--bw-size-sm);color:var(--bw-text-faint)}
 
 /* --- Components — data display, extended ------------------------------------- */
 /* Detail lists, avatars, activity, bulk actions */
