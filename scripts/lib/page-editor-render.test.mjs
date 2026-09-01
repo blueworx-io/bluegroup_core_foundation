@@ -119,6 +119,7 @@ const DRAWS = {
   record: ['select', 'bw-select__el'],
   facts: ['dl', 'bw-dl'],
   table: ['table', 'bw-table'],
+  gantt: ['div', 'bw-gantt'],
   title: ['input', 'bw-titleinput'],
   slug: ['div', 'bw-permalink'],
 };
