@@ -216,6 +216,17 @@
   /* Width below which a summary cell's label, figure and footnote stop reading
      as one column and the strip wraps. A threshold, not a design value. */
   --bw-summary-min:168px;
+  /* Timeline. The launch marker is the same ink as --bw-text-heading, declared
+     separately because here it is carrying a bar's meaning rather than text
+     colour, and the two must stay free to diverge. --bw-timeline-post is a
+     lighter indigo: the same family as the brand, read as later in time. */
+  --bw-timeline-launch:#0A0C29;
+  --bw-timeline-post:#8B84EA;
+  --bw-gantt-label-w:236px;
+  --bw-gantt-track-h:30px;
+  --bw-gantt-bar-inset:3px;
+  --bw-gantt-key-size:10px;
+  --bw-gantt-hidden-opacity:.45; /* @kind other */
 }
 
 /* --- Components — core (button, badge, chip, icon, avatar, tooltip) ---------- */
@@ -734,6 +745,34 @@
 .bw-summary__label{font-size:var(--bw-size-xs);line-height:var(--bw-lh-tight);letter-spacing:var(--bw-track-label);text-transform:uppercase;color:var(--bw-text-muted);font-weight:var(--bw-weight-semibold)}
 .bw-summary__value{font-family:var(--bw-font-display);font-size:var(--bw-size-title);font-weight:var(--bw-weight-semibold);line-height:var(--bw-lh-tight);color:var(--bw-text-heading);font-variant-numeric:tabular-nums}
 .bw-summary__foot{font-size:var(--bw-size-sm);color:var(--bw-text-faint)}
+/* Gantt — phases positioned against a week or date scale. A bar's left and
+   width are the one thing a caller sets inline, because they are data, not
+   styling: they come from the phase's own start and end. Everything else about
+   a bar comes from its kind class. Weeks are authored, never derived from
+   estimated hours — a schedule is what the team can actually do. */
+.bw-gantt{display:flex;flex-direction:column;gap:var(--bw-space-5)}
+.bw-gantt__ruler{display:flex;gap:var(--bw-space-6);font-size:var(--bw-size-xs);letter-spacing:var(--bw-track-label);text-transform:uppercase;color:var(--bw-text-faint);font-weight:var(--bw-weight-semibold);padding-left:calc(var(--bw-gantt-label-w) + var(--bw-space-6))}
+.bw-gantt__tick{flex:1 1 0;min-width:0}
+.bw-gantt__rows{display:flex;flex-direction:column;gap:var(--bw-space-3)}
+.bw-gantt__row{display:flex;align-items:center;gap:var(--bw-space-6)}
+.bw-gantt__label{width:var(--bw-gantt-label-w);flex:none;display:flex;flex-direction:column;gap:var(--bw-space-1)}
+.bw-gantt__n{font-family:var(--bw-font-display);font-size:var(--bw-size-sm);color:var(--bw-text-faint)}
+.bw-gantt__title{font-weight:var(--bw-weight-semibold);color:var(--bw-text-heading);font-size:var(--bw-size-body);display:flex;align-items:center;gap:var(--bw-space-3)}
+.bw-gantt__range{font-size:var(--bw-size-sm);line-height:var(--bw-lh-body);color:var(--bw-text-muted)}
+.bw-gantt__track{flex:1 1 auto;height:var(--bw-gantt-track-h);border-radius:var(--bw-control-radius);background:var(--bw-surface-sunken);border:1px solid var(--bw-border);position:relative}
+.bw-gantt__bar{position:absolute;top:var(--bw-gantt-bar-inset);bottom:var(--bw-gantt-bar-inset);border-radius:var(--bw-radius-sm);color:var(--bw-text-on-accent);font-size:var(--bw-size-xs);display:flex;align-items:center;padding:0 var(--bw-space-4);overflow:hidden;white-space:nowrap;background:var(--bw-brand)}
+.bw-gantt__bar--pre{background:var(--bw-brand)}
+.bw-gantt__bar--launch{background:var(--bw-timeline-launch)}
+.bw-gantt__bar--post{background:var(--bw-timeline-post)}
+.bw-gantt__bar.is-hidden{opacity:var(--bw-gantt-hidden-opacity)}
+.bw-gantt__actions{flex:none;display:flex;gap:var(--bw-space-2)}
+.bw-gantt__legend{display:flex;gap:var(--bw-space-7);align-items:center;flex-wrap:wrap;font-size:var(--bw-size-sm);color:var(--bw-text-muted)}
+/* The swatch carries the colour, the label stays muted — so a legend key needs
+   no inline style, and the three kinds cannot drift from the bars they explain. */
+.bw-gantt__key{display:flex;gap:var(--bw-space-3);align-items:center}
+.bw-gantt__key::before{content:"";width:var(--bw-gantt-key-size);height:var(--bw-gantt-key-size);border-radius:var(--bw-radius-xs);background:var(--bw-brand);flex:none}
+.bw-gantt__key--launch::before{background:var(--bw-timeline-launch)}
+.bw-gantt__key--post::before{background:var(--bw-timeline-post)}
 
 /* --- Components — data display, extended ------------------------------------- */
 /* Detail lists, avatars, activity, bulk actions */
