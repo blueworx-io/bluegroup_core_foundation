@@ -694,4 +694,82 @@ final class SchemaTest extends TestCase {
 		$this->expectExceptionMessage( 'has to be a "number" cell' );
 		Schema::validate( $this->screen( $this->estimateRepeater( [ 'subtotal_of' => 'title' ] ) ) );
 	}
+	private function summaryScreen( array $summary ): array {
+		return [
+			'slug'      => 'sports',
+			'title'     => 'Edit sport',
+			'post_type' => 'bw_sport',
+			'summary'   => $summary,
+			'tabs'      => [
+				[ 'id' => 'plan', 'label' => 'Plan', 'panels' => [
+					[ 'id' => 'work', 'title' => 'Work', 'fields' => [
+						[
+							'id'     => 'items',
+							'kind'   => 'repeater',
+							'label'  => 'Line items',
+							'fields' => [
+								[ 'id' => 'title', 'kind' => 'text', 'label' => 'Work item' ],
+								[ 'id' => 'hours', 'kind' => 'number', 'label' => 'Hours' ],
+								[ 'id' => 'inTotal', 'kind' => 'toggle', 'label' => 'In total' ],
+							],
+						],
+						[ 'id' => 'timeline', 'kind' => 'gantt', 'label' => 'Project timeline' ],
+					] ],
+				] ],
+			],
+		];
+	}
+
+	public function test_a_summary_cell_is_normalised(): void {
+		$screen = Schema::validate( $this->summaryScreen( [
+			[ 'id' => 'estimate', 'label' => 'Project estimate', 'sum' => 'items.hours', 'where' => 'items.inTotal', 'suffix' => 'hrs', 'foot' => 'Before launch' ],
+			[ 'id' => 'phases', 'label' => 'Phases', 'count' => 'timeline' ],
+		] ) );
+
+		$this->assertCount( 2, $screen['summary'] );
+		$this->assertSame( 'estimate', $screen['summary'][0]['id'] );
+		$this->assertSame( 'items.hours', $screen['summary'][0]['sum'] );
+		$this->assertSame( 'items.inTotal', $screen['summary'][0]['where'] );
+		$this->assertSame( 'hrs', $screen['summary'][0]['suffix'] );
+		$this->assertSame( 'Before launch', $screen['summary'][0]['foot'] );
+		$this->assertSame( 'timeline', $screen['summary'][1]['count'] );
+		$this->assertSame( '', $screen['summary'][1]['where'] );
+	}
+
+	public function test_a_screen_with_no_summary_answers_with_an_empty_one(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'name', 'kind' => 'text', 'label' => 'Name' ] ) );
+		$this->assertSame( [], $screen['summary'] );
+	}
+
+	public function test_a_summary_cell_without_a_label_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'needs an id and a label' );
+		Schema::validate( $this->summaryScreen( [ [ 'id' => 'estimate' ] ] ) );
+	}
+
+	public function test_a_summary_cell_that_works_nothing_out_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'needs a sum or a count' );
+		Schema::validate( $this->summaryScreen( [ [ 'id' => 'estimate', 'label' => 'Project estimate' ] ] ) );
+	}
+
+	public function test_a_summary_cell_summing_a_field_that_is_not_there_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'no field called "nope"' );
+		Schema::validate( $this->summaryScreen( [ [ 'id' => 'estimate', 'label' => 'Project estimate', 'sum' => 'nope.hours' ] ] ) );
+	}
+
+	public function test_a_summary_cell_summing_a_cell_that_is_not_a_number_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'has to be a "number" cell' );
+		Schema::validate( $this->summaryScreen( [ [ 'id' => 'estimate', 'label' => 'Project estimate', 'sum' => 'items.title' ] ] ) );
+	}
+
+	public function test_a_summary_cell_filtering_on_something_that_is_not_a_toggle_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'has to be a "toggle" cell' );
+		Schema::validate( $this->summaryScreen( [
+			[ 'id' => 'estimate', 'label' => 'Project estimate', 'sum' => 'items.hours', 'where' => 'items.title' ],
+		] ) );
+	}
 }

@@ -246,6 +246,7 @@
 
     return h('div', { className: 'bw-page' },
       h(PageHead, { schema: record.schema }),
+      h(SummaryStrip, { schema: record.schema, values: record.values }),
       tabs.length > 1 ? h(Tabs, { tabs: tabs, active: active, onPick: setTab }) : null,
       record.notice ? h(Notice, { notice: record.notice, onDismiss: record.dismiss,
         canGo: Boolean(firstErrorTab(record.schema, record.errors)),
@@ -255,6 +256,48 @@
       })),
       h(SaveBar, { record: record, dirtyIn: dirtyIn })
     );
+  }
+
+  // One summary cell's figure, worked out from the values on screen right now.
+  // The schema says what to work out and the browser does the working out, so
+  // the strip moves as somebody types — a figure that only caught up after a
+  // save would be a figure nobody could trust while editing.
+  //
+  // A blank number reads as zero, the same as it does in a subtotal: a
+  // half-filled row contributes nothing rather than breaking the figure.
+  function summaryFigure(cell, values) {
+    const rowsOf = function (fieldId) {
+      const value = values[fieldId];
+      return Array.isArray(value) ? value : [];
+    };
+    const passes = function (row) {
+      if (!cell.where) return true;
+      return Boolean(row[cell.where.split('.')[1]]);
+    };
+
+    let figure;
+    if (cell.count) {
+      figure = rowsOf(cell.count).filter(passes).length;
+    } else {
+      const parts = cell.sum.split('.');
+      figure = rowsOf(parts[0]).reduce(function (total, row) {
+        return passes(row) ? total + (Number(row[parts[1]]) || 0) : total;
+      }, 0);
+    }
+    return cell.suffix ? figure + ' ' + cell.suffix : String(figure);
+  }
+
+  function SummaryStrip(props) {
+    const h = wp().element.createElement;
+    const cells = props.schema.summary || [];
+    if (cells.length === 0) return null;
+
+    return h('div', { className: 'bw-summary' }, cells.map(function (cell) {
+      return h('div', { key: cell.id, className: 'bw-summary__cell' },
+        h('span', { className: 'bw-summary__label' }, cell.label),
+        h('span', { className: 'bw-summary__value' }, summaryFigure(cell, props.values)),
+        cell.foot ? h('span', { className: 'bw-summary__foot' }, cell.foot) : null);
+    }));
   }
 
   function PageHead(props) {
@@ -1111,6 +1154,8 @@
     repeaterGroups: repeaterGroups,
     repeaterSubtotal: repeaterSubtotal,
     ganttPhaseRange: ganttPhaseRange,
+    summaryFigure: summaryFigure,
+    SummaryStrip: SummaryStrip,
   };
 
   /* --- Bootstrap ----------------------------------------------------------- */

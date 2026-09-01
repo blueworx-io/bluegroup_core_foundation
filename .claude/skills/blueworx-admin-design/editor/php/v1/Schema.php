@@ -140,7 +140,174 @@ final class Schema {
 
 		self::checkDependencies( $screen['slug'], $seen, $repeater_scopes, $dependencies );
 
+		$screen['summary'] = self::summary( $screen );
+
 		return $screen;
+	}
+
+	/**
+	 * The strip of derived figures under the page header, which stays put while
+	 * the tabs beneath it change.
+	 *
+	 * A cell says what to work out, never how — `sum` and `count` are read in
+	 * the browser, so the strip moves as somebody types rather than after a
+	 * save. That is the whole reason it is declared rather than computed here:
+	 * a PHP callback cannot be sent to the browser, and a round trip per
+	 * keystroke is not a live figure.
+	 *
+	 * A cell shows something and saves nothing, so it is not a field.
+	 *
+	 * @param array $screen the screen, with its tabs already walked.
+	 * @return array<int,array>
+	 */
+	private static function summary( array $screen ): array {
+		$declared = $screen['summary'] ?? [];
+		if ( ! is_array( $declared ) ) {
+			throw new InvalidArgumentException( sprintf( 'The "%s" editor screen has a summary that is not a list. Give it a list of cells, each one an array.', $screen['slug'] ) );
+		}
+
+		$fields = [];
+		foreach ( $screen['tabs'] as $tab ) {
+			foreach ( $tab['panels'] as $panel ) {
+				foreach ( $panel['fields'] as $field ) {
+					$fields[ $field['id'] ] = $field;
+				}
+			}
+		}
+
+		$out = [];
+		foreach ( $declared as $cell ) {
+			if ( ! is_array( $cell ) || empty( $cell['id'] ) || empty( $cell['label'] ) ) {
+				throw new InvalidArgumentException( sprintf(
+					'A summary cell on the "%s" editor screen needs an id and a label. The summary is the strip of figures under the header, and every figure in it is labelled.',
+					$screen['slug']
+				) );
+			}
+
+			$has_sum   = ! empty( $cell['sum'] );
+			$has_count = ! empty( $cell['count'] );
+			if ( $has_sum === $has_count ) {
+				throw new InvalidArgumentException( sprintf(
+					'The summary cell "%s" on the "%s" editor screen needs a sum or a count, and not both. Use sum for a figure added up from a cell, count for how many rows there are.',
+					$cell['id'],
+					$screen['slug']
+				) );
+			}
+
+			if ( $has_sum ) {
+				self::summaryTarget( $cell['sum'], 'number', 'sum', $cell['id'], $screen['slug'], $fields );
+			} else {
+				self::summaryCountable( $cell['count'], $cell['id'], $screen['slug'], $fields );
+			}
+			if ( ! empty( $cell['where'] ) ) {
+				self::summaryTarget( $cell['where'], 'toggle', 'where', $cell['id'], $screen['slug'], $fields );
+			}
+
+			$out[] = [
+				'id'     => sanitize_key( $cell['id'] ),
+				'label'  => (string) $cell['label'],
+				'sum'    => $has_sum ? (string) $cell['sum'] : '',
+				'count'  => $has_count ? (string) $cell['count'] : '',
+				'where'  => isset( $cell['where'] ) ? (string) $cell['where'] : '',
+				'suffix' => isset( $cell['suffix'] ) ? (string) $cell['suffix'] : '',
+				'foot'   => isset( $cell['foot'] ) ? (string) $cell['foot'] : '',
+			];
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Resolves "fieldId.cellId" against the screen and insists the cell it
+	 * names is of the kind the option needs. Named this way rather than as two
+	 * keys because a figure reads as one thing — the hours on a line item —
+	 * and splitting it makes a schema harder to scan, not easier.
+	 */
+	private static function summaryTarget( string $path, string $wants, string $option, string $cell_id, string $slug, array $fields ): void {
+		$parts = explode( '.', $path );
+		if ( 2 !== count( $parts ) || '' === $parts[0] || '' === $parts[1] ) {
+			throw new InvalidArgumentException( sprintf(
+				'The summary cell "%s" on the "%s" editor screen sets %s to "%s". It names a cell inside a repeater, written as "field.cell".',
+				$cell_id,
+				$slug,
+				$option,
+				$path
+			) );
+		}
+
+		$field = $fields[ $parts[0] ] ?? null;
+		if ( null === $field ) {
+			throw new InvalidArgumentException( sprintf(
+				'The summary cell "%s" on the "%s" editor screen sets %s to "%s", but there is no field called "%s" on this screen.',
+				$cell_id,
+				$slug,
+				$option,
+				$path,
+				$parts[0]
+			) );
+		}
+		if ( 'repeater' !== $field['kind'] ) {
+			throw new InvalidArgumentException( sprintf(
+				'The summary cell "%s" on the "%s" editor screen sets %s to "%s", but "%s" is a "%s", not a repeater. Only a repeater has cells to add up.',
+				$cell_id,
+				$slug,
+				$option,
+				$path,
+				$parts[0],
+				$field['kind']
+			) );
+		}
+
+		foreach ( $field['fields'] as $sub_field ) {
+			if ( $sub_field['id'] !== $parts[1] ) {
+				continue;
+			}
+			if ( $sub_field['kind'] !== $wants ) {
+				throw new InvalidArgumentException( sprintf(
+					'The summary cell "%s" on the "%s" editor screen sets %s to "%s", which is a "%s" cell. It has to be a "%s" cell.',
+					$cell_id,
+					$slug,
+					$option,
+					$path,
+					$sub_field['kind'],
+					$wants
+				) );
+			}
+			return;
+		}
+
+		throw new InvalidArgumentException( sprintf(
+			'The summary cell "%s" on the "%s" editor screen sets %s to "%s", but the repeater "%s" has no cell called "%s".',
+			$cell_id,
+			$slug,
+			$option,
+			$path,
+			$parts[0],
+			$parts[1]
+		) );
+	}
+
+	/** A count needs a field that holds a list of rows — a repeater or a gantt. */
+	private static function summaryCountable( string $id, string $cell_id, string $slug, array $fields ): void {
+		$field = $fields[ $id ] ?? null;
+		if ( null === $field ) {
+			throw new InvalidArgumentException( sprintf(
+				'The summary cell "%s" on the "%s" editor screen counts "%s", but there is no field called "%s" on this screen.',
+				$cell_id,
+				$slug,
+				$id,
+				$id
+			) );
+		}
+		if ( ! in_array( $field['kind'], [ 'repeater', 'gantt' ], true ) ) {
+			throw new InvalidArgumentException( sprintf(
+				'The summary cell "%s" on the "%s" editor screen counts "%s", which is a "%s". Only a repeater or a gantt holds rows to count.',
+				$cell_id,
+				$slug,
+				$id,
+				$field['kind']
+			) );
+		}
 	}
 
 	/**

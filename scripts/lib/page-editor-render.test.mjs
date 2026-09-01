@@ -384,3 +384,61 @@ test('calendar mode counts weeks forward from the field origin', () => {
   assert.match(range, /1 Sep/, 'week 1 is the origin itself');
   assert.match(range, /15 Sep/, 'week 3 is fourteen days later');
 });
+
+/* --- The summary strip ------------------------------------------------------ */
+
+const SUMMARY_VALUES = {
+  items: [
+    { hours: 16, inTotal: true },
+    { hours: 30, inTotal: true },
+    { hours: 260, inTotal: false },
+    { hours: '', inTotal: true },
+  ],
+  timeline: [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }],
+};
+
+test('a summary cell adds up one repeater cell across its rows', () => {
+  const cell = { id: 'estimate', label: 'Project estimate', sum: 'items.hours', where: '', suffix: 'hrs', foot: '' };
+  assert.equal(pe.summaryFigure(cell, SUMMARY_VALUES), '306 hrs');
+});
+
+test('a summary cell counts only the rows its condition holds for', () => {
+  const cell = { id: 'estimate', label: 'Project estimate', sum: 'items.hours', where: 'items.inTotal', suffix: 'hrs', foot: '' };
+  assert.equal(pe.summaryFigure(cell, SUMMARY_VALUES), '46 hrs', 'the excluded 260 must be left out');
+});
+
+test('a blank number reads as zero in a summary, not as nothing', () => {
+  const cell = { id: 'estimate', label: 'Project estimate', sum: 'items.hours', where: 'items.inTotal', suffix: '', foot: '' };
+  assert.equal(pe.summaryFigure(cell, SUMMARY_VALUES), '46');
+});
+
+test('a summary cell counts rows', () => {
+  const cell = { id: 'phases', label: 'Phases', count: 'timeline', sum: '', where: '', suffix: '', foot: '' };
+  assert.equal(pe.summaryFigure(cell, SUMMARY_VALUES), '3');
+});
+
+test('a summary cell over a field that holds nothing yet reads zero', () => {
+  const cell = { id: 'phases', label: 'Phases', count: 'timeline', sum: '', where: '', suffix: '', foot: '' };
+  assert.equal(pe.summaryFigure(cell, {}), '0');
+});
+
+test('the strip draws a labelled cell per figure', () => {
+  const schema = {
+    summary: [
+      { id: 'estimate', label: 'Project estimate', sum: 'items.hours', where: 'items.inTotal', suffix: 'hrs', foot: '3 line items' },
+      { id: 'phases', label: 'Phases', count: 'timeline', sum: '', where: '', suffix: '', foot: '' },
+    ],
+  };
+  const tree = render(h(pe.SummaryStrip, { schema, values: SUMMARY_VALUES }));
+
+  assert.equal(hasControl(tree, 'div', 'bw-summary'), true);
+  const text = textOf(tree);
+  assert.match(text, /Project estimate/);
+  assert.match(text, /46 hrs/);
+  assert.match(text, /3 line items/);
+});
+
+test('a screen with no summary draws no strip at all', () => {
+  const tree = render(h(pe.SummaryStrip, { schema: {}, values: {} }));
+  assert.equal(tree, null, 'an empty strip would leave a hairline under the header for nothing');
+});
