@@ -71,6 +71,7 @@ abstract class Store {
 			case 'scrolllist':
 			case 'tokens':
 			case 'repeater':
+			case 'gantt':
 				return is_array( $value ) ? $value : [];
 
 			default:

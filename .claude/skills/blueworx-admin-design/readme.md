@@ -318,6 +318,31 @@ the plugin owns only what goes in it.
 | The record's title, and the slug beneath it | `bw-titleinput`, `bw-permalink` |
 | A small muted note with an icon | `bw-fieldnote` |
 | A collapsible group | `bw-accordion` (not a new control) |
+| Rows that fall into named groups, each with its own subtotal | a `repeater` with `group_by` and `subtotal_of` |
+| Phases on a week or date scale | `gantt` |
+| Derived figures under the header, live as values change | the screen's `summary` |
+
+**Rows that fall into groups.** A `repeater` may set `group_by` to the id of one of its own
+`select` cells and `subtotal_of` to the id of one of its own `number` cells. Rows then draw
+under a header per group, in the order the select offers, each header carrying that group's
+subtotal (`subtotal_suffix` names the unit). Rows whose group cell is empty fall under one
+last group, named by `group_empty_label`. A repeater that sets neither behaves exactly as it
+did before.
+
+**A timeline.** A `gantt` field holds a list of phases — `title`, `desc`, `start`, `end`,
+`milestone`, `kind` (`pre` | `launch` | `post`) and `visible`. The screen can switch between
+project weeks and calendar dates; `origin` is the date week 1 counts from, and dates are only
+ever a way of reading the weeks, never what is stored. **Weeks are authored, never derived
+from estimated hours** — a schedule is what the team can actually do. Exactly one phase may
+be the launch milestone, and a phase that ends before it starts is refused on save.
+
+**The summary strip.** A screen may declare `summary`, a list of cells shown under the page
+header and above the tabs. Each cell has an `id`, a `label`, an optional `foot` and `suffix`,
+and either `sum` (`'repeaterId.cellId'`, added up across the rows) or `count` (a repeater or
+gantt field id). An optional `where` (`'repeaterId.toggleCellId'`) counts only the rows that
+toggle is on for. The figures are worked out in the browser, so the strip moves as somebody
+types rather than catching up after a save — which is why a cell says *what* to work out and
+never *how*.
 
 **What a repeater row may hold**
 
