@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseTokens, parseClasses, parseComponents, vocabulary } from './design-system.mjs';
+import { parseTokens, parseClasses, parseComponents, parseIcons, vocabulary } from './design-system.mjs';
 
 const CSS = [
   ':root{',
@@ -79,4 +79,40 @@ test('vocabulary: no markup argument behaves exactly as before', () => {
   assert.equal(v.tokens.has('--bw-brand'), true);
   assert.equal(v.classes.has('bw-btn'), true);
   assert.equal(v.components.has('Button'), true);
+});
+
+// An icon name the system does not ship renders as an empty box and says so
+// only in the browser console. Three of them shipped to a live plugin before
+// this existed, so the names are read out of the same file the browser uses.
+const ICONS_JS = [
+  'export const lucideIcons = {',
+  '  "archive": \'<path d="M4 4v16"/>\',',
+  '  "trash-2": \'<path d="M10 11v6"/>\',',
+  '};',
+  'const lucideAliases = {',
+  '  "trash": "trash-2", "update": "refresh-cw"',
+  '};',
+].join('\n');
+
+test('parseIcons reads the icon map and the dashicon aliases beside it', () => {
+  const icons = parseIcons(ICONS_JS);
+
+  assert.equal(icons.has('archive'), true);
+  assert.equal(icons.has('trash-2'), true);
+  // An alias is a name a plugin may legitimately write, so it counts as known.
+  assert.equal(icons.has('trash'), true);
+  assert.equal(icons.has('library'), false);
+});
+
+test('vocabulary carries the icons alongside the classes and tokens', () => {
+  const v = vocabulary({ css: CSS, manifest: { components: [] }, icons: ICONS_JS });
+
+  assert.equal(v.icons.has('archive'), true);
+  assert.equal(v.icons.has('library'), false);
+});
+
+test('a screen with no icon file to read against reports no icons at all', () => {
+  const v = vocabulary({ css: CSS, manifest: { components: [] } });
+
+  assert.equal(v.icons.size, 0, 'an empty set is what findViolations treats as "cannot check"');
 });

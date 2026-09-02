@@ -410,3 +410,50 @@ test('classifyAdminFile: the vendored page editor library is never judged', () =
     null,
   );
 });
+
+// An icon the system does not ship renders as an empty box and complains only
+// in the browser console, so nothing about the screen says it is wrong. Three
+// of them reached a live plugin before this rule existed.
+const ICON_VOCAB = {
+  tokens: new Set(),
+  classes: new Set(['bw-icon']),
+  components: new Set(),
+  icons: new Set(['archive', 'trash-2']),
+};
+const scanIcons = (content) =>
+  findViolations({ path: 'includes/screen.php', kind: 'php', content, vocab: ICON_VOCAB });
+
+test('findViolations: an icon the system does not ship fails', () => {
+  const problems = scanIcons('<i class="bw-icon" data-lucide="library"></i>');
+
+  assert.equal(problems.map((p) => p.rule).includes('unknown-icon'), true);
+  assert.match(problems.find((p) => p.rule === 'unknown-icon').message, /renders as nothing/);
+});
+
+test('findViolations: an icon the system does ship passes', () => {
+  assert.equal(
+    scanIcons('<i class="bw-icon" data-lucide="archive"></i>').map((p) => p.rule).includes('unknown-icon'),
+    false,
+  );
+});
+
+test('findViolations: an icon name built in PHP is a miss, not a failure', () => {
+  // `data-lucide="<?php echo esc_attr( $icon ); ?>"` is how every list screen
+  // passes its empty-state icon. There is no literal name to check, and
+  // guessing would fail a screen that is perfectly correct.
+  assert.equal(
+    scanIcons('<i class="bw-icon" data-lucide="<?php echo esc_attr( $icon ); ?>"></i>')
+      .map((p) => p.rule).includes('unknown-icon'),
+    false,
+  );
+});
+
+test('findViolations: no icon list to check against means no icon failures', () => {
+  const vocab = { tokens: new Set(), classes: new Set(['bw-icon']), components: new Set(), icons: new Set() };
+  const problems = findViolations({
+    path: 'includes/screen.php', kind: 'php',
+    content: '<i class="bw-icon" data-lucide="library"></i>', vocab,
+  });
+
+  assert.equal(problems.map((p) => p.rule).includes('unknown-icon'), false);
+});
