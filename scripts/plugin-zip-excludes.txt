@@ -37,6 +37,11 @@
 /approved-deps.json
 /composer.json
 /composer.lock
+
+# Composer is dev tooling here — PHPCS and PHPUnit — so its vendor tree is
+# build output, not plugin content. It only started turning up in CI once the
+# PHPCS step began running for real, because that step installs it.
+/vendor
 /phpunit.xml
 /phpunit.xml.dist
 /phpcs.xml
