@@ -223,6 +223,16 @@ export function findViolations({ path, kind, content, vocab, whole = true }) {
     // class assembled in PHP (`$classes[] = 'form-table';`); that is a miss, not
     // a false failure, and Task 4's catch-all still covers a screen built
     // entirely off-system.
+    // An icon name the system does not ship renders as an empty box and
+    // logs to the console, so nothing on the screen says it is wrong. Only
+    // checked when the vocabulary could be read and a literal name was
+    // written; a name assembled in PHP is a miss, not a false failure.
+    for (const m of line.matchAll(/data-lucide\s*=\s*["']([a-z0-9-]+)["']/g)) {
+      if (vocab.icons?.size && !vocab.icons.has(m[1])) {
+        add(i, 'unknown-icon', 'error', `You have used the icon "${m[1]}", which the design system does not ship — it renders as nothing. Add it to the system first, or use one it has.`);
+      }
+    }
+
     for (const cls of classesOn(line)) {
       if (cls.startsWith('bw-') && !vocab.classes.has(cls)) {
         add(i, 'unknown-bw-class', 'error', `You have used "${cls}", which is not a class in the design system — add the pattern to the system first, then use it here.`);

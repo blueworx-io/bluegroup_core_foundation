@@ -55,12 +55,24 @@ function parseMarkupClasses(markup) {
   return out;
 }
 
-export function vocabulary({ css, manifest, markup = '' }) {
+// The icon names the system actually ships, read out of lucide-icons.js: the
+// keys of its icon map, plus the dashicon-style aliases that resolve onto
+// them. An icon name that is in neither renders as nothing at all and only
+// says so in the browser console, which is exactly the kind of miss nobody
+// finds by looking at a screenshot.
+export function parseIcons(js) {
+  const out = new Set();
+  for (const m of js.matchAll(/"([a-z0-9-]+)"\s*:/g)) out.add(m[1]);
+  return out;
+}
+
+export function vocabulary({ css, manifest, markup = '', icons = '' }) {
   const classes = parseClasses(css);
   for (const cls of parseMarkupClasses(markup)) classes.add(cls);
   return {
     tokens: parseTokens(css),
     classes,
     components: parseComponents(manifest),
+    icons: parseIcons(icons),
   };
 }
