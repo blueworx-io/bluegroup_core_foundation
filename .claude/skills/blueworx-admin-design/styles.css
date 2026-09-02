@@ -355,6 +355,16 @@
 .bw-select{position:relative;display:block}
 .bw-select__el{appearance:none;padding-right:32px;cursor:pointer}
 .bw-select__arrow{position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--bw-text-muted);pointer-events:none}
+/* WordPress styles every select inside .wp-core-ui itself: its own chevron as
+   a background image, a 25rem cap, a 40px min-height, a 2px radius and its own
+   border. A .wp-core-ui select rule outweighs the single class above, so
+   the control ends up wearing WordPress's arrow beside this one, and
+   WordPress's shape instead of this one. Same specificity, later in the
+   cascade — appearance:none cannot remove a background image. */
+.bw-select .bw-select__el{max-width:none;min-height:0;height:var(--bw-control-h);padding:0 32px 0 12px;line-height:normal;background-image:none;background-color:var(--bw-control-bg);color:var(--bw-control-text);border-color:var(--bw-border-field);border-radius:var(--bw-control-radius)}
+.bw-select .bw-select__el:hover{border-color:var(--bw-border-strong)}
+.bw-select .bw-select__el:focus{border-color:var(--bw-focus-color);box-shadow:none;outline:var(--bw-focus-width) solid var(--bw-focus-color);outline-offset:var(--bw-focus-offset)}
+.bw-select .bw-select__el[disabled]{background-color:var(--bw-surface-sunken);color:var(--bw-text-faint)}
 
 .bw-check{display:inline-flex;align-items:flex-start;gap:var(--bw-space-4);cursor:pointer;font-size:var(--bw-size-body);color:var(--bw-text-body);line-height:1.4}
 .bw-check input{width:16px;height:16px;margin:0;flex:none;accent-color:var(--bw-brand);cursor:pointer}
@@ -478,7 +488,7 @@
 .bw-wrap{margin:0}
 
 .bw-page{display:flex;flex-direction:column;min-height:100vh;background:var(--bw-surface-page);color:var(--bw-text-body);font-family:var(--bw-font-body)}
-.bw-page__body{display:flex;align-items:flex-start;gap:var(--bw-space-9);padding:var(--bw-space-9) var(--bw-pad) 0;flex:1 1 auto}
+.bw-page__body{display:flex;align-items:flex-start;gap:var(--bw-space-9);padding:var(--bw-space-9) var(--bw-pad);flex:1 1 auto}
 .bw-panels{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:var(--bw-stack-gap)}
 
 /* A panel column sitting straight on the page, with no .bw-page__body around
@@ -487,7 +497,7 @@
    alone would sit flush against the window. Scoped to a direct child so a
    .bw-panels inside .bw-page__body, .bw-screen or .bw-panels-row still takes
    its gutter from the container around it rather than doubling up. */
-.bw-page>.bw-panels{padding:var(--bw-space-9) var(--bw-pad) 0}
+.bw-page>.bw-panels{padding:var(--bw-space-9) var(--bw-pad)}
 
 /* One column, and narrow. A screen holding a single card is unreadable stretched
    across a wide monitor — the card's own content stops long before its right
@@ -700,6 +710,12 @@
 .bw-table__num{text-align:right;font-variant-numeric:tabular-nums}
 .bw-table__actions{text-align:right;white-space:nowrap;opacity:0;transition:opacity var(--bw-dur) var(--bw-ease)}
 .bw-table tbody tr:hover .bw-table__actions,.bw-table tbody tr:focus-within .bw-table__actions{opacity:1}
+/* Row actions fade in on hover; the column heading is not a row action. Left
+   sharing the class, the header the column needs to be readable is invisible. */
+.bw-table thead th.bw-table__actions{opacity:1}
+/* A table narrower than its content scrolls inside its own card rather than
+   pushing its last column out past the edge of the page. */
+.bw-tablescroll{overflow-x:auto}
 .bw-table__check{width:36px;padding-right:0}
 .bw-table__check input{accent-color:var(--bw-brand);width:16px;height:16px;margin:0}
 /* Rows that fall into named groups — an estimate's phases, say. The group

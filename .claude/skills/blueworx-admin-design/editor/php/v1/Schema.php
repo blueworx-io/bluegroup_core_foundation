@@ -813,6 +813,19 @@ final class Schema {
 		$field['required']    = (bool) ( $field['required'] ?? false );
 		$field['capability']  = $field['capability'] ?? '';
 		$field['locked_help'] = $field['locked_help'] ?? '';
+		// A list whose rows are settled: the screen offers no way to add one,
+		// remove one or reorder them, and every cell still edits. Only a list
+		// has rows to fix, so declaring it anywhere else is a mistake worth
+		// saying out loud rather than ignoring.
+		$field['fixed']       = (bool) ( $field['fixed'] ?? false );
+		if ( $field['fixed'] && ! in_array( $field['kind'], [ 'repeater', 'gantt' ], true ) ) {
+			throw new InvalidArgumentException( sprintf(
+				'The field "%s" on the "%s" editor screen is a "%s" and sets fixed. Only a repeater or a gantt holds rows to fix.',
+				$field['id'],
+				$slug,
+				$field['kind']
+			) );
+		}
 		$field['depends_on']  = $field['depends_on'] ?? null;
 		$field['wide']        = (bool) ( $field['wide'] ?? in_array( $field['kind'], [ 'richtext', 'repeater', 'media', 'file', 'table', 'facts', 'gantt', 'title', 'preview' ], true ) );
 		// What Store::read() hands back for this field when it has never

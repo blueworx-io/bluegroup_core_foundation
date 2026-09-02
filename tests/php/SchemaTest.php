@@ -677,6 +677,33 @@ final class SchemaTest extends TestCase {
 		$this->assertSame( '', $field['subtotal_of'] );
 	}
 
+	public function test_a_repeater_may_be_declared_fixed(): void {
+		$screen = Schema::validate( $this->screen( $this->estimateRepeater( [ 'fixed' => true ] ) ) );
+		$field  = $screen['tabs'][0]['panels'][0]['fields'][0];
+
+		$this->assertTrue( $field['fixed'] );
+	}
+
+	public function test_a_list_that_says_nothing_about_it_is_not_fixed(): void {
+		$screen = Schema::validate( $this->screen( $this->estimateRepeater() ) );
+		$field  = $screen['tabs'][0]['panels'][0]['fields'][0];
+
+		$this->assertFalse( $field['fixed'] );
+	}
+
+	public function test_a_gantt_may_be_declared_fixed(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'plan', 'kind' => 'gantt', 'label' => 'Phases', 'fixed' => true ] ) );
+		$field  = $screen['tabs'][0]['panels'][0]['fields'][0];
+
+		$this->assertTrue( $field['fixed'] );
+	}
+
+	public function test_a_field_that_holds_no_rows_cannot_be_fixed(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'Only a repeater or a gantt holds rows to fix' );
+		Schema::validate( $this->screen( [ 'id' => 'name', 'kind' => 'text', 'label' => 'Name', 'fixed' => true ] ) );
+	}
+
 	public function test_grouping_by_a_cell_that_is_not_there_is_rejected(): void {
 		$this->expectException( \InvalidArgumentException::class );
 		$this->expectExceptionMessage( 'group_by' );

@@ -182,6 +182,56 @@ add_action( 'plugins_loaded', function () {
 					],
 				],
 			],
+			[
+				'id'     => 'settled',
+				'label'  => 'Settled',
+				'panels' => [
+					[
+						'id'      => 'kit',
+						'eyebrow' => 'Season · Kit',
+						'title'   => 'What every player brings',
+						'note'    => 'The same list for every sport. The wording is per sport; the list is not.',
+						'fields'  => [
+							// A fixed list: no add, no remove, no reorder, every
+							// cell still editable. The rows arrive as the field's
+							// own default, which is the shape a fixed list wants —
+							// they come from somewhere other than this screen.
+							[
+								'id'      => 'kit',
+								'kind'    => 'repeater',
+								'label'   => 'Kit',
+								'fixed'   => true,
+								'default' => [
+									[ 'item' => 'Boots', 'note' => 'Studded, not blades.' ],
+									[ 'item' => 'Water bottle', 'note' => 'Named.' ],
+								],
+								'fields'  => [
+									[ 'id' => 'item', 'kind' => 'text', 'label' => 'Item' ],
+									[ 'id' => 'note', 'kind' => 'text', 'label' => 'Note' ],
+								],
+							],
+						],
+					],
+					[
+						'id'      => 'terms',
+						'eyebrow' => 'Season · Terms',
+						'title'   => 'The school terms',
+						'note'    => 'Three terms, always in this order. Only the wording is per sport.',
+						'fields'  => [
+							[
+								'id'      => 'terms',
+								'kind'    => 'gantt',
+								'label'   => 'Terms',
+								'fixed'   => true,
+								'default' => [
+									[ 'id' => 't1', 'title' => 'Autumn term', 'desc' => '', 'start' => 1, 'end' => 12, 'milestone' => '', 'kind' => 'pre', 'visible' => true ],
+									[ 'id' => 't2', 'title' => 'Spring term', 'desc' => '', 'start' => 13, 'end' => 24, 'milestone' => '', 'kind' => 'pre', 'visible' => true ],
+								],
+							],
+						],
+					],
+				],
+			],
 		],
 	] );
 } );

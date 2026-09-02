@@ -405,3 +405,50 @@ test('a timeline and its grouped rows survive a save', async ({ page }) => {
   await expect(page.locator('.bw-summary__cell', { hasText: 'Coached hours' }).locator('.bw-summary__value')).toHaveText('46 hrs');
   await expect(page.locator('.bw-gantt__range').first()).toContainText('Weeks 1–6');
 });
+
+// A fixed list is the opposite trade to readonly: the rows are settled and
+// the wording is not. Both halves are worth a test, because getting only the
+// first half right produces a list nobody can correct a typo in.
+test('a fixed list offers no way to add, remove or reorder a row', async ({ page }) => {
+  await page.getByRole('tab', { name: /Settled/ }).click();
+
+  const rows = page.locator('.bw-repeater__row');
+  await expect(rows).toHaveCount(2);
+
+  await expect(page.getByRole('button', { name: 'Add a row' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Remove this row' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Move up' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Move down' })).toHaveCount(0);
+  await expect(page.locator('.bw-repeater__grip')).toHaveCount(0);
+});
+
+test('a fixed list still edits, and the wording survives a save', async ({ page }) => {
+  await page.getByRole('tab', { name: /Settled/ }).click();
+  await page.fill('#item-0', 'Boots (studded)');
+
+  await page.getByRole('tab', { name: /Content/ }).click();
+  await page.fill('#post_title', 'Rugby');
+  await page.click('.bw-savebar .bw-btn--primary');
+  await expect(page.locator('.bw-notice--success')).toBeVisible();
+
+  await page.reload();
+  await page.getByRole('tab', { name: /Settled/ }).click();
+  await expect(page.locator('#item-0')).toHaveValue('Boots (studded)');
+  await expect(page.locator('.bw-repeater__row')).toHaveCount(2);
+});
+
+test('a fixed timeline keeps edit and hide, and loses the rest', async ({ page }) => {
+  await page.getByRole('tab', { name: /Settled/ }).click();
+
+  const rows = page.locator('.bw-gantt__row');
+  await expect(rows).toHaveCount(2);
+
+  // The add button lives in the legend, beside the three keys.
+  await expect(page.locator('.bw-gantt__legend .bw-btn')).toHaveCount(0);
+  await expect(rows.first().getByRole('button', { name: /^Move/ })).toHaveCount(0);
+  await expect(rows.first().getByRole('button', { name: /^Duplicate/ })).toHaveCount(0);
+  await expect(rows.first().getByRole('button', { name: /^Remove/ })).toHaveCount(0);
+
+  await expect(rows.first().getByRole('button', { name: /^Edit/ })).toBeVisible();
+  await expect(rows.first().getByRole('button', { name: /the client$/ })).toBeVisible();
+});

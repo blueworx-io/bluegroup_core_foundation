@@ -320,6 +320,7 @@ the plugin owns only what goes in it.
 | A collapsible group | `bw-accordion` (not a new control) |
 | Rows that fall into named groups, each with its own subtotal | a `repeater` with `group_by` and `subtotal_of` |
 | Phases on a week or date scale | `gantt` |
+| A list whose rows are settled, wording still editable | a `repeater` or `gantt` with `fixed` |
 | Derived figures under the header, live as values change | the screen's `summary` |
 
 **Rows that fall into groups.** A `repeater` may set `group_by` to the id of one of its own
@@ -328,6 +329,13 @@ under a header per group, in the order the select offers, each header carrying t
 subtotal (`subtotal_suffix` names the unit). Rows whose group cell is empty fall under one
 last group, named by `group_empty_label`. A repeater that sets neither behaves exactly as it
 did before.
+
+**Lists whose rows are settled.** A `repeater` or a `gantt` may set `fixed` to true. The
+screen then offers no way to add a row, remove one or reorder them — those controls are not
+drawn at all, rather than drawn and disabled — while every cell stays editable. Use it where
+the rows come from somewhere else and the order is part of the product, not a per-record
+choice. It is not `readonly`, which locks the values too. Only a repeater and a gantt hold
+rows, so `fixed` on any other kind is rejected when the screen is registered.
 
 **A timeline.** A `gantt` field holds a list of phases — `title`, `desc`, `start`, `end`,
 `milestone`, `kind` (`pre` | `launch` | `post`) and `visible`. The screen can switch between

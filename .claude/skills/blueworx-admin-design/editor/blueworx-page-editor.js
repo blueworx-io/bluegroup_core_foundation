@@ -766,6 +766,10 @@
     const phases = props.value;
     const field = props.field;
     const locked = Boolean(field.readonly);
+    // As on a repeater: a fixed schedule runs in the order it runs in, so
+    // moving, duplicating, removing and adding a phase all go. Editing a
+    // phase, and hiding one from the client, stay.
+    const fixed = Boolean(field.fixed);
 
     // The mode is how the weeks are read, not what is stored, so it lives in
     // the component rather than in the record. Same for which phase the detail
@@ -859,17 +863,17 @@
                   },
                 }, phase.milestone || phase.desc || '')),
               h('span', { className: 'bw-gantt__actions' },
-                iconButton('Move up', 'chevron-up', function () { move(i, -1); }),
-                iconButton('Move down', 'chevron-down', function () { move(i, 1); }),
+                fixed ? null : iconButton('Move up', 'chevron-up', function () { move(i, -1); }),
+                fixed ? null : iconButton('Move down', 'chevron-down', function () { move(i, 1); }),
                 iconButton('Edit ' + (phase.title || 'this phase'), 'pencil', function () { setSelected(phase.id); }),
-                iconButton('Duplicate ' + (phase.title || 'this phase'), 'copy', function () {
+                fixed ? null : iconButton('Duplicate ' + (phase.title || 'this phase'), 'copy', function () {
                   const copy = Object.assign({}, phase, { id: 'p' + (++nextRowId), title: (phase.title || 'Phase') + ' (copy)', milestone: '' });
                   props.onChange(phases.slice(0, i + 1).concat([copy], phases.slice(i + 1)));
                 }),
                 iconButton(hidden ? 'Show to the client' : 'Hide from the client', hidden ? 'lock' : 'eye', function () {
                   patch(i, { visible: hidden });
                 }),
-                iconButton('Remove ' + (phase.title || 'this phase'), 'trash-2', function () {
+                fixed ? null : iconButton('Remove ' + (phase.title || 'this phase'), 'trash-2', function () {
                   props.onChange(phases.filter(function (_, j) { return j !== i; }));
                 }, true)));
           })),
@@ -878,7 +882,7 @@
         h('span', { className: 'bw-gantt__key' }, 'Pre-launch'),
         h('span', { className: 'bw-gantt__key bw-gantt__key--launch' }, 'Launch milestone'),
         h('span', { className: 'bw-gantt__key bw-gantt__key--post' }, 'Post-launch'),
-        h('button', {
+        fixed ? null : h('button', {
           type: 'button', className: 'bw-btn bw-btn--secondary', disabled: locked,
           onClick: function () {
             const last = phases.length > 0 ? Number(phases[phases.length - 1].end) || 1 : 0;
@@ -980,6 +984,12 @@
     const h = wp().element.createElement;
     const rows = props.value;
     const locked = Boolean(props.field.readonly);
+    // A fixed list holds the rows it holds: no adding, no removing, no
+    // reordering. Every cell stays editable, which is what separates it from
+    // readonly — the wording is the whole point, only the shape of the list
+    // is settled. The controls are left out rather than disabled: a button
+    // that can never be pressed is a promise the screen does not keep.
+    const fixed = Boolean(props.field.fixed);
 
     // A repeater's own cells carry their kind (see Sanitise::field(), which
     // sanitises each cell recursively): a 'number' cell round-trips as a real
@@ -1018,7 +1028,7 @@
       return h('div', { key: rowValue.__rid || ('row-' + i), className: 'bw-repeater__row' },
         // Dragging is a nice-to-have; these two buttons are how a reorder is
         // actually done, so it works from the keyboard like everything else.
-        h('span', { className: 'bw-repeater__grip' },
+        fixed ? null : h('span', { className: 'bw-repeater__grip' },
           h('button', { type: 'button', className: 'bw-iconbtn', 'aria-label': 'Move up', disabled: locked,
             onClick: function () { move(i, -1); } },
             h('i', { className: 'bw-icon', 'data-lucide': 'chevron-up' })),
@@ -1030,7 +1040,7 @@
             h('label', { className: 'bw-field__label', htmlFor: cell.id + '-' + i }, cell.label),
             repeaterCell(cell, cell.id + '-' + i, rowValue[cell.id], locked, function (v) { change(i, cell, v); }));
         })),
-        h('button', { type: 'button', className: 'bw-iconbtn bw-iconbtn--danger', 'aria-label': 'Remove this row', disabled: locked,
+        fixed ? null : h('button', { type: 'button', className: 'bw-iconbtn bw-iconbtn--danger', 'aria-label': 'Remove this row', disabled: locked,
           onClick: function () { props.onChange(rows.filter(function (_, j) { return j !== i; })); } },
           h('i', { className: 'bw-icon', 'data-lucide': 'trash-2' })));
     }
@@ -1050,7 +1060,7 @@
                   : null),
               group.rows.map(function (entry) { return row(entry.row, entry.index); }));
           }),
-      h('div', { className: 'bw-repeater__foot' },
+      fixed ? null : h('div', { className: 'bw-repeater__foot' },
         h('button', { type: 'button', className: 'bw-btn bw-btn--secondary', disabled: locked,
           onClick: function () { props.onChange(rows.concat([{ __rid: 'r' + (++nextRowId) }])); } }, 'Add a row')));
   }
