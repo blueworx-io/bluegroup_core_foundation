@@ -774,6 +774,20 @@
 .bw-gantt__key--launch::before{background:var(--bw-timeline-launch)}
 .bw-gantt__key--post::before{background:var(--bw-timeline-post)}
 
+/* Preview — a page of the site in a device frame, beside the fields that
+   change it. The stage scrolls rather than shrinking the frame: a preview
+   that scales to fit stops being a preview of anything real. */
+.bw-preview{display:flex;flex-direction:column;gap:var(--bw-space-6);border:1px solid var(--bw-border);border-radius:var(--bw-radius-lg);background:var(--bw-surface-sunken);overflow:hidden}
+.bw-preview__bar{display:flex;align-items:center;justify-content:space-between;gap:var(--bw-space-6);flex-wrap:wrap;padding:var(--bw-space-5) var(--bw-space-6);border-bottom:1px solid var(--bw-border);background:var(--bw-surface-card)}
+.bw-preview__devices{display:inline-flex;align-items:center;gap:var(--bw-space-2);padding:var(--bw-space-1);border:1px solid var(--bw-border);border-radius:var(--bw-radius-pill);background:var(--bw-surface-sunken)}
+.bw-preview__device{display:inline-flex;align-items:center;gap:var(--bw-space-3);padding:var(--bw-space-3) var(--bw-space-6);border:0;border-radius:var(--bw-radius-pill);background:transparent;color:var(--bw-text-muted);font-family:var(--bw-font-body);font-size:var(--bw-size-sm);font-weight:var(--bw-weight-semibold);cursor:pointer;transition:background var(--bw-dur) var(--bw-ease),color var(--bw-dur) var(--bw-ease)}
+.bw-preview__device:hover{color:var(--bw-text-body)}
+.bw-preview__device.is-current{background:var(--bw-surface-card);color:var(--bw-text-accent);box-shadow:var(--bw-shadow-card)}
+.bw-preview__actions{display:inline-flex;align-items:center;gap:var(--bw-space-5)}
+.bw-preview__stage{display:flex;justify-content:center;overflow:auto;padding:var(--bw-space-7);max-height:620px}
+.bw-preview__frame{flex:none;height:600px;border:1px solid var(--bw-border-strong);border-radius:var(--bw-radius-md);background:var(--bw-surface-card);box-shadow:var(--bw-shadow-card)}
+.bw-preview--empty{align-items:center;justify-content:center;gap:var(--bw-space-5);padding:var(--bw-space-11);text-align:center;color:var(--bw-text-muted)}
+.bw-preview__hint{margin:0;font-size:var(--bw-size-sm);color:var(--bw-text-muted)}
 /* --- Components — data display, extended ------------------------------------- */
 /* Detail lists, avatars, activity, bulk actions */
 .bw-dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--bw-space-5) var(--bw-space-8);font-size:var(--bw-size-body);margin:0}

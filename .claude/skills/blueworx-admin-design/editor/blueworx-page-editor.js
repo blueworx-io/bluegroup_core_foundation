@@ -258,6 +258,12 @@
     );
   }
 
+  const DEVICES = [
+    { id: 'desktop', label: 'Desktop', width: 1440, icon: 'monitor' },
+    { id: 'tablet', label: 'Tablet', width: 1024, icon: 'tablet' },
+    { id: 'mobile', label: 'Mobile', width: 390, icon: 'smartphone' },
+  ];
+
   // One summary cell's figure, worked out from the values on screen right now.
   // The schema says what to work out and the browser does the working out, so
   // the strip moves as somebody types — a figure that only caught up after a
@@ -270,21 +276,68 @@
       const value = values[fieldId];
       return Array.isArray(value) ? value : [];
     };
-    const passes = function (row) {
-      if (!cell.where) return true;
-      return Boolean(row[cell.where.split('.')[1]]);
+    const passesIn = function (where) {
+      return function (row) {
+        if (!where) return true;
+        return Boolean(row[where.split('.')[1]]);
+      };
     };
 
-    let figure;
-    if (cell.count) {
-      figure = rowsOf(cell.count).filter(passes).length;
-    } else {
-      const parts = cell.sum.split('.');
-      figure = rowsOf(parts[0]).reduce(function (total, row) {
+    // Schema::summary() hands both of these over as lists, one filter per
+    // target, so a cell adding up two lists needs no special case here.
+    const counting = !(cell.sum && cell.sum.length);
+    const targets = counting ? cell.count || [] : cell.sum;
+    const wheres = cell.where || [];
+
+    const figure = targets.reduce(function (running, target, i) {
+      const passes = passesIn(wheres[i]);
+      if (counting) return running + rowsOf(target).filter(passes).length;
+      const parts = target.split('.');
+      return running + rowsOf(parts[0]).reduce(function (total, row) {
         return passes(row) ? total + (Number(row[parts[1]]) || 0) : total;
       }, 0);
-    }
+    }, 0);
+
     return cell.suffix ? figure + ' ' + cell.suffix : String(figure);
+  }
+
+  // A page of the site, in a device frame, beside the fields that change it.
+  // The frame is reloaded by hand rather than on every keystroke: the page it
+  // shows is the record as saved, and quietly re-fetching it while somebody
+  // types would show them their last save and read as a live preview.
+  function Preview(props) {
+    const el = wp().element;
+    const h = el.createElement;
+    const [chosen, setChosen] = el.useState(DEVICES[0].id);
+    const [reloads, setReloads] = el.useState(0);
+    const device = DEVICES.filter(function (d) { return d.id === chosen; })[0] || DEVICES[0];
+
+    if (!props.field.url) {
+      return h('div', { className: 'bw-preview bw-preview--empty' },
+        h('i', { className: 'bw-icon', 'data-lucide': 'monitor' }),
+        h('p', { className: 'bw-preview__hint' }, props.field.help || 'There is nothing to preview yet.'));
+    }
+
+    return h('div', { className: 'bw-preview' },
+      h('div', { className: 'bw-preview__bar' },
+        h('div', { className: 'bw-preview__devices' }, DEVICES.map(function (d) {
+          return h('button', { key: d.id, type: 'button',
+            className: 'bw-preview__device' + (d.id === device.id ? ' is-current' : ''),
+            'aria-pressed': d.id === device.id ? 'true' : 'false',
+            onClick: function () { setChosen(d.id); } },
+            h('i', { className: 'bw-icon', 'data-lucide': d.icon }),
+            h('span', null, d.label));
+        })),
+        h('div', { className: 'bw-preview__actions' },
+          h('button', { type: 'button', className: 'bw-btn bw-btn--link',
+            onClick: function () { setReloads(reloads + 1); } }, 'Reload'),
+          h('a', { className: 'bw-btn bw-btn--secondary bw-btn--sm', href: props.field.url,
+            target: '_blank', rel: 'noreferrer noopener' }, 'Open in a tab'))),
+      h('div', { className: 'bw-preview__stage' },
+        h('iframe', { key: device.id + ':' + reloads, className: 'bw-preview__frame',
+          title: props.field.label, src: props.field.url, width: device.width,
+          style: { width: device.width + 'px' },
+          sandbox: 'allow-scripts allow-same-origin' })));
   }
 
   function SummaryStrip(props) {
@@ -1121,6 +1174,9 @@
           value ? h('button', { type: 'button', className: 'bw-btn bw-btn--link', disabled: locked,
             onClick: function () { set(0); } }, 'Remove') : null);
 
+      case 'preview':
+        return h(Preview, { field: field });
+
       case 'facts':
         return h('dl', { className: 'bw-dl' }, (field.rows || []).map(function (row) {
           return h(el.Fragment, { key: row.label }, h('dt', null, row.label), h('dd', null, row.value));
@@ -1161,6 +1217,8 @@
     ganttPhaseRange: ganttPhaseRange,
     summaryFigure: summaryFigure,
     SummaryStrip: SummaryStrip,
+    Preview: Preview,
+    DEVICES: DEVICES,
   };
 
   /* --- Bootstrap ----------------------------------------------------------- */

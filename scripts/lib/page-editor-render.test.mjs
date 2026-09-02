@@ -122,6 +122,7 @@ const DRAWS = {
   gantt: ['div', 'bw-gantt'],
   title: ['input', 'bw-titleinput'],
   slug: ['div', 'bw-permalink'],
+  preview: ['div', 'bw-preview'],
 };
 
 // The minimum a field of each kind needs to be drawable at all.
@@ -132,6 +133,7 @@ function fieldFor(kind) {
   }
   if (kind === 'repeater') field.fields = [{ id: 'cell', kind: 'text', label: 'Cell' }];
   if (kind === 'facts') field.rows = [{ label: 'Members', value: '318' }];
+  if (kind === 'preview') field.url = 'https://example.test/deck/abc';
   if (kind === 'table') {
     field.columns = ['Day'];
     field.rows = [['Monday']];
@@ -398,35 +400,60 @@ const SUMMARY_VALUES = {
 };
 
 test('a summary cell adds up one repeater cell across its rows', () => {
-  const cell = { id: 'estimate', label: 'Project estimate', sum: 'items.hours', where: '', suffix: 'hrs', foot: '' };
+  const cell = { id: 'estimate', label: 'Project estimate', sum: ['items.hours'], where: [''], suffix: 'hrs', foot: '' };
   assert.equal(pe.summaryFigure(cell, SUMMARY_VALUES), '306 hrs');
 });
 
 test('a summary cell counts only the rows its condition holds for', () => {
-  const cell = { id: 'estimate', label: 'Project estimate', sum: 'items.hours', where: 'items.inTotal', suffix: 'hrs', foot: '' };
+  const cell = { id: 'estimate', label: 'Project estimate', sum: ['items.hours'], where: ['items.inTotal'], suffix: 'hrs', foot: '' };
   assert.equal(pe.summaryFigure(cell, SUMMARY_VALUES), '46 hrs', 'the excluded 260 must be left out');
 });
 
 test('a blank number reads as zero in a summary, not as nothing', () => {
-  const cell = { id: 'estimate', label: 'Project estimate', sum: 'items.hours', where: 'items.inTotal', suffix: '', foot: '' };
+  const cell = { id: 'estimate', label: 'Project estimate', sum: ['items.hours'], where: ['items.inTotal'], suffix: '', foot: '' };
   assert.equal(pe.summaryFigure(cell, SUMMARY_VALUES), '46');
 });
 
 test('a summary cell counts rows', () => {
-  const cell = { id: 'phases', label: 'Phases', count: 'timeline', sum: '', where: '', suffix: '', foot: '' };
+  const cell = { id: 'phases', label: 'Phases', count: ['timeline'], sum: [], where: [''], suffix: '', foot: '' };
   assert.equal(pe.summaryFigure(cell, SUMMARY_VALUES), '3');
 });
 
 test('a summary cell over a field that holds nothing yet reads zero', () => {
-  const cell = { id: 'phases', label: 'Phases', count: 'timeline', sum: '', where: '', suffix: '', foot: '' };
+  const cell = { id: 'phases', label: 'Phases', count: ['timeline'], sum: [], where: [''], suffix: '', foot: '' };
   assert.equal(pe.summaryFigure(cell, {}), '0');
 });
 
+
+test('a summary cell adds up more than one list into one figure', () => {
+  const values = {
+    items: [{ hours: 16, inPackage: true }, { hours: 30, inPackage: false }],
+    after: [{ hours: 8, inPackage: true }, { hours: 4, inPackage: true }],
+  };
+  const cell = { id: 'package', label: 'In package', sum: ['items.hours', 'after.hours'],
+    where: ['items.inPackage', 'after.inPackage'], suffix: 'hrs', foot: '' };
+  assert.equal(pe.summaryFigure(cell, values), '28 hrs', 'the 30 its own filter excludes must be left out');
+});
+
+test('a list a summary cell adds up may go unfiltered while another is filtered', () => {
+  const values = {
+    items: [{ hours: 16, inPackage: true }, { hours: 30, inPackage: false }],
+    after: [{ hours: 8 }, { hours: 4 }],
+  };
+  const cell = { id: 'package', label: 'In package', sum: ['items.hours', 'after.hours'],
+    where: ['items.inPackage', ''], suffix: 'hrs', foot: '' };
+  assert.equal(pe.summaryFigure(cell, values), '28 hrs');
+});
+
+test('a summary cell counting two lists adds their rows together', () => {
+  const cell = { id: 'rows', label: 'Rows', count: ['items', 'timeline'], sum: [], where: ['', ''], suffix: '', foot: '' };
+  assert.equal(pe.summaryFigure(cell, SUMMARY_VALUES), '7');
+});
 test('the strip draws a labelled cell per figure', () => {
   const schema = {
     summary: [
-      { id: 'estimate', label: 'Project estimate', sum: 'items.hours', where: 'items.inTotal', suffix: 'hrs', foot: '3 line items' },
-      { id: 'phases', label: 'Phases', count: 'timeline', sum: '', where: '', suffix: '', foot: '' },
+      { id: 'estimate', label: 'Project estimate', sum: ['items.hours'], where: ['items.inTotal'], suffix: 'hrs', foot: '3 line items' },
+      { id: 'phases', label: 'Phases', count: ['timeline'], sum: [], where: [''], suffix: '', foot: '' },
     ],
   };
   const tree = render(h(pe.SummaryStrip, { schema, values: SUMMARY_VALUES }));

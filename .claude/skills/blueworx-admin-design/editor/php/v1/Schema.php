@@ -16,6 +16,7 @@ final class Schema {
 		'text', 'textarea', 'richtext', 'number', 'range', 'colour', 'date', 'datetime',
 		'copytext', 'select', 'radio', 'checkboxes', 'toggle', 'tokens', 'scrolllist',
 		'media', 'file', 'repeater', 'record', 'facts', 'table', 'gantt', 'title', 'slug',
+		'preview',
 	];
 
 	const CHOICE_KINDS = [ 'select', 'radio', 'checkboxes', 'scrolllist', 'record' ];
@@ -194,27 +195,98 @@ final class Schema {
 				) );
 			}
 
-			if ( $has_sum ) {
-				self::summaryTarget( $cell['sum'], 'number', 'sum', $cell['id'], $screen['slug'], $fields );
-			} else {
-				self::summaryCountable( $cell['count'], $cell['id'], $screen['slug'], $fields );
+			$targets = self::summaryTargets( $has_sum ? $cell['sum'] : $cell['count'], $has_sum ? 'sum' : 'count', $cell['id'], $screen['slug'] );
+			foreach ( $targets as $target ) {
+				if ( $has_sum ) {
+					self::summaryTarget( $target, 'number', 'sum', $cell['id'], $screen['slug'], $fields );
+				} else {
+					self::summaryCountable( $target, $cell['id'], $screen['slug'], $fields );
+				}
 			}
-			if ( ! empty( $cell['where'] ) ) {
-				self::summaryTarget( $cell['where'], 'toggle', 'where', $cell['id'], $screen['slug'], $fields );
+
+			$wheres = self::summaryWheres( $cell, $targets, $screen['slug'] );
+			foreach ( $wheres as $where ) {
+				if ( '' !== $where ) {
+					self::summaryTarget( $where, 'toggle', 'where', $cell['id'], $screen['slug'], $fields );
+				}
 			}
 
 			$out[] = [
 				'id'     => sanitize_key( $cell['id'] ),
 				'label'  => (string) $cell['label'],
-				'sum'    => $has_sum ? (string) $cell['sum'] : '',
-				'count'  => $has_count ? (string) $cell['count'] : '',
-				'where'  => isset( $cell['where'] ) ? (string) $cell['where'] : '',
+				'sum'    => $has_sum ? $targets : [],
+				'count'  => $has_count ? $targets : [],
+				'where'  => $wheres,
 				'suffix' => isset( $cell['suffix'] ) ? (string) $cell['suffix'] : '',
 				'foot'   => isset( $cell['foot'] ) ? (string) $cell['foot'] : '',
 			];
 		}
 
 		return $out;
+	}
+
+	/**
+	 * A cell's sum or count, always answered as a list.
+	 *
+	 * One figure may be added up from more than one list, because a figure a
+	 * person reads as one number often is: the hours a support package has to
+	 * cover are the project work plus the work planned after launch, and
+	 * showing that as two cells side by side leaves somebody adding up in
+	 * their head. A single target is still written as a plain string, which
+	 * is what almost every cell is.
+	 *
+	 * @param mixed  $declared what the plugin wrote.
+	 * @param string $option   sum, count or where, for the message.
+	 * @param string $cell_id  the cell, for the message.
+	 * @param string $slug     the screen, for the message.
+	 * @return array<int,string>
+	 */
+	private static function summaryTargets( $declared, string $option, string $cell_id, string $slug ): array {
+		$list = is_array( $declared ) ? array_values( $declared ) : [ $declared ];
+		$out  = [];
+		foreach ( $list as $one ) {
+			if ( ! is_string( $one ) ) {
+				throw new InvalidArgumentException( sprintf(
+					'The summary cell "%s" on the "%s" editor screen has something in its %s that is not a field name. Give it one name, or a list of names.',
+					$cell_id,
+					$slug,
+					$option
+				) );
+			}
+			$out[] = trim( $one );
+		}
+		return $out;
+	}
+
+	/**
+	 * The filters that go with a cell's targets, one for each.
+	 *
+	 * A filter names a toggle inside the list it filters, so a cell adding up
+	 * two lists needs two filters — one filter cannot name a cell in both.
+	 * An empty string means that list is not filtered at all.
+	 *
+	 * @param array  $cell    the cell as declared.
+	 * @param array  $targets its targets, already normalised.
+	 * @param string $slug    the screen, for the message.
+	 * @return array<int,string>
+	 */
+	private static function summaryWheres( array $cell, array $targets, string $slug ): array {
+		$declared = $cell['where'] ?? '';
+		if ( ! is_array( $declared ) && '' === (string) $declared ) {
+			return array_fill( 0, count( $targets ), '' );
+		}
+
+		$wheres = self::summaryTargets( $declared, 'where', $cell['id'], $slug );
+		if ( count( $wheres ) !== count( $targets ) ) {
+			throw new InvalidArgumentException( sprintf(
+				'The summary cell "%s" on the "%s" editor screen works %d lists out but gives %d filters. A filter names a toggle inside the list it filters, so there has to be one for each — use an empty string for a list you do not want filtered.',
+				$cell['id'],
+				$slug,
+				count( $targets ),
+				count( $wheres )
+			) );
+		}
+		return $wheres;
 	}
 
 	/**
@@ -727,12 +799,22 @@ final class Schema {
 			$field['origin'] = isset( $field['origin'] ) ? (string) $field['origin'] : '';
 		}
 
+		// A preview shows a page of the site in a device frame, so somebody can
+		// see what they are editing without leaving the screen. The plugin says
+		// which address to show, because only it knows how one of its records
+		// turns into a page; everything else about the frame belongs to the
+		// design system. An empty address is not a mistake — a record with no
+		// page yet has nothing to show, and the frame says so.
+		if ( 'preview' === $field['kind'] ) {
+			$field['url'] = isset( $field['url'] ) ? (string) $field['url'] : '';
+		}
+
 		$field['help']        = $field['help'] ?? '';
 		$field['required']    = (bool) ( $field['required'] ?? false );
 		$field['capability']  = $field['capability'] ?? '';
 		$field['locked_help'] = $field['locked_help'] ?? '';
 		$field['depends_on']  = $field['depends_on'] ?? null;
-		$field['wide']        = (bool) ( $field['wide'] ?? in_array( $field['kind'], [ 'richtext', 'repeater', 'media', 'file', 'table', 'facts', 'gantt', 'title' ], true ) );
+		$field['wide']        = (bool) ( $field['wide'] ?? in_array( $field['kind'], [ 'richtext', 'repeater', 'media', 'file', 'table', 'facts', 'gantt', 'title', 'preview' ], true ) );
 		// What Store::read() hands back for this field when it has never
 		// been saved. A plugin may declare its own; otherwise it follows the
 		// kind, so a never-touched toggle reads false and a never-touched

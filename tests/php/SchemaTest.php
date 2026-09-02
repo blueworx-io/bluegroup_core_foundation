@@ -713,6 +713,15 @@ final class SchemaTest extends TestCase {
 								[ 'id' => 'inTotal', 'kind' => 'toggle', 'label' => 'In total' ],
 							],
 						],
+						[
+							'id'     => 'after',
+							'kind'   => 'repeater',
+							'label'  => 'Post-launch items',
+							'fields' => [
+								[ 'id' => 'hours', 'kind' => 'number', 'label' => 'Hours' ],
+								[ 'id' => 'inTotal', 'kind' => 'toggle', 'label' => 'In total' ],
+							],
+						],
 						[ 'id' => 'timeline', 'kind' => 'gantt', 'label' => 'Project timeline' ],
 					] ],
 				] ],
@@ -728,14 +737,65 @@ final class SchemaTest extends TestCase {
 
 		$this->assertCount( 2, $screen['summary'] );
 		$this->assertSame( 'estimate', $screen['summary'][0]['id'] );
-		$this->assertSame( 'items.hours', $screen['summary'][0]['sum'] );
-		$this->assertSame( 'items.inTotal', $screen['summary'][0]['where'] );
+		$this->assertSame( [ 'items.hours' ], $screen['summary'][0]['sum'] );
+		$this->assertSame( [ 'items.inTotal' ], $screen['summary'][0]['where'] );
 		$this->assertSame( 'hrs', $screen['summary'][0]['suffix'] );
 		$this->assertSame( 'Before launch', $screen['summary'][0]['foot'] );
-		$this->assertSame( 'timeline', $screen['summary'][1]['count'] );
-		$this->assertSame( '', $screen['summary'][1]['where'] );
+		$this->assertSame( [ 'timeline' ], $screen['summary'][1]['count'] );
+		$this->assertSame( [ '' ], $screen['summary'][1]['where'] );
 	}
 
+	public function test_a_summary_cell_may_add_up_more_than_one_list(): void {
+		$screen = Schema::validate( $this->summaryScreen( [
+			[
+				'id'    => 'package',
+				'label' => 'In package',
+				'sum'   => [ 'items.hours', 'after.hours' ],
+				'where' => [ 'items.inTotal', 'after.inTotal' ],
+			],
+		] ) );
+
+		$this->assertSame( [ 'items.hours', 'after.hours' ], $screen['summary'][0]['sum'] );
+		$this->assertSame( [ 'items.inTotal', 'after.inTotal' ], $screen['summary'][0]['where'] );
+	}
+
+	public function test_a_summary_cell_may_leave_one_of_its_lists_unfiltered(): void {
+		$screen = Schema::validate( $this->summaryScreen( [
+			[ 'id' => 'package', 'label' => 'In package', 'sum' => [ 'items.hours', 'after.hours' ], 'where' => [ 'items.inTotal', '' ] ],
+		] ) );
+
+		$this->assertSame( [ 'items.inTotal', '' ], $screen['summary'][0]['where'] );
+	}
+
+	public function test_a_summary_cell_with_fewer_filters_than_lists_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'there has to be one for each' );
+		Schema::validate( $this->summaryScreen( [
+			[ 'id' => 'package', 'label' => 'In package', 'sum' => [ 'items.hours', 'after.hours' ], 'where' => 'items.inTotal' ],
+		] ) );
+	}
+
+	public function test_a_summary_cell_naming_a_missing_field_in_a_list_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'there is no field called "nope"' );
+		Schema::validate( $this->summaryScreen( [
+			[ 'id' => 'package', 'label' => 'In package', 'sum' => [ 'items.hours', 'nope.hours' ] ],
+		] ) );
+	}
+
+	public function test_a_preview_field_keeps_the_address_the_plugin_gave_it(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'look', 'kind' => 'preview', 'label' => 'Preview', 'url' => 'https://example.test/deck/abc' ] ) );
+		$field  = $screen['tabs'][0]['panels'][0]['fields'][0];
+
+		$this->assertSame( 'https://example.test/deck/abc', $field['url'] );
+		$this->assertTrue( $field['wide'], 'a device frame at half width shows nothing' );
+	}
+
+	public function test_a_preview_field_with_no_address_is_allowed(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'look', 'kind' => 'preview', 'label' => 'Preview' ] ) );
+
+		$this->assertSame( '', $screen['tabs'][0]['panels'][0]['fields'][0]['url'] );
+	}
 	public function test_a_screen_with_no_summary_answers_with_an_empty_one(): void {
 		$screen = Schema::validate( $this->screen( [ 'id' => 'name', 'kind' => 'text', 'label' => 'Name' ] ) );
 		$this->assertSame( [], $screen['summary'] );
