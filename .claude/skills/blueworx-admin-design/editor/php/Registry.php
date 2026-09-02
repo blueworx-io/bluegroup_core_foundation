@@ -52,7 +52,7 @@ final class Registry {
 		}
 		self::$loaded = true;
 		$dir = self::$copies[ self::latest() ];
-		foreach ( [ 'Schema', 'Capabilities', 'Sanitise', 'Validate', 'Store', 'Settings', 'Rest', 'Screen', 'Editor' ] as $class ) {
+		foreach ( [ 'Schema', 'Capabilities', 'Sanitise', 'Validate', 'Store', 'Settings', 'Rest', 'Screen', 'Icons', 'Editor' ] as $class ) {
 			require_once $dir . '/' . $class . '.php';
 		}
 		\Blueworx\PageEditor\v1\Editor::boot();
