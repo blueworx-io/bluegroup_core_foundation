@@ -14,7 +14,15 @@ final class Sanitise {
 	 * a save never carries it as far as the store — writing the null as empty
 	 * post meta would be the field saved anyway, for a value nobody sent.
 	 */
-	const DISPLAY_ONLY_KINDS = [ 'facts', 'table', 'copytext' ];
+	const DISPLAY_ONLY_KINDS = [ 'facts', 'table', 'copytext', 'preview' ];
+
+	/**
+	 * What a gantt phase's marker may be. It sets the bar's colour and its
+	 * meaning: work before launch, the launch itself, work after. Closed for
+	 * the same reason KINDS is — the design system draws three bars, so a
+	 * fourth marker would register cleanly and render as the first.
+	 */
+	const GANTT_KINDS = [ 'pre', 'launch', 'post' ];
 
 	public static function values( array $screen, array $values ): array {
 		$out = [];
@@ -128,13 +136,45 @@ final class Sanitise {
 				}
 				return $out;
 
-			// facts, table and copytext are display-only on the screen; nothing
-			// comes back, so nothing is accepted back. values() never reaches
-			// this for one of them — see DISPLAY_ONLY_KINDS — but a direct
-			// caller still gets the same refusal.
+			// A gantt's rows are phases, and unlike a repeater their columns are
+			// the library's own rather than the plugin's — so they are listed
+			// here rather than read off the field. Anything else a browser
+			// sends is dropped: a phase carries no free-form payload.
+			case 'gantt':
+				$rows = is_array( $value ) ? $value : [];
+				$out  = [];
+				foreach ( $rows as $row ) {
+					if ( ! is_array( $row ) ) {
+						continue;
+					}
+					// An unrecognised marker falls back to pre-launch rather
+					// than dropping the row. A phase that arrives with a
+					// nonsense marker is still a real phase, and throwing it
+					// away loses work somebody did.
+					$kind = isset( $row['kind'] ) && in_array( $row['kind'], self::GANTT_KINDS, true )
+						? $row['kind']
+						: 'pre';
+					$out[] = [
+						'id'        => sanitize_key( $row['id'] ?? '' ),
+						'title'     => sanitize_text_field( (string) ( $row['title'] ?? '' ) ),
+						'desc'      => sanitize_text_field( (string) ( $row['desc'] ?? '' ) ),
+						'start'     => max( 1, (int) ( $row['start'] ?? 1 ) ),
+						'end'       => max( 1, (int) ( $row['end'] ?? 1 ) ),
+						'milestone' => sanitize_text_field( (string) ( $row['milestone'] ?? '' ) ),
+						'kind'      => $kind,
+						'visible'   => ! empty( $row['visible'] ),
+					];
+				}
+				return $out;
+
+			// facts, table, copytext and preview are display-only on the screen;
+			// nothing comes back, so nothing is accepted back. values() never
+			// reaches this for one of them — see DISPLAY_ONLY_KINDS — but a
+			// direct caller still gets the same refusal.
 			case 'facts':
 			case 'table':
 			case 'copytext':
+			case 'preview':
 				return null;
 
 			default:

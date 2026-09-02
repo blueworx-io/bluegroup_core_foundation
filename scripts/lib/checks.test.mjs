@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   versionBumped,
   changelogUpdated,
@@ -184,6 +185,21 @@ const shippable = [
   'my-plugin/assets/app.js',
   'my-plugin/plugin-update-checker/plugin-update-checker.php',
 ];
+
+// The exclude list is data rather than code, and it is the half of this check
+// that actually decides what ships. Composer's vendor tree is why: nothing in
+// CI installed it until the PHPCS step started running for real, and the first
+// run that did staged the whole of it into what would ship.
+test('the shared exclude list keeps build output out of the staged tree', () => {
+  const list = readFileSync(new URL('../plugin-zip-excludes.txt', import.meta.url), 'utf8')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'));
+
+  for (const path of ['/vendor', '/node_modules', '/tests', '/bin', '.git/']) {
+    assert.ok(list.includes(path), `the exclude list must carry ${path}`);
+  }
+});
 
 test('pluginZipContent: passes a clean tree', () => {
   const result = pluginZipContent({ entries: shippable, slug: 'my-plugin' });

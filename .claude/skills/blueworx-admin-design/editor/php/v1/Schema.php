@@ -15,7 +15,8 @@ final class Schema {
 	const KINDS = [
 		'text', 'textarea', 'richtext', 'number', 'range', 'colour', 'date', 'datetime',
 		'copytext', 'select', 'radio', 'checkboxes', 'toggle', 'tokens', 'scrolllist',
-		'media', 'file', 'repeater', 'record', 'facts', 'table', 'title', 'slug',
+		'media', 'file', 'repeater', 'record', 'facts', 'table', 'gantt', 'title', 'slug',
+		'preview',
 	];
 
 	const CHOICE_KINDS = [ 'select', 'radio', 'checkboxes', 'scrolllist', 'record' ];
@@ -140,7 +141,245 @@ final class Schema {
 
 		self::checkDependencies( $screen['slug'], $seen, $repeater_scopes, $dependencies );
 
+		$screen['summary'] = self::summary( $screen );
+
 		return $screen;
+	}
+
+	/**
+	 * The strip of derived figures under the page header, which stays put while
+	 * the tabs beneath it change.
+	 *
+	 * A cell says what to work out, never how — `sum` and `count` are read in
+	 * the browser, so the strip moves as somebody types rather than after a
+	 * save. That is the whole reason it is declared rather than computed here:
+	 * a PHP callback cannot be sent to the browser, and a round trip per
+	 * keystroke is not a live figure.
+	 *
+	 * A cell shows something and saves nothing, so it is not a field.
+	 *
+	 * @param array $screen the screen, with its tabs already walked.
+	 * @return array<int,array>
+	 */
+	private static function summary( array $screen ): array {
+		$declared = $screen['summary'] ?? [];
+		if ( ! is_array( $declared ) ) {
+			throw new InvalidArgumentException( sprintf( 'The "%s" editor screen has a summary that is not a list. Give it a list of cells, each one an array.', $screen['slug'] ) );
+		}
+
+		$fields = [];
+		foreach ( $screen['tabs'] as $tab ) {
+			foreach ( $tab['panels'] as $panel ) {
+				foreach ( $panel['fields'] as $field ) {
+					$fields[ $field['id'] ] = $field;
+				}
+			}
+		}
+
+		$out = [];
+		foreach ( $declared as $cell ) {
+			if ( ! is_array( $cell ) || empty( $cell['id'] ) || empty( $cell['label'] ) ) {
+				throw new InvalidArgumentException( sprintf(
+					'A summary cell on the "%s" editor screen needs an id and a label. The summary is the strip of figures under the header, and every figure in it is labelled.',
+					$screen['slug']
+				) );
+			}
+
+			$has_sum   = ! empty( $cell['sum'] );
+			$has_count = ! empty( $cell['count'] );
+			if ( $has_sum === $has_count ) {
+				throw new InvalidArgumentException( sprintf(
+					'The summary cell "%s" on the "%s" editor screen needs a sum or a count, and not both. Use sum for a figure added up from a cell, count for how many rows there are.',
+					$cell['id'],
+					$screen['slug']
+				) );
+			}
+
+			$targets = self::summaryTargets( $has_sum ? $cell['sum'] : $cell['count'], $has_sum ? 'sum' : 'count', $cell['id'], $screen['slug'] );
+			foreach ( $targets as $target ) {
+				if ( $has_sum ) {
+					self::summaryTarget( $target, 'number', 'sum', $cell['id'], $screen['slug'], $fields );
+				} else {
+					self::summaryCountable( $target, $cell['id'], $screen['slug'], $fields );
+				}
+			}
+
+			$wheres = self::summaryWheres( $cell, $targets, $screen['slug'] );
+			foreach ( $wheres as $where ) {
+				if ( '' !== $where ) {
+					self::summaryTarget( $where, 'toggle', 'where', $cell['id'], $screen['slug'], $fields );
+				}
+			}
+
+			$out[] = [
+				'id'     => sanitize_key( $cell['id'] ),
+				'label'  => (string) $cell['label'],
+				'sum'    => $has_sum ? $targets : [],
+				'count'  => $has_count ? $targets : [],
+				'where'  => $wheres,
+				'suffix' => isset( $cell['suffix'] ) ? (string) $cell['suffix'] : '',
+				'foot'   => isset( $cell['foot'] ) ? (string) $cell['foot'] : '',
+			];
+		}
+
+		return $out;
+	}
+
+	/**
+	 * A cell's sum or count, always answered as a list.
+	 *
+	 * One figure may be added up from more than one list, because a figure a
+	 * person reads as one number often is: the hours a support package has to
+	 * cover are the project work plus the work planned after launch, and
+	 * showing that as two cells side by side leaves somebody adding up in
+	 * their head. A single target is still written as a plain string, which
+	 * is what almost every cell is.
+	 *
+	 * @param mixed  $declared what the plugin wrote.
+	 * @param string $option   sum, count or where, for the message.
+	 * @param string $cell_id  the cell, for the message.
+	 * @param string $slug     the screen, for the message.
+	 * @return array<int,string>
+	 */
+	private static function summaryTargets( $declared, string $option, string $cell_id, string $slug ): array {
+		$list = is_array( $declared ) ? array_values( $declared ) : [ $declared ];
+		$out  = [];
+		foreach ( $list as $one ) {
+			if ( ! is_string( $one ) ) {
+				throw new InvalidArgumentException( sprintf(
+					'The summary cell "%s" on the "%s" editor screen has something in its %s that is not a field name. Give it one name, or a list of names.',
+					$cell_id,
+					$slug,
+					$option
+				) );
+			}
+			$out[] = trim( $one );
+		}
+		return $out;
+	}
+
+	/**
+	 * The filters that go with a cell's targets, one for each.
+	 *
+	 * A filter names a toggle inside the list it filters, so a cell adding up
+	 * two lists needs two filters — one filter cannot name a cell in both.
+	 * An empty string means that list is not filtered at all.
+	 *
+	 * @param array  $cell    the cell as declared.
+	 * @param array  $targets its targets, already normalised.
+	 * @param string $slug    the screen, for the message.
+	 * @return array<int,string>
+	 */
+	private static function summaryWheres( array $cell, array $targets, string $slug ): array {
+		$declared = $cell['where'] ?? '';
+		if ( ! is_array( $declared ) && '' === (string) $declared ) {
+			return array_fill( 0, count( $targets ), '' );
+		}
+
+		$wheres = self::summaryTargets( $declared, 'where', $cell['id'], $slug );
+		if ( count( $wheres ) !== count( $targets ) ) {
+			throw new InvalidArgumentException( sprintf(
+				'The summary cell "%s" on the "%s" editor screen works %d lists out but gives %d filters. A filter names a toggle inside the list it filters, so there has to be one for each — use an empty string for a list you do not want filtered.',
+				$cell['id'],
+				$slug,
+				count( $targets ),
+				count( $wheres )
+			) );
+		}
+		return $wheres;
+	}
+
+	/**
+	 * Resolves "fieldId.cellId" against the screen and insists the cell it
+	 * names is of the kind the option needs. Named this way rather than as two
+	 * keys because a figure reads as one thing — the hours on a line item —
+	 * and splitting it makes a schema harder to scan, not easier.
+	 */
+	private static function summaryTarget( string $path, string $wants, string $option, string $cell_id, string $slug, array $fields ): void {
+		$parts = explode( '.', $path );
+		if ( 2 !== count( $parts ) || '' === $parts[0] || '' === $parts[1] ) {
+			throw new InvalidArgumentException( sprintf(
+				'The summary cell "%s" on the "%s" editor screen sets %s to "%s". It names a cell inside a repeater, written as "field.cell".',
+				$cell_id,
+				$slug,
+				$option,
+				$path
+			) );
+		}
+
+		$field = $fields[ $parts[0] ] ?? null;
+		if ( null === $field ) {
+			throw new InvalidArgumentException( sprintf(
+				'The summary cell "%s" on the "%s" editor screen sets %s to "%s", but there is no field called "%s" on this screen.',
+				$cell_id,
+				$slug,
+				$option,
+				$path,
+				$parts[0]
+			) );
+		}
+		if ( 'repeater' !== $field['kind'] ) {
+			throw new InvalidArgumentException( sprintf(
+				'The summary cell "%s" on the "%s" editor screen sets %s to "%s", but "%s" is a "%s", not a repeater. Only a repeater has cells to add up.',
+				$cell_id,
+				$slug,
+				$option,
+				$path,
+				$parts[0],
+				$field['kind']
+			) );
+		}
+
+		foreach ( $field['fields'] as $sub_field ) {
+			if ( $sub_field['id'] !== $parts[1] ) {
+				continue;
+			}
+			if ( $sub_field['kind'] !== $wants ) {
+				throw new InvalidArgumentException( sprintf(
+					'The summary cell "%s" on the "%s" editor screen sets %s to "%s", which is a "%s" cell. It has to be a "%s" cell.',
+					$cell_id,
+					$slug,
+					$option,
+					$path,
+					$sub_field['kind'],
+					$wants
+				) );
+			}
+			return;
+		}
+
+		throw new InvalidArgumentException( sprintf(
+			'The summary cell "%s" on the "%s" editor screen sets %s to "%s", but the repeater "%s" has no cell called "%s".',
+			$cell_id,
+			$slug,
+			$option,
+			$path,
+			$parts[0],
+			$parts[1]
+		) );
+	}
+
+	/** A count needs a field that holds a list of rows — a repeater or a gantt. */
+	private static function summaryCountable( string $id, string $cell_id, string $slug, array $fields ): void {
+		$field = $fields[ $id ] ?? null;
+		if ( null === $field ) {
+			throw new InvalidArgumentException( sprintf(
+				'The summary cell "%s" on the "%s" editor screen counts "%s", but there is no field called "%s" on this screen.',
+				$cell_id,
+				$slug,
+				$id,
+				$id
+			) );
+		}
+		if ( ! in_array( $field['kind'], [ 'repeater', 'gantt' ], true ) ) {
+			throw new InvalidArgumentException( sprintf(
+				'The summary cell "%s" on the "%s" editor screen counts "%s", which is a "%s". Only a repeater or a gantt holds rows to count.',
+				$cell_id,
+				$slug,
+				$id,
+				$field['kind']
+			) );
+		}
 	}
 
 	/**
@@ -288,6 +527,7 @@ final class Schema {
 			case 'scrolllist':
 			case 'tokens':
 			case 'repeater':
+			case 'gantt':
 				return [];
 
 			default:
@@ -432,6 +672,7 @@ final class Schema {
 			case 'scrolllist':
 			case 'tokens':
 			case 'repeater':
+			case 'gantt':
 				return is_array( $value );
 
 			default:
@@ -455,6 +696,7 @@ final class Schema {
 			case 'scrolllist':
 			case 'tokens':
 			case 'repeater':
+			case 'gantt':
 				return 'an array';
 
 			default:
@@ -548,12 +790,31 @@ final class Schema {
 		}
 		$field['suggestions'] = self::suggestions( $field, $slug );
 
+		// A gantt numbers its phases in weeks, and can also show them as dates.
+		// It cannot work the dates out on its own — week 1 is whenever the
+		// screen's own record says the work starts — so the plugin names the
+		// day to count forward from. Empty means the browser counts from today,
+		// which is right for a schedule with no start date of its own.
+		if ( 'gantt' === $field['kind'] ) {
+			$field['origin'] = isset( $field['origin'] ) ? (string) $field['origin'] : '';
+		}
+
+		// A preview shows a page of the site in a device frame, so somebody can
+		// see what they are editing without leaving the screen. The plugin says
+		// which address to show, because only it knows how one of its records
+		// turns into a page; everything else about the frame belongs to the
+		// design system. An empty address is not a mistake — a record with no
+		// page yet has nothing to show, and the frame says so.
+		if ( 'preview' === $field['kind'] ) {
+			$field['url'] = isset( $field['url'] ) ? (string) $field['url'] : '';
+		}
+
 		$field['help']        = $field['help'] ?? '';
 		$field['required']    = (bool) ( $field['required'] ?? false );
 		$field['capability']  = $field['capability'] ?? '';
 		$field['locked_help'] = $field['locked_help'] ?? '';
 		$field['depends_on']  = $field['depends_on'] ?? null;
-		$field['wide']        = (bool) ( $field['wide'] ?? in_array( $field['kind'], [ 'richtext', 'repeater', 'media', 'file', 'table', 'facts', 'title' ], true ) );
+		$field['wide']        = (bool) ( $field['wide'] ?? in_array( $field['kind'], [ 'richtext', 'repeater', 'media', 'file', 'table', 'facts', 'gantt', 'title', 'preview' ], true ) );
 		// What Store::read() hands back for this field when it has never
 		// been saved. A plugin may declare its own; otherwise it follows the
 		// kind, so a never-touched toggle reads false and a never-touched
@@ -588,9 +849,68 @@ final class Schema {
 				$field['fields'][ $sf ] = self::field( $sub_field, $slug, $sub_seen, $field['id'], $dependencies, $repeater_scopes, $reserved_fields );
 			}
 			$repeater_scopes[ $field['id'] ] = $sub_seen;
+			self::groupingOptions( $field, $slug );
 		}
 
 		return $field;
+	}
+
+	/**
+	 * A repeater whose rows fall into named groups, each with a subtotal — an
+	 * estimate's phases, say. Both options name one of the repeater's own
+	 * cells, so this runs after the sub-fields are walked and every cell id is
+	 * known.
+	 *
+	 * A repeater that sets neither still answers for both, so a consumer can
+	 * read the keys without checking they exist first.
+	 *
+	 * @param array  $field the repeater, by reference.
+	 * @param string $slug  the screen, for the error message.
+	 */
+	private static function groupingOptions( array &$field, string $slug ): void {
+		foreach ( [ 'group_by' => 'select', 'subtotal_of' => 'number' ] as $option => $wants ) {
+			if ( ! array_key_exists( $option, $field ) || null === $field[ $option ] || '' === $field[ $option ] ) {
+				$field[ $option ] = '';
+				continue;
+			}
+
+			$target = null;
+			foreach ( $field['fields'] as $sub_field ) {
+				if ( $sub_field['id'] === $field[ $option ] ) {
+					$target = $sub_field;
+					break;
+				}
+			}
+
+			if ( null === $target ) {
+				throw new InvalidArgumentException( sprintf(
+					'The repeater "%s" on the "%s" editor screen sets %s to "%s", which is not one of its own cells. Use the id of a cell inside this repeater.',
+					$field['id'],
+					$slug,
+					$option,
+					$field[ $option ]
+				) );
+			}
+			if ( $target['kind'] !== $wants ) {
+				throw new InvalidArgumentException( sprintf(
+					'The repeater "%s" on the "%s" editor screen sets %s to "%s", which is a "%s" cell. It has to be a "%s" cell.',
+					$field['id'],
+					$slug,
+					$option,
+					$field[ $option ],
+					$target['kind'],
+					$wants
+				) );
+			}
+
+			$field[ $option ] = (string) $field[ $option ];
+		}
+
+		// What a subtotal is counted in ("hrs"), and what the group of rows
+		// whose group cell is empty is called. Both are labels, so neither is
+		// checked against anything.
+		$field['subtotal_suffix']   = isset( $field['subtotal_suffix'] ) ? (string) $field['subtotal_suffix'] : '';
+		$field['group_empty_label'] = isset( $field['group_empty_label'] ) ? (string) $field['group_empty_label'] : 'Ungrouped';
 	}
 
 	/**

@@ -246,6 +246,7 @@
 
     return h('div', { className: 'bw-page' },
       h(PageHead, { schema: record.schema }),
+      h(SummaryStrip, { schema: record.schema, values: record.values }),
       tabs.length > 1 ? h(Tabs, { tabs: tabs, active: active, onPick: setTab }) : null,
       record.notice ? h(Notice, { notice: record.notice, onDismiss: record.dismiss,
         canGo: Boolean(firstErrorTab(record.schema, record.errors)),
@@ -255,6 +256,101 @@
       })),
       h(SaveBar, { record: record, dirtyIn: dirtyIn })
     );
+  }
+
+  const DEVICES = [
+    { id: 'desktop', label: 'Desktop', width: 1440, icon: 'monitor' },
+    { id: 'tablet', label: 'Tablet', width: 1024, icon: 'tablet' },
+    { id: 'mobile', label: 'Mobile', width: 390, icon: 'smartphone' },
+  ];
+
+  // One summary cell's figure, worked out from the values on screen right now.
+  // The schema says what to work out and the browser does the working out, so
+  // the strip moves as somebody types — a figure that only caught up after a
+  // save would be a figure nobody could trust while editing.
+  //
+  // A blank number reads as zero, the same as it does in a subtotal: a
+  // half-filled row contributes nothing rather than breaking the figure.
+  function summaryFigure(cell, values) {
+    const rowsOf = function (fieldId) {
+      const value = values[fieldId];
+      return Array.isArray(value) ? value : [];
+    };
+    const passesIn = function (where) {
+      return function (row) {
+        if (!where) return true;
+        return Boolean(row[where.split('.')[1]]);
+      };
+    };
+
+    // Schema::summary() hands both of these over as lists, one filter per
+    // target, so a cell adding up two lists needs no special case here.
+    const counting = !(cell.sum && cell.sum.length);
+    const targets = counting ? cell.count || [] : cell.sum;
+    const wheres = cell.where || [];
+
+    const figure = targets.reduce(function (running, target, i) {
+      const passes = passesIn(wheres[i]);
+      if (counting) return running + rowsOf(target).filter(passes).length;
+      const parts = target.split('.');
+      return running + rowsOf(parts[0]).reduce(function (total, row) {
+        return passes(row) ? total + (Number(row[parts[1]]) || 0) : total;
+      }, 0);
+    }, 0);
+
+    return cell.suffix ? figure + ' ' + cell.suffix : String(figure);
+  }
+
+  // A page of the site, in a device frame, beside the fields that change it.
+  // The frame is reloaded by hand rather than on every keystroke: the page it
+  // shows is the record as saved, and quietly re-fetching it while somebody
+  // types would show them their last save and read as a live preview.
+  function Preview(props) {
+    const el = wp().element;
+    const h = el.createElement;
+    const [chosen, setChosen] = el.useState(DEVICES[0].id);
+    const [reloads, setReloads] = el.useState(0);
+    const device = DEVICES.filter(function (d) { return d.id === chosen; })[0] || DEVICES[0];
+
+    if (!props.field.url) {
+      return h('div', { className: 'bw-preview bw-preview--empty' },
+        h('i', { className: 'bw-icon', 'data-lucide': 'monitor' }),
+        h('p', { className: 'bw-preview__hint' }, props.field.help || 'There is nothing to preview yet.'));
+    }
+
+    return h('div', { className: 'bw-preview' },
+      h('div', { className: 'bw-preview__bar' },
+        h('div', { className: 'bw-preview__devices' }, DEVICES.map(function (d) {
+          return h('button', { key: d.id, type: 'button',
+            className: 'bw-preview__device' + (d.id === device.id ? ' is-current' : ''),
+            'aria-pressed': d.id === device.id ? 'true' : 'false',
+            onClick: function () { setChosen(d.id); } },
+            h('i', { className: 'bw-icon', 'data-lucide': d.icon }),
+            h('span', null, d.label));
+        })),
+        h('div', { className: 'bw-preview__actions' },
+          h('button', { type: 'button', className: 'bw-btn bw-btn--link',
+            onClick: function () { setReloads(reloads + 1); } }, 'Reload'),
+          h('a', { className: 'bw-btn bw-btn--secondary bw-btn--sm', href: props.field.url,
+            target: '_blank', rel: 'noreferrer noopener' }, 'Open in a tab'))),
+      h('div', { className: 'bw-preview__stage' },
+        h('iframe', { key: device.id + ':' + reloads, className: 'bw-preview__frame',
+          title: props.field.label, src: props.field.url, width: device.width,
+          style: { width: device.width + 'px' },
+          sandbox: 'allow-scripts allow-same-origin' })));
+  }
+
+  function SummaryStrip(props) {
+    const h = wp().element.createElement;
+    const cells = props.schema.summary || [];
+    if (cells.length === 0) return null;
+
+    return h('div', { className: 'bw-summary' }, cells.map(function (cell) {
+      return h('div', { key: cell.id, className: 'bw-summary__cell' },
+        h('span', { className: 'bw-summary__label' }, cell.label),
+        h('span', { className: 'bw-summary__value' }, summaryFigure(cell, props.values)),
+        cell.foot ? h('span', { className: 'bw-summary__foot' }, cell.foot) : null);
+    }));
   }
 
   function PageHead(props) {
@@ -627,6 +723,259 @@
     }
   }
 
+  // Which bar a phase draws, and what each marker means. Mirrors
+  // Sanitise::GANTT_KINDS — a marker here that the server does not know would
+  // draw once and come back as 'pre' on the next load.
+  const GANTT_KINDS = [
+    { value: 'pre', label: 'Pre-launch' },
+    { value: 'launch', label: 'Launch milestone' },
+    { value: 'post', label: 'Post-launch' },
+  ];
+
+  const GANTT_MIN_BAR_PERCENT = 3.5;
+  const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
+
+  // Week n as a date, counted forward from the field's origin. Weeks are what
+  // is stored; a date is only ever a way of reading one, so nothing here is
+  // saved.
+  // en-GB rather than the browser's own locale, so a schedule reads "8 Sep"
+  // for everyone. The system is British English throughout, and a date on a
+  // bar sits beside a week number in a fixed-width label — a locale that put
+  // the month first would reflow the column for some administrators and not
+  // others, on the same screen, looking at the same record.
+  function ganttWeekDate(origin, week) {
+    const from = origin ? new Date(origin + 'T00:00:00') : new Date();
+    if (isNaN(from.getTime())) return '';
+    const on = new Date(from.getTime() + (week - 1) * MS_PER_WEEK);
+    return on.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  }
+
+  function ganttPhaseRange(phase, mode, origin) {
+    const single = phase.start === phase.end;
+    const label = mode === 'dates'
+      ? (single
+          ? ganttWeekDate(origin, phase.start)
+          : ganttWeekDate(origin, phase.start) + ' – ' + ganttWeekDate(origin, phase.end))
+      : (single ? 'Week ' + phase.start : 'Weeks ' + phase.start + '–' + phase.end);
+    return phase.milestone ? label + ' · ' + phase.milestone : label;
+  }
+
+  function Gantt(props) {
+    const el = wp().element;
+    const h = el.createElement;
+    const phases = props.value;
+    const field = props.field;
+    const locked = Boolean(field.readonly);
+
+    // The mode is how the weeks are read, not what is stored, so it lives in
+    // the component rather than in the record. Same for which phase the detail
+    // panel is editing.
+    const modeState = el.useState('weeks');
+    const mode = modeState[0];
+    const setMode = modeState[1];
+    const selState = el.useState(null);
+    const selectedId = selState[0];
+    const setSelected = selState[1];
+
+    const span = Math.max.apply(null, [1].concat(phases.map(function (p) { return Number(p.end) || 1; })));
+
+    function patch(index, changes) {
+      const next = phases.slice();
+      next[index] = Object.assign({}, next[index], changes);
+      props.onChange(next);
+    }
+
+    function move(index, by) {
+      if (locked) return;
+      const target = index + by;
+      if (target < 0 || target >= phases.length) return;
+      const next = phases.slice();
+      const held = next[index];
+      next[index] = next[target];
+      next[target] = held;
+      props.onChange(next);
+    }
+
+    const selectedIndex = (function () {
+      const at = phases.findIndex(function (p) { return p.id === selectedId; });
+      return at === -1 ? (phases.length > 0 ? 0 : -1) : at;
+    })();
+    const selected = selectedIndex === -1 ? null : phases[selectedIndex];
+
+    // A tick every fourth unit, which is what keeps the ruler readable on a
+    // six-month schedule without crowding a six-week one.
+    const ticks = [];
+    for (let week = 1; week <= span; week += 4) {
+      ticks.push({ week: week, label: mode === 'dates' ? ganttWeekDate(field.origin, week) : 'Week ' + week });
+    }
+
+    function iconButton(label, icon, onClick, danger) {
+      return h('button', {
+        type: 'button',
+        className: 'bw-iconbtn bw-iconbtn--sm' + (danger ? ' bw-iconbtn--danger' : ''),
+        title: label,
+        'aria-label': label,
+        disabled: locked,
+        onClick: onClick,
+      }, h('i', { className: 'bw-icon bw-icon--14', 'data-lucide': icon }));
+    }
+
+    return h('div', { className: 'bw-gantt' },
+
+      h('div', { className: 'bw-steps' },
+        GANTT_MODES.map(function (m) {
+          return h('button', {
+            key: m.value,
+            type: 'button',
+            className: 'bw-step' + (mode === m.value ? ' is-current' : ''),
+            'aria-pressed': mode === m.value,
+            onClick: function () { setMode(m.value); },
+          }, m.label);
+        })),
+
+      ticks.length > 0 ? h('div', { className: 'bw-gantt__ruler' },
+        ticks.map(function (t) { return h('span', { key: t.week, className: 'bw-gantt__tick' }, t.label); })) : null,
+
+      phases.length === 0
+        ? h('div', { className: 'bw-empty' },
+            h('i', { className: 'bw-icon bw-icon--28 bw-empty__icon', 'data-lucide': 'calendar' }),
+            h('h3', { className: 'bw-empty__title' }, 'No phases yet'),
+            h('p', { className: 'bw-empty__text' }, 'Add the first phase to start the schedule.'))
+        : h('div', { className: 'bw-gantt__rows' }, phases.map(function (phase, i) {
+            const hidden = phase.visible === false;
+            return h('div', { key: phase.id || ('p-' + i), className: 'bw-gantt__row' },
+              h('span', { className: 'bw-gantt__label' },
+                h('span', { className: 'bw-gantt__title' },
+                  h('span', { className: 'bw-gantt__n' }, String(i + 1).padStart(2, '0')),
+                  phase.title || 'Untitled phase',
+                  hidden ? h('i', { className: 'bw-icon bw-icon--14', 'data-lucide': 'lock', title: 'Hidden from the client' }) : null),
+                h('span', { className: 'bw-gantt__range' }, ganttPhaseRange(phase, mode, field.origin))),
+              h('span', { className: 'bw-gantt__track' },
+                h('span', {
+                  className: 'bw-gantt__bar bw-gantt__bar--' + (phase.kind || 'pre') + (hidden ? ' is-hidden' : ''),
+                  style: {
+                    left: ((Number(phase.start) - 1) / span * 100) + '%',
+                    width: Math.max(GANTT_MIN_BAR_PERCENT, (Number(phase.end) - Number(phase.start) + 1) / span * 100) + '%',
+                  },
+                }, phase.milestone || phase.desc || '')),
+              h('span', { className: 'bw-gantt__actions' },
+                iconButton('Move up', 'chevron-up', function () { move(i, -1); }),
+                iconButton('Move down', 'chevron-down', function () { move(i, 1); }),
+                iconButton('Edit ' + (phase.title || 'this phase'), 'pencil', function () { setSelected(phase.id); }),
+                iconButton('Duplicate ' + (phase.title || 'this phase'), 'copy', function () {
+                  const copy = Object.assign({}, phase, { id: 'p' + (++nextRowId), title: (phase.title || 'Phase') + ' (copy)', milestone: '' });
+                  props.onChange(phases.slice(0, i + 1).concat([copy], phases.slice(i + 1)));
+                }),
+                iconButton(hidden ? 'Show to the client' : 'Hide from the client', hidden ? 'lock' : 'eye', function () {
+                  patch(i, { visible: hidden });
+                }),
+                iconButton('Remove ' + (phase.title || 'this phase'), 'trash-2', function () {
+                  props.onChange(phases.filter(function (_, j) { return j !== i; }));
+                }, true)));
+          })),
+
+      h('div', { className: 'bw-gantt__legend' },
+        h('span', { className: 'bw-gantt__key' }, 'Pre-launch'),
+        h('span', { className: 'bw-gantt__key bw-gantt__key--launch' }, 'Launch milestone'),
+        h('span', { className: 'bw-gantt__key bw-gantt__key--post' }, 'Post-launch'),
+        h('button', {
+          type: 'button', className: 'bw-btn bw-btn--secondary', disabled: locked,
+          onClick: function () {
+            const last = phases.length > 0 ? Number(phases[phases.length - 1].end) || 1 : 0;
+            props.onChange(phases.concat([{
+              id: 'p' + (++nextRowId), title: '', desc: '', start: last + 1, end: last + 1,
+              milestone: '', kind: 'pre', visible: true,
+            }]));
+          },
+        }, h('i', { className: 'bw-icon', 'data-lucide': 'plus' }), 'Add phase')),
+
+      selected === null ? null : h('div', { className: 'bw-card bw-card--sunken' },
+        h('div', { className: 'bw-card__head' },
+          h('div', { className: 'bw-card__titles' },
+            h('p', { className: 'bw-card__eyebrow' }, 'Phase detail'),
+            h('h2', { className: 'bw-card__title' }, selected.title || 'Untitled phase'))),
+        h('div', { className: 'bw-card__body' },
+          h('div', { className: 'bw-fields' },
+            ganttField('Phase title', field.id + '-title',
+              h('input', { id: field.id + '-title', type: 'text', className: 'bw-input', disabled: locked,
+                value: selected.title || '', onChange: function (e) { patch(selectedIndex, { title: e.target.value }); } })),
+            ganttField('Milestone label', field.id + '-milestone',
+              h('input', { id: field.id + '-milestone', type: 'text', className: 'bw-input', disabled: locked,
+                value: selected.milestone || '', onChange: function (e) { patch(selectedIndex, { milestone: e.target.value }); } })),
+            ganttField('Start week', field.id + '-start',
+              h('input', { id: field.id + '-start', type: 'number', min: 1, className: 'bw-input', disabled: locked,
+                value: selected.start, onChange: function (e) { patch(selectedIndex, { start: Math.max(1, Number(e.target.value) || 1) }); } })),
+            ganttField('End week', field.id + '-end',
+              h('input', { id: field.id + '-end', type: 'number', min: 1, className: 'bw-input', disabled: locked,
+                value: selected.end, onChange: function (e) { patch(selectedIndex, { end: Math.max(1, Number(e.target.value) || 1) }); } })),
+            ganttField('Phase marker', field.id + '-kind',
+              h('span', { className: 'bw-select' },
+                h('select', { id: field.id + '-kind', className: 'bw-select__el', disabled: locked,
+                  value: selected.kind || 'pre',
+                  onChange: function (e) { patch(selectedIndex, { kind: e.target.value }); } },
+                  GANTT_KINDS.map(function (k) { return h('option', { key: k.value, value: k.value }, k.label); })),
+                h('i', { className: 'bw-icon bw-select__arrow', 'data-lucide': 'chevron-down' })),
+              'The launch milestone separates project work from work after launch.'),
+            ganttField('Shown to the client', field.id + '-visible',
+              h('label', { className: 'bw-switch' },
+                h('input', { id: field.id + '-visible', type: 'checkbox', disabled: locked,
+                  checked: selected.visible !== false,
+                  onChange: function (e) { patch(selectedIndex, { visible: e.target.checked }); } }),
+                h('span', { className: 'bw-switch__track' }, h('span', { className: 'bw-switch__thumb' })),
+                h('span', { className: 'bw-switch__label' }, selected.visible === false ? 'Hidden' : 'Shown'))),
+            ganttField('Client-facing description', field.id + '-desc',
+              h('textarea', { id: field.id + '-desc', rows: 2, className: 'bw-textarea', disabled: locked,
+                value: selected.desc || '', onChange: function (e) { patch(selectedIndex, { desc: e.target.value }); } }),
+              '', true)))));
+  }
+
+  const GANTT_MODES = [
+    { value: 'weeks', label: 'Project weeks' },
+    { value: 'dates', label: 'Calendar dates' },
+  ];
+
+  function ganttField(label, id, control, help, wide) {
+    const h = wp().element.createElement;
+    return h('div', { key: id, className: 'bw-field' + (wide ? ' bw-field--wide' : '') },
+      h('label', { className: 'bw-field__label', htmlFor: id }, label),
+      control,
+      help ? h('p', { className: 'bw-field__help' }, help) : null);
+  }
+
+  // Rows in the order they will be drawn, under the group each one belongs to.
+  // Groups follow the group cell's own option order, so the headers read the
+  // same way the select does; rows whose group cell is empty, or holds a value
+  // the select no longer offers, fall into one last group rather than
+  // disappearing. Returns null when the repeater does not group, which is what
+  // keeps the ungrouped path byte-for-byte what it was.
+  function repeaterGroups(field, rows) {
+    if (!field.group_by) return null;
+
+    const cell = (field.fields || []).find(function (c) { return c.id === field.group_by; });
+    const options = (cell && cell.options) || [];
+    const groups = options.map(function (o) { return { value: o.value, label: o.label, rows: [] }; });
+    const other = { value: '', label: field.group_empty_label || 'Ungrouped', rows: [] };
+
+    rows.forEach(function (row, index) {
+      const at = groups.find(function (g) { return String(g.value) === String(row[field.group_by]); });
+      (at || other).rows.push({ row: row, index: index });
+    });
+
+    if (other.rows.length > 0) groups.push(other);
+    // A group nobody has put a row in yet is not drawn: an empty phase header
+    // reads as a mistake rather than as an invitation.
+    return groups.filter(function (g) { return g.rows.length > 0; });
+  }
+
+  // The caller works out the figure; this only formats it. Blank reads as zero
+  // in a subtotal, which is what a half-filled row should contribute.
+  function repeaterSubtotal(field, rows) {
+    const total = rows.reduce(function (sum, entry) {
+      return sum + (Number(entry.row[field.subtotal_of]) || 0);
+    }, 0);
+    return field.subtotal_suffix ? total + ' ' + field.subtotal_suffix : String(total);
+  }
+
   function Repeater(props) {
     const h = wp().element.createElement;
     const rows = props.value;
@@ -659,31 +1008,48 @@
       props.onChange(next);
     }
 
+    // One row, drawn at its own index in the whole list. Position, not group
+    // position: move() and remove work on the list, so a grouped view must
+    // still hand each row the index it actually has.
+    function row(rowValue, i) {
+      // Keyed on the row's own id, not its position: move() swaps whole
+      // row objects, so the id travels with the content, and the row the
+      // pointer is over stays the row that actually moved.
+      return h('div', { key: rowValue.__rid || ('row-' + i), className: 'bw-repeater__row' },
+        // Dragging is a nice-to-have; these two buttons are how a reorder is
+        // actually done, so it works from the keyboard like everything else.
+        h('span', { className: 'bw-repeater__grip' },
+          h('button', { type: 'button', className: 'bw-iconbtn', 'aria-label': 'Move up', disabled: locked,
+            onClick: function () { move(i, -1); } },
+            h('i', { className: 'bw-icon', 'data-lucide': 'chevron-up' })),
+          h('button', { type: 'button', className: 'bw-iconbtn', 'aria-label': 'Move down', disabled: locked,
+            onClick: function () { move(i, 1); } },
+            h('i', { className: 'bw-icon', 'data-lucide': 'chevron-down' }))),
+        h('div', { className: 'bw-repeater__fields' }, (props.field.fields || []).map(function (cell) {
+          return h('div', { key: cell.id, className: 'bw-field' },
+            h('label', { className: 'bw-field__label', htmlFor: cell.id + '-' + i }, cell.label),
+            repeaterCell(cell, cell.id + '-' + i, rowValue[cell.id], locked, function (v) { change(i, cell, v); }));
+        })),
+        h('button', { type: 'button', className: 'bw-iconbtn bw-iconbtn--danger', 'aria-label': 'Remove this row', disabled: locked,
+          onClick: function () { props.onChange(rows.filter(function (_, j) { return j !== i; })); } },
+          h('i', { className: 'bw-icon', 'data-lucide': 'trash-2' })));
+    }
+
+    const groups = repeaterGroups(props.field, rows);
+
     return h('div', { className: 'bw-repeater' },
       rows.length === 0 ? h('div', { className: 'bw-repeater__empty' }, 'No rows yet.') : null,
-      rows.map(function (row, i) {
-        // Keyed on the row's own id, not its position: move() swaps whole
-        // row objects, so the id travels with the content, and the row the
-        // pointer is over stays the row that actually moved.
-        return h('div', { key: row.__rid || ('row-' + i), className: 'bw-repeater__row' },
-          // Dragging is a nice-to-have; these two buttons are how a reorder is
-          // actually done, so it works from the keyboard like everything else.
-          h('span', { className: 'bw-repeater__grip' },
-            h('button', { type: 'button', className: 'bw-iconbtn', 'aria-label': 'Move up', disabled: locked,
-              onClick: function () { move(i, -1); } },
-              h('i', { className: 'bw-icon', 'data-lucide': 'chevron-up' })),
-            h('button', { type: 'button', className: 'bw-iconbtn', 'aria-label': 'Move down', disabled: locked,
-              onClick: function () { move(i, 1); } },
-              h('i', { className: 'bw-icon', 'data-lucide': 'chevron-down' }))),
-          h('div', { className: 'bw-repeater__fields' }, (props.field.fields || []).map(function (cell) {
-            return h('div', { key: cell.id, className: 'bw-field' },
-              h('label', { className: 'bw-field__label', htmlFor: cell.id + '-' + i }, cell.label),
-              repeaterCell(cell, cell.id + '-' + i, row[cell.id], locked, function (v) { change(i, cell, v); }));
-          })),
-          h('button', { type: 'button', className: 'bw-iconbtn bw-iconbtn--danger', 'aria-label': 'Remove this row', disabled: locked,
-            onClick: function () { props.onChange(rows.filter(function (_, j) { return j !== i; })); } },
-            h('i', { className: 'bw-icon', 'data-lucide': 'trash-2' })));
-      }),
+      groups === null
+        ? rows.map(row)
+        : groups.map(function (group) {
+            return h(wp().element.Fragment, { key: 'g-' + group.value },
+              h('div', { className: 'bw-table__group' },
+                h('span', { className: 'bw-table__group-title' }, group.label),
+                props.field.subtotal_of
+                  ? h('span', { className: 'bw-table__group-total' }, repeaterSubtotal(props.field, group.rows))
+                  : null),
+              group.rows.map(function (entry) { return row(entry.row, entry.index); }));
+          }),
       h('div', { className: 'bw-repeater__foot' },
         h('button', { type: 'button', className: 'bw-btn bw-btn--secondary', disabled: locked,
           onClick: function () { props.onChange(rows.concat([{ __rid: 'r' + (++nextRowId) }])); } }, 'Add a row')));
@@ -779,6 +1145,9 @@
       case 'repeater':
         return h(Repeater, { field: field, value: value || [], onChange: set });
 
+      case 'gantt':
+        return h(Gantt, { field: field, value: value || [], onChange: set });
+
       case 'media':
         // The stored value is only ever an attachment id (see
         // Store::castByKind), never a URL, so there is nothing to render a
@@ -804,6 +1173,9 @@
             onClick: function () { openLibrary(field, set); } }, value ? 'Change file' : 'Choose a file'),
           value ? h('button', { type: 'button', className: 'bw-btn bw-btn--link', disabled: locked,
             onClick: function () { set(0); } }, 'Remove') : null);
+
+      case 'preview':
+        return h(Preview, { field: field });
 
       case 'facts':
         return h('dl', { className: 'bw-dl' }, (field.rows || []).map(function (row) {
@@ -840,6 +1212,13 @@
     Panel: Panel,
     Field: Field,
     Repeater: Repeater,
+    repeaterGroups: repeaterGroups,
+    repeaterSubtotal: repeaterSubtotal,
+    ganttPhaseRange: ganttPhaseRange,
+    summaryFigure: summaryFigure,
+    SummaryStrip: SummaryStrip,
+    Preview: Preview,
+    DEVICES: DEVICES,
   };
 
   /* --- Bootstrap ----------------------------------------------------------- */

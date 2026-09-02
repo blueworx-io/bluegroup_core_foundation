@@ -213,6 +213,20 @@
   --bw-focus-width:2px;
   --bw-focus-offset:1px;
   --bw-disabled-opacity:.5; /* @kind other */
+  /* Width below which a summary cell's label, figure and footnote stop reading
+     as one column and the strip wraps. A threshold, not a design value. */
+  --bw-summary-min:168px;
+  /* Timeline. The launch marker is the same ink as --bw-text-heading, declared
+     separately because here it is carrying a bar's meaning rather than text
+     colour, and the two must stay free to diverge. --bw-timeline-post is a
+     lighter indigo: the same family as the brand, read as later in time. */
+  --bw-timeline-launch:#0A0C29;
+  --bw-timeline-post:#8B84EA;
+  --bw-gantt-label-w:236px;
+  --bw-gantt-track-h:30px;
+  --bw-gantt-bar-inset:3px;
+  --bw-gantt-key-size:10px;
+  --bw-gantt-hidden-opacity:.45; /* @kind other */
 }
 
 /* --- Components — core (button, badge, chip, icon, avatar, tooltip) ---------- */
@@ -688,6 +702,24 @@
 .bw-table tbody tr:hover .bw-table__actions,.bw-table tbody tr:focus-within .bw-table__actions{opacity:1}
 .bw-table__check{width:36px;padding-right:0}
 .bw-table__check input{accent-color:var(--bw-brand);width:16px;height:16px;margin:0}
+/* Rows that fall into named groups — an estimate's phases, say. The group
+   header is a full-width row on the sunken surface carrying the group name and
+   its subtotal; the total row closes the table off. Both are ordinary rows, not
+   headers, so a screen reader reads them in document order with the rows they
+   belong to. A group's subtotal and the table's total are figures the caller
+   works out: the table never sums anything itself. */
+.bw-table__group>td{background:var(--bw-surface-sunken);padding:var(--bw-space-4) var(--bw-space-7)}
+.bw-table__group-title{font-size:var(--bw-size-xs);letter-spacing:var(--bw-track-label);text-transform:uppercase;font-weight:var(--bw-weight-semibold);color:var(--bw-brand)}
+.bw-table__group-total{float:right;font-variant-numeric:tabular-nums;color:var(--bw-text-muted);font-weight:var(--bw-weight-regular);text-transform:none;letter-spacing:normal}
+.bw-table__total>td{border-top:1px solid var(--bw-border);padding:var(--bw-space-7)}
+.bw-table__total-label{font-family:var(--bw-font-display);font-weight:var(--bw-weight-semibold);color:var(--bw-text-heading)}
+/* Neither a group header nor a total row is a record, so neither takes the
+   row hover the records above them use. */
+.bw-table tbody tr.bw-table__group:hover td,.bw-table tbody tr.bw-table__total:hover td{background:inherit}
+.bw-table__group:hover>td{background:var(--bw-surface-sunken)}
+/* An internal note on a row: for the administrator, never for the client. */
+.bw-table__note{display:flex;align-items:center;gap:var(--bw-space-3);font-size:var(--bw-size-sm);color:var(--bw-warning-deep)}
+.bw-table__legend{display:flex;flex-wrap:wrap;gap:var(--bw-space-7);font-size:var(--bw-size-sm);color:var(--bw-text-muted);padding:var(--bw-space-4) var(--bw-space-7)}
 
 .bw-toolbar{display:flex;align-items:center;gap:var(--bw-space-5);padding:var(--bw-space-6) var(--bw-space-7);border-bottom:1px solid var(--bw-border);flex-wrap:wrap}
 .bw-toolbar__search{flex:1 1 260px;max-width:320px}
@@ -703,7 +735,59 @@
 .bw-stat__delta--down{color:var(--bw-danger-deep)}
 .bw-stat__foot{font-size:var(--bw-size-sm);color:var(--bw-text-faint);margin:0}
 .bw-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:var(--bw-space-7)}
+/* Summary strip — the band of derived figures that sits under a page header and
+   stays put while the tabs beneath it change. Not .bw-stats: that is a grid of
+   cards on the canvas, this is one white band flush with the header above it,
+   divided by hairlines. Figures only — nothing here is editable or a link. */
+.bw-summary{display:flex;flex-wrap:wrap;gap:0;background:var(--bw-surface-card);border-bottom:1px solid var(--bw-border);padding:0 var(--bw-pad)}
+.bw-summary__cell{display:flex;flex-direction:column;gap:var(--bw-space-2);min-width:var(--bw-summary-min);padding:var(--bw-space-7) var(--bw-space-10) var(--bw-space-7) 0;margin-right:var(--bw-space-10);border-right:1px solid var(--bw-border)}
+.bw-summary__cell:last-child{border-right:0;margin-right:0}
+.bw-summary__label{font-size:var(--bw-size-xs);line-height:var(--bw-lh-tight);letter-spacing:var(--bw-track-label);text-transform:uppercase;color:var(--bw-text-muted);font-weight:var(--bw-weight-semibold)}
+.bw-summary__value{font-family:var(--bw-font-display);font-size:var(--bw-size-title);font-weight:var(--bw-weight-semibold);line-height:var(--bw-lh-tight);color:var(--bw-text-heading);font-variant-numeric:tabular-nums}
+.bw-summary__foot{font-size:var(--bw-size-sm);color:var(--bw-text-faint)}
+/* Gantt — phases positioned against a week or date scale. A bar's left and
+   width are the one thing a caller sets inline, because they are data, not
+   styling: they come from the phase's own start and end. Everything else about
+   a bar comes from its kind class. Weeks are authored, never derived from
+   estimated hours — a schedule is what the team can actually do. */
+.bw-gantt{display:flex;flex-direction:column;gap:var(--bw-space-5)}
+.bw-gantt__ruler{display:flex;gap:var(--bw-space-6);font-size:var(--bw-size-xs);letter-spacing:var(--bw-track-label);text-transform:uppercase;color:var(--bw-text-faint);font-weight:var(--bw-weight-semibold);padding-left:calc(var(--bw-gantt-label-w) + var(--bw-space-6))}
+.bw-gantt__tick{flex:1 1 0;min-width:0}
+.bw-gantt__rows{display:flex;flex-direction:column;gap:var(--bw-space-3)}
+.bw-gantt__row{display:flex;align-items:center;gap:var(--bw-space-6)}
+.bw-gantt__label{width:var(--bw-gantt-label-w);flex:none;display:flex;flex-direction:column;gap:var(--bw-space-1)}
+.bw-gantt__n{font-family:var(--bw-font-display);font-size:var(--bw-size-sm);color:var(--bw-text-faint)}
+.bw-gantt__title{font-weight:var(--bw-weight-semibold);color:var(--bw-text-heading);font-size:var(--bw-size-body);display:flex;align-items:center;gap:var(--bw-space-3)}
+.bw-gantt__range{font-size:var(--bw-size-sm);line-height:var(--bw-lh-body);color:var(--bw-text-muted)}
+.bw-gantt__track{flex:1 1 auto;height:var(--bw-gantt-track-h);border-radius:var(--bw-control-radius);background:var(--bw-surface-sunken);border:1px solid var(--bw-border);position:relative}
+.bw-gantt__bar{position:absolute;top:var(--bw-gantt-bar-inset);bottom:var(--bw-gantt-bar-inset);border-radius:var(--bw-radius-sm);color:var(--bw-text-on-accent);font-size:var(--bw-size-xs);display:flex;align-items:center;padding:0 var(--bw-space-4);overflow:hidden;white-space:nowrap;background:var(--bw-brand)}
+.bw-gantt__bar--pre{background:var(--bw-brand)}
+.bw-gantt__bar--launch{background:var(--bw-timeline-launch)}
+.bw-gantt__bar--post{background:var(--bw-timeline-post)}
+.bw-gantt__bar.is-hidden{opacity:var(--bw-gantt-hidden-opacity)}
+.bw-gantt__actions{flex:none;display:flex;gap:var(--bw-space-2)}
+.bw-gantt__legend{display:flex;gap:var(--bw-space-7);align-items:center;flex-wrap:wrap;font-size:var(--bw-size-sm);color:var(--bw-text-muted)}
+/* The swatch carries the colour, the label stays muted — so a legend key needs
+   no inline style, and the three kinds cannot drift from the bars they explain. */
+.bw-gantt__key{display:flex;gap:var(--bw-space-3);align-items:center}
+.bw-gantt__key::before{content:"";width:var(--bw-gantt-key-size);height:var(--bw-gantt-key-size);border-radius:var(--bw-radius-xs);background:var(--bw-brand);flex:none}
+.bw-gantt__key--launch::before{background:var(--bw-timeline-launch)}
+.bw-gantt__key--post::before{background:var(--bw-timeline-post)}
 
+/* Preview — a page of the site in a device frame, beside the fields that
+   change it. The stage scrolls rather than shrinking the frame: a preview
+   that scales to fit stops being a preview of anything real. */
+.bw-preview{display:flex;flex-direction:column;gap:var(--bw-space-6);border:1px solid var(--bw-border);border-radius:var(--bw-radius-lg);background:var(--bw-surface-sunken);overflow:hidden}
+.bw-preview__bar{display:flex;align-items:center;justify-content:space-between;gap:var(--bw-space-6);flex-wrap:wrap;padding:var(--bw-space-5) var(--bw-space-6);border-bottom:1px solid var(--bw-border);background:var(--bw-surface-card)}
+.bw-preview__devices{display:inline-flex;align-items:center;gap:var(--bw-space-2);padding:var(--bw-space-1);border:1px solid var(--bw-border);border-radius:var(--bw-radius-pill);background:var(--bw-surface-sunken)}
+.bw-preview__device{display:inline-flex;align-items:center;gap:var(--bw-space-3);padding:var(--bw-space-3) var(--bw-space-6);border:0;border-radius:var(--bw-radius-pill);background:transparent;color:var(--bw-text-muted);font-family:var(--bw-font-body);font-size:var(--bw-size-sm);font-weight:var(--bw-weight-semibold);cursor:pointer;transition:background var(--bw-dur) var(--bw-ease),color var(--bw-dur) var(--bw-ease)}
+.bw-preview__device:hover{color:var(--bw-text-body)}
+.bw-preview__device.is-current{background:var(--bw-surface-card);color:var(--bw-text-accent);box-shadow:var(--bw-shadow-card)}
+.bw-preview__actions{display:inline-flex;align-items:center;gap:var(--bw-space-5)}
+.bw-preview__stage{display:flex;justify-content:center;overflow:auto;padding:var(--bw-space-7);max-height:620px}
+.bw-preview__frame{flex:none;height:600px;border:1px solid var(--bw-border-strong);border-radius:var(--bw-radius-md);background:var(--bw-surface-card);box-shadow:var(--bw-shadow-card)}
+.bw-preview--empty{align-items:center;justify-content:center;gap:var(--bw-space-5);padding:var(--bw-space-11);text-align:center;color:var(--bw-text-muted)}
+.bw-preview__hint{margin:0;font-size:var(--bw-size-sm);color:var(--bw-text-muted)}
 /* --- Components — data display, extended ------------------------------------- */
 /* Detail lists, avatars, activity, bulk actions */
 .bw-dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--bw-space-5) var(--bw-space-8);font-size:var(--bw-size-body);margin:0}

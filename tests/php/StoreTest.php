@@ -396,4 +396,33 @@ final class StoreTest extends TestCase {
 		// ordinary settings screen needs, and this one stores nothing there.
 		$this->assertIsArray( $this->callbackScreen( $held ) );
 	}
+
+	public function test_a_gantt_round_trips_as_a_list_of_phases_not_a_string(): void {
+		$screen = Schema::validate( [
+			'slug' => 'sports', 'title' => 'Edit sport', 'post_type' => 'bw_sport',
+			'tabs' => [ [ 'id' => 'd', 'label' => 'Details', 'panels' => [
+				[ 'id' => 'b', 'title' => 'Basics', 'fields' => [ [ 'id' => 'timeline', 'kind' => 'gantt', 'label' => 'Timeline' ] ] ],
+			] ] ],
+		] );
+
+		$phases = [
+			[ 'id' => 'p1', 'title' => 'Discovery', 'desc' => '', 'start' => 1, 'end' => 2, 'milestone' => '', 'kind' => 'pre', 'visible' => true ],
+		];
+
+		$store = Store::for( $screen );
+		$store->write( [ 'timeline' => $phases ], 12 );
+
+		$this->assertSame( $phases, $store->read( 12 )['timeline'] );
+	}
+
+	public function test_a_gantt_never_saved_reads_back_as_an_empty_list(): void {
+		$screen = Schema::validate( [
+			'slug' => 'sports', 'title' => 'Edit sport', 'post_type' => 'bw_sport',
+			'tabs' => [ [ 'id' => 'd', 'label' => 'Details', 'panels' => [
+				[ 'id' => 'b', 'title' => 'Basics', 'fields' => [ [ 'id' => 'timeline', 'kind' => 'gantt', 'label' => 'Timeline' ] ] ],
+			] ] ],
+		] );
+
+		$this->assertSame( [], Store::for( $screen )->read( 12 )['timeline'] );
+	}
 }

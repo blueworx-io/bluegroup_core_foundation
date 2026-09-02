@@ -61,6 +61,15 @@ add_action( 'plugins_loaded', function () {
 		// own capabilities granted to a role somewhere, which is more than a
 		// reference schema should carry.
 		'capability' => 'edit_posts',
+		// The strip of derived figures under the header, which stays put while
+		// the tabs beneath it change. Every cell says what to work out, never
+		// how: the browser adds it up as somebody types, so the figures move
+		// with the screen rather than catching up after a save.
+		'summary'    => [
+			[ 'id' => 'coached', 'label' => 'Coached hours', 'sum' => 'delivery.hours', 'where' => 'delivery.counts', 'suffix' => 'hrs', 'foot' => 'Sessions that count towards the season' ],
+			[ 'id' => 'everything', 'label' => 'All planned hours', 'sum' => 'delivery.hours', 'suffix' => 'hrs', 'foot' => 'Including the ones left out' ],
+			[ 'id' => 'phases', 'label' => 'Season phases', 'count' => 'timeline', 'foot' => 'On the timeline' ],
+		],
 		'tabs'       => [
 			[
 				'id'     => 'content',
@@ -122,6 +131,53 @@ add_action( 'plugins_loaded', function () {
 									[ 'value' => '/about/', 'label' => 'About' ],
 									[ 'value' => '/membership/', 'label' => 'Membership' ],
 								] ],
+						],
+					],
+				],
+			],
+			[
+				'id'     => 'delivery',
+				'label'  => 'Delivery',
+				'panels' => [
+					[
+						'id'      => 'work',
+						'eyebrow' => 'Season · Coaching',
+						'title'   => 'Planned coaching',
+						'note'    => 'Rows fall under the block they belong to, and each block carries its own subtotal.',
+						'fields'  => [
+							// A repeater that groups. group_by names one of its
+							// own select cells, subtotal_of one of its own
+							// number cells — so the header row and the subtotal
+							// come from the same data the rows already hold,
+							// rather than from a second list to keep in step.
+							[
+								'id'                => 'delivery',
+								'kind'              => 'repeater',
+								'label'             => 'Coaching blocks',
+								'group_by'          => 'block',
+								'subtotal_of'       => 'hours',
+								'subtotal_suffix'   => 'hrs',
+								'group_empty_label' => 'Not scheduled yet',
+								'fields'            => [
+									[ 'id' => 'title', 'kind' => 'text', 'label' => 'Session' ],
+									[ 'id' => 'block', 'kind' => 'select', 'label' => 'Block', 'options' => [
+										[ 'value' => 'preseason', 'label' => 'Pre-season' ],
+										[ 'value' => 'season', 'label' => 'In season' ],
+										[ 'value' => 'offseason', 'label' => 'Off season' ],
+									] ],
+									[ 'id' => 'hours', 'kind' => 'number', 'label' => 'Hours' ],
+									[ 'id' => 'counts', 'kind' => 'toggle', 'label' => 'Counts towards the season' ],
+								],
+							],
+						],
+					],
+					[
+						'id'      => 'plan',
+						'eyebrow' => 'Season · Timeline',
+						'title'   => 'Season timeline',
+						'note'    => 'Weeks are set to match what the coaches can actually do — they are never worked out from the hours above.',
+						'fields'  => [
+							[ 'id' => 'timeline', 'kind' => 'gantt', 'label' => 'Season phases', 'help' => 'One bar per phase. The launch milestone separates the season from what follows it.' ],
 						],
 					],
 				],

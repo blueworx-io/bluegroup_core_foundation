@@ -279,3 +279,129 @@ test('a text field offers its suggestions without refusing anything else', async
   await page.reload();
   await expect(page.locator('#more_info')).toHaveValue('https://somewhere.else/');
 });
+
+/* --- The three controls the deck-style editors needed ----------------------- */
+
+// Fills the Delivery tab with three coaching rows across two blocks, one of
+// them excluded from the season. Returns nothing — every assertion below reads
+// the screen, so a helper that returned expected figures would be asserting
+// its own arithmetic rather than the editor's.
+async function addDeliveryRows(page) {
+  await page.getByRole('tab', { name: /Delivery/ }).click();
+
+  const rows = [
+    { title: 'Pre-season fitness', block: 'preseason', hours: '16', counts: true },
+    { title: 'Weekly training', block: 'season', hours: '30', counts: true },
+    { title: 'Tour', block: 'season', hours: '260', counts: false },
+  ];
+
+  for (let i = 0; i < rows.length; i++) {
+    await page.locator('.bw-repeater__foot .bw-btn').click();
+    await page.fill(`#title-${i}`, rows[i].title);
+    await page.selectOption(`#block-${i}`, rows[i].block);
+    await page.fill(`#hours-${i}`, rows[i].hours);
+    if (rows[i].counts) await page.check(`#counts-${i}`);
+  }
+}
+
+test('a grouped repeater draws one header per block, with that block\'s subtotal', async ({ page }) => {
+  await addDeliveryRows(page);
+
+  // Pre-season first, then In season: the order the select offers, not the
+  // order the rows were typed in.
+  await expect(page.locator('.bw-table__group-title')).toHaveText(['Pre-season', 'In season']);
+
+  // 16 in the first block; 30 + 260 in the second. A subtotal counts every row
+  // in its block, including one excluded from the season figure — that
+  // exclusion belongs to the summary strip, not to the block.
+  await expect(page.locator('.bw-table__group-total')).toHaveText(['16 hrs', '290 hrs']);
+});
+
+test('the summary strip moves as hours are typed, before anything is saved', async ({ page }) => {
+  const coached = page.locator('.bw-summary__cell', { hasText: 'Coached hours' }).locator('.bw-summary__value');
+  const all = page.locator('.bw-summary__cell', { hasText: 'All planned hours' }).locator('.bw-summary__value');
+
+  await expect(coached).toHaveText('0 hrs');
+
+  await addDeliveryRows(page);
+
+  // 16 + 30 — the 260-hour tour is switched out of the season.
+  await expect(coached).toHaveText('46 hrs');
+  // Every row, whether it counts towards the season or not.
+  await expect(all).toHaveText('306 hrs');
+
+  // Nothing has been saved: the strip is worked out in the browser, which is
+  // the whole reason it is declared rather than computed on the server.
+  await expect(page.locator('.bw-savebar .bw-btn--primary')).toBeEnabled();
+});
+
+test('a phase bar is positioned and coloured by its own weeks and marker', async ({ page }) => {
+  await page.getByRole('tab', { name: /Delivery/ }).click();
+
+  // Two phases: the first added spans week 1, the second week 2.
+  await page.locator('.bw-gantt__legend .bw-btn').click();
+  await page.locator('.bw-gantt__legend .bw-btn').click();
+  await expect(page.locator('.bw-gantt__row')).toHaveCount(2);
+
+  // Edit the second into a launch milestone running weeks 4 to 7.
+  await page.locator('.bw-gantt__row').nth(1).getByRole('button', { name: /^Edit/ }).click();
+  await page.fill('#timeline-title', 'Season launch');
+  await page.fill('#timeline-start', '4');
+  await page.fill('#timeline-end', '7');
+  await page.selectOption('#timeline-kind', 'launch');
+
+  const bar = page.locator('.bw-gantt__row').nth(1).locator('.bw-gantt__bar');
+  await expect(bar).toHaveClass(/bw-gantt__bar--launch/);
+
+  // The scale runs to week 7, so weeks 4–7 start three sevenths in and fill
+  // the remaining four sevenths.
+  await expect(bar).toHaveAttribute('style', /left:\s*42\.857/);
+  await expect(bar).toHaveAttribute('style', /width:\s*57\.142/);
+
+  await expect(page.locator('.bw-gantt__row').nth(1).locator('.bw-gantt__range')).toContainText('Weeks 4–7');
+});
+
+test('a timeline with two launch milestones will not save, and says why', async ({ page }) => {
+  await page.getByRole('tab', { name: /Delivery/ }).click();
+
+  for (let i = 0; i < 2; i++) {
+    await page.locator('.bw-gantt__legend .bw-btn').click();
+    await page.locator('.bw-gantt__row').nth(i).getByRole('button', { name: /^Edit/ }).click();
+    await page.fill('#timeline-title', `Launch ${i + 1}`);
+    await page.selectOption('#timeline-kind', 'launch');
+  }
+
+  // post_title lives on the Content tab; the work above was on Delivery.
+  await page.getByRole('tab', { name: /Content/ }).click();
+  await page.fill('#post_title', 'Rugby');
+  await page.click('.bw-savebar .bw-btn--primary');
+
+  await expect(page.locator('.bw-notice--danger')).toContainText('Nothing was saved');
+
+  // The bad field is on the tab we just left, so the error is not on screen
+  // until the notice takes us back to it. That is the point of the button.
+  await page.getByRole('button', { name: 'Take me to it' }).click();
+  await expect(page.locator('.bw-field__error')).toContainText('one launch milestone');
+});
+
+test('a timeline and its grouped rows survive a save', async ({ page }) => {
+  await addDeliveryRows(page);
+
+  await page.locator('.bw-gantt__legend .bw-btn').click();
+  await page.locator('.bw-gantt__row').first().getByRole('button', { name: /^Edit/ }).click();
+  await page.fill('#timeline-title', 'Pre-season');
+  await page.fill('#timeline-end', '6');
+
+  // post_title lives on the Content tab; the work above was on Delivery.
+  await page.getByRole('tab', { name: /Content/ }).click();
+  await page.fill('#post_title', 'Rugby');
+  await page.click('.bw-savebar .bw-btn--primary');
+  await expect(page.locator('.bw-notice--success')).toBeVisible();
+
+  await page.reload();
+  await page.getByRole('tab', { name: /Delivery/ }).click();
+
+  await expect(page.locator('.bw-table__group-total')).toHaveText(['16 hrs', '290 hrs']);
+  await expect(page.locator('.bw-summary__cell', { hasText: 'Coached hours' }).locator('.bw-summary__value')).toHaveText('46 hrs');
+  await expect(page.locator('.bw-gantt__range').first()).toContainText('Weeks 1–6');
+});

@@ -617,4 +617,219 @@ final class SchemaTest extends TestCase {
 		$screen = Schema::validate( $this->screen( [ 'id' => 'seats', 'kind' => 'number', 'label' => 'Seats', 'min' => -10, 'max' => 10 ] ) );
 		$this->assertSame( 0, $screen['tabs'][0]['panels'][0]['fields'][0]['default'] );
 	}
+
+	public function test_a_gantt_field_is_accepted_and_defaults_to_an_empty_list(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'timeline', 'kind' => 'gantt', 'label' => 'Project timeline' ] ) );
+		$field  = $screen['tabs'][0]['panels'][0]['fields'][0];
+		$this->assertSame( 'gantt', $field['kind'] );
+		$this->assertSame( [], $field['default'] );
+		$this->assertTrue( $field['wide'], 'a gantt is never half a row' );
+	}
+
+	public function test_a_gantt_cannot_live_inside_a_repeater(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'repeater row can only hold' );
+		Schema::validate( $this->screen( [
+			'id'     => 'rows',
+			'kind'   => 'repeater',
+			'label'  => 'Rows',
+			'fields' => [ [ 'id' => 'chart', 'kind' => 'gantt', 'label' => 'Chart' ] ],
+		] ) );
+	}
+	public function test_a_gantt_counts_its_dates_from_today_unless_given_an_origin(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'timeline', 'kind' => 'gantt', 'label' => 'Project timeline' ] ) );
+		$this->assertSame( '', $screen['tabs'][0]['panels'][0]['fields'][0]['origin'] );
+
+		$screen = Schema::validate( $this->screen( [ 'id' => 'timeline', 'kind' => 'gantt', 'label' => 'Project timeline', 'origin' => '2026-09-01' ] ) );
+		$this->assertSame( '2026-09-01', $screen['tabs'][0]['panels'][0]['fields'][0]['origin'] );
+	}
+	private function estimateRepeater( array $extra = [] ): array {
+		return array_merge( [
+			'id'     => 'items',
+			'kind'   => 'repeater',
+			'label'  => 'Line items',
+			'fields' => [
+				[ 'id' => 'title', 'kind' => 'text', 'label' => 'Work item' ],
+				[ 'id' => 'phase', 'kind' => 'select', 'label' => 'Phase', 'options' => [ [ 'value' => 'discovery', 'label' => 'Discovery' ] ] ],
+				[ 'id' => 'hours', 'kind' => 'number', 'label' => 'Hours' ],
+			],
+		], $extra );
+	}
+
+	public function test_a_repeater_may_group_by_one_of_its_own_select_cells(): void {
+		$screen = Schema::validate( $this->screen( $this->estimateRepeater( [
+			'group_by'    => 'phase',
+			'subtotal_of' => 'hours',
+		] ) ) );
+		$field = $screen['tabs'][0]['panels'][0]['fields'][0];
+
+		$this->assertSame( 'phase', $field['group_by'] );
+		$this->assertSame( 'hours', $field['subtotal_of'] );
+		$this->assertSame( 'Ungrouped', $field['group_empty_label'] );
+		$this->assertSame( '', $field['subtotal_suffix'] );
+	}
+
+	public function test_a_repeater_that_groups_nothing_still_answers_for_the_option(): void {
+		$screen = Schema::validate( $this->screen( $this->estimateRepeater() ) );
+		$field  = $screen['tabs'][0]['panels'][0]['fields'][0];
+
+		$this->assertSame( '', $field['group_by'] );
+		$this->assertSame( '', $field['subtotal_of'] );
+	}
+
+	public function test_grouping_by_a_cell_that_is_not_there_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'group_by' );
+		Schema::validate( $this->screen( $this->estimateRepeater( [ 'group_by' => 'nope' ] ) ) );
+	}
+
+	public function test_grouping_by_a_cell_that_is_not_a_select_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'has to be a "select" cell' );
+		Schema::validate( $this->screen( $this->estimateRepeater( [ 'group_by' => 'title' ] ) ) );
+	}
+
+	public function test_subtotalling_a_cell_that_is_not_a_number_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'has to be a "number" cell' );
+		Schema::validate( $this->screen( $this->estimateRepeater( [ 'subtotal_of' => 'title' ] ) ) );
+	}
+	private function summaryScreen( array $summary ): array {
+		return [
+			'slug'      => 'sports',
+			'title'     => 'Edit sport',
+			'post_type' => 'bw_sport',
+			'summary'   => $summary,
+			'tabs'      => [
+				[ 'id' => 'plan', 'label' => 'Plan', 'panels' => [
+					[ 'id' => 'work', 'title' => 'Work', 'fields' => [
+						[
+							'id'     => 'items',
+							'kind'   => 'repeater',
+							'label'  => 'Line items',
+							'fields' => [
+								[ 'id' => 'title', 'kind' => 'text', 'label' => 'Work item' ],
+								[ 'id' => 'hours', 'kind' => 'number', 'label' => 'Hours' ],
+								[ 'id' => 'inTotal', 'kind' => 'toggle', 'label' => 'In total' ],
+							],
+						],
+						[
+							'id'     => 'after',
+							'kind'   => 'repeater',
+							'label'  => 'Post-launch items',
+							'fields' => [
+								[ 'id' => 'hours', 'kind' => 'number', 'label' => 'Hours' ],
+								[ 'id' => 'inTotal', 'kind' => 'toggle', 'label' => 'In total' ],
+							],
+						],
+						[ 'id' => 'timeline', 'kind' => 'gantt', 'label' => 'Project timeline' ],
+					] ],
+				] ],
+			],
+		];
+	}
+
+	public function test_a_summary_cell_is_normalised(): void {
+		$screen = Schema::validate( $this->summaryScreen( [
+			[ 'id' => 'estimate', 'label' => 'Project estimate', 'sum' => 'items.hours', 'where' => 'items.inTotal', 'suffix' => 'hrs', 'foot' => 'Before launch' ],
+			[ 'id' => 'phases', 'label' => 'Phases', 'count' => 'timeline' ],
+		] ) );
+
+		$this->assertCount( 2, $screen['summary'] );
+		$this->assertSame( 'estimate', $screen['summary'][0]['id'] );
+		$this->assertSame( [ 'items.hours' ], $screen['summary'][0]['sum'] );
+		$this->assertSame( [ 'items.inTotal' ], $screen['summary'][0]['where'] );
+		$this->assertSame( 'hrs', $screen['summary'][0]['suffix'] );
+		$this->assertSame( 'Before launch', $screen['summary'][0]['foot'] );
+		$this->assertSame( [ 'timeline' ], $screen['summary'][1]['count'] );
+		$this->assertSame( [ '' ], $screen['summary'][1]['where'] );
+	}
+
+	public function test_a_summary_cell_may_add_up_more_than_one_list(): void {
+		$screen = Schema::validate( $this->summaryScreen( [
+			[
+				'id'    => 'package',
+				'label' => 'In package',
+				'sum'   => [ 'items.hours', 'after.hours' ],
+				'where' => [ 'items.inTotal', 'after.inTotal' ],
+			],
+		] ) );
+
+		$this->assertSame( [ 'items.hours', 'after.hours' ], $screen['summary'][0]['sum'] );
+		$this->assertSame( [ 'items.inTotal', 'after.inTotal' ], $screen['summary'][0]['where'] );
+	}
+
+	public function test_a_summary_cell_may_leave_one_of_its_lists_unfiltered(): void {
+		$screen = Schema::validate( $this->summaryScreen( [
+			[ 'id' => 'package', 'label' => 'In package', 'sum' => [ 'items.hours', 'after.hours' ], 'where' => [ 'items.inTotal', '' ] ],
+		] ) );
+
+		$this->assertSame( [ 'items.inTotal', '' ], $screen['summary'][0]['where'] );
+	}
+
+	public function test_a_summary_cell_with_fewer_filters_than_lists_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'there has to be one for each' );
+		Schema::validate( $this->summaryScreen( [
+			[ 'id' => 'package', 'label' => 'In package', 'sum' => [ 'items.hours', 'after.hours' ], 'where' => 'items.inTotal' ],
+		] ) );
+	}
+
+	public function test_a_summary_cell_naming_a_missing_field_in_a_list_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'there is no field called "nope"' );
+		Schema::validate( $this->summaryScreen( [
+			[ 'id' => 'package', 'label' => 'In package', 'sum' => [ 'items.hours', 'nope.hours' ] ],
+		] ) );
+	}
+
+	public function test_a_preview_field_keeps_the_address_the_plugin_gave_it(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'look', 'kind' => 'preview', 'label' => 'Preview', 'url' => 'https://example.test/deck/abc' ] ) );
+		$field  = $screen['tabs'][0]['panels'][0]['fields'][0];
+
+		$this->assertSame( 'https://example.test/deck/abc', $field['url'] );
+		$this->assertTrue( $field['wide'], 'a device frame at half width shows nothing' );
+	}
+
+	public function test_a_preview_field_with_no_address_is_allowed(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'look', 'kind' => 'preview', 'label' => 'Preview' ] ) );
+
+		$this->assertSame( '', $screen['tabs'][0]['panels'][0]['fields'][0]['url'] );
+	}
+	public function test_a_screen_with_no_summary_answers_with_an_empty_one(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'name', 'kind' => 'text', 'label' => 'Name' ] ) );
+		$this->assertSame( [], $screen['summary'] );
+	}
+
+	public function test_a_summary_cell_without_a_label_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'needs an id and a label' );
+		Schema::validate( $this->summaryScreen( [ [ 'id' => 'estimate' ] ] ) );
+	}
+
+	public function test_a_summary_cell_that_works_nothing_out_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'needs a sum or a count' );
+		Schema::validate( $this->summaryScreen( [ [ 'id' => 'estimate', 'label' => 'Project estimate' ] ] ) );
+	}
+
+	public function test_a_summary_cell_summing_a_field_that_is_not_there_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'no field called "nope"' );
+		Schema::validate( $this->summaryScreen( [ [ 'id' => 'estimate', 'label' => 'Project estimate', 'sum' => 'nope.hours' ] ] ) );
+	}
+
+	public function test_a_summary_cell_summing_a_cell_that_is_not_a_number_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'has to be a "number" cell' );
+		Schema::validate( $this->summaryScreen( [ [ 'id' => 'estimate', 'label' => 'Project estimate', 'sum' => 'items.title' ] ] ) );
+	}
+
+	public function test_a_summary_cell_filtering_on_something_that_is_not_a_toggle_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'has to be a "toggle" cell' );
+		Schema::validate( $this->summaryScreen( [
+			[ 'id' => 'estimate', 'label' => 'Project estimate', 'sum' => 'items.hours', 'where' => 'items.title' ],
+		] ) );
+	}
 }

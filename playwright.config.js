@@ -56,6 +56,21 @@ module.exports = {
   workers: 1,
   retries: 0,
   reporter: 'list',
+  // Three times Playwright's default 30s, for the whole suite rather than a
+  // handful of hand-picked tests.
+  //
+  // A WordPress admin screen is not a page, it is a couple of hundred
+  // requests, and the server answering them is `php -S`, which answers one at
+  // a time. A spec that signs in and opens the editor twice can spend 20-odd
+  // seconds doing nothing wrong. The specs that first crossed the line did so
+  // only when the suite grew — they pass on their own and time out in a full
+  // run, which is the shape of a budget problem, not a bug in whichever spec
+  // happened to notice.
+  //
+  // This does not slow a passing run down: a spec that finishes in 8 seconds
+  // still finishes in 8 seconds. It only changes how long a genuinely stuck
+  // one waits before it is called stuck.
+  timeout: 90000,
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:8881',
   },

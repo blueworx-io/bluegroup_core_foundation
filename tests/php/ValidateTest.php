@@ -112,4 +112,49 @@ final class ValidateTest extends TestCase {
 		$errors = Validate::run( $screen, [ 'name' => '' ] );
 		$this->assertArrayHasKey( 'name', $errors );
 	}
+
+	private function timelineScreen(): array {
+		return Schema::validate( [
+			'slug'      => 'sports',
+			'title'     => 'Edit sport',
+			'post_type' => 'bw_sport',
+			'tabs'      => [
+				[ 'id' => 'plan', 'label' => 'Plan', 'panels' => [
+					[ 'id' => 'phases', 'title' => 'Phases', 'fields' => [
+						[ 'id' => 'timeline', 'kind' => 'gantt', 'label' => 'Project timeline' ],
+					] ],
+				] ],
+			],
+		] );
+	}
+
+	public function test_a_phase_that_ends_before_it_starts_is_rejected(): void {
+		$errors = Validate::run( $this->timelineScreen(), [ 'timeline' => [
+			[ 'id' => 'p1', 'title' => 'Discovery', 'start' => 6, 'end' => 2, 'kind' => 'pre', 'visible' => true ],
+		] ] );
+
+		$this->assertArrayHasKey( 'timeline', $errors );
+		$this->assertStringContainsString( 'Discovery', $errors['timeline'] );
+		$this->assertStringContainsString( 'ends before it starts', $errors['timeline'] );
+	}
+
+	public function test_only_one_phase_may_be_the_launch_milestone(): void {
+		$errors = Validate::run( $this->timelineScreen(), [ 'timeline' => [
+			[ 'id' => 'p1', 'title' => 'Launch', 'start' => 15, 'end' => 15, 'kind' => 'launch', 'visible' => true ],
+			[ 'id' => 'p2', 'title' => 'Relaunch', 'start' => 20, 'end' => 20, 'kind' => 'launch', 'visible' => true ],
+		] ] );
+
+		$this->assertArrayHasKey( 'timeline', $errors );
+		$this->assertStringContainsString( 'one launch milestone', $errors['timeline'] );
+	}
+
+	public function test_a_workable_timeline_returns_no_errors(): void {
+		$errors = Validate::run( $this->timelineScreen(), [ 'timeline' => [
+			[ 'id' => 'p1', 'title' => 'Discovery', 'start' => 1, 'end' => 2, 'kind' => 'pre', 'visible' => true ],
+			[ 'id' => 'p2', 'title' => 'Launch', 'start' => 15, 'end' => 15, 'kind' => 'launch', 'visible' => true ],
+			[ 'id' => 'p3', 'title' => 'Optimisation', 'start' => 18, 'end' => 26, 'kind' => 'post', 'visible' => true ],
+		] ] );
+
+		$this->assertSame( [], $errors );
+	}
 }

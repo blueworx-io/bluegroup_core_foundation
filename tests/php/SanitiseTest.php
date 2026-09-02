@@ -82,4 +82,52 @@ final class SanitiseTest extends TestCase {
 		$this->assertNull( Sanitise::field( [ 'kind' => 'copytext' ], 'anything at all' ) );
 		$this->assertNull( Sanitise::field( [ 'kind' => 'copytext' ], '<script>bad()</script>' ) );
 	}
+
+	public function test_a_gantt_value_keeps_only_known_phase_columns(): void {
+		$out = Sanitise::field(
+			[ 'kind' => 'gantt' ],
+			[
+				[
+					'id'           => 'p1',
+					'title'        => '<b>Discovery</b>',
+					'desc'         => 'Research and interviews',
+					'start'        => '1',
+					'end'          => '2',
+					'milestone'    => '',
+					'kind'         => 'pre',
+					'visible'      => '1',
+					'internalOnly' => 'should not survive',
+				],
+				'not an array',
+			]
+		);
+
+		$this->assertCount( 1, $out, 'a row that is not an array is dropped' );
+		$this->assertSame( 'Discovery', $out[0]['title'] );
+		$this->assertSame( 1, $out[0]['start'] );
+		$this->assertSame( 2, $out[0]['end'] );
+		$this->assertSame( 'pre', $out[0]['kind'] );
+		$this->assertTrue( $out[0]['visible'] );
+		$this->assertArrayNotHasKey( 'internalOnly', $out[0] );
+	}
+
+	public function test_a_phase_with_an_unrecognised_marker_is_kept_as_pre_launch(): void {
+		$out = Sanitise::field(
+			[ 'kind' => 'gantt' ],
+			[ [ 'id' => 'p1', 'title' => 'Discovery', 'start' => 1, 'end' => 2, 'kind' => 'nonsense' ] ]
+		);
+
+		$this->assertCount( 1, $out, 'a nonsense marker must not lose the phase' );
+		$this->assertSame( 'pre', $out[0]['kind'] );
+	}
+
+	public function test_a_phase_week_is_never_below_one(): void {
+		$out = Sanitise::field(
+			[ 'kind' => 'gantt' ],
+			[ [ 'id' => 'p1', 'title' => 'Discovery', 'start' => 0, 'end' => -4 ] ]
+		);
+
+		$this->assertSame( 1, $out[0]['start'] );
+		$this->assertSame( 1, $out[0]['end'] );
+	}
 }

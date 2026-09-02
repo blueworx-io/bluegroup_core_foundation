@@ -240,7 +240,8 @@ jobs:
 
       - name: PHPCS (if a phpcs config exists)
         run: |
-          if ls phpcs.xml phpcs.xml.dist .phpcs.xml >/dev/null 2>&1; then
+          set -o pipefail
+          if [ -f phpcs.xml ] || [ -f phpcs.xml.dist ] || [ -f .phpcs.xml ]; then
             if [ -f composer.json ]; then composer install --no-interaction --no-progress || true; fi
             if [ -f vendor/bin/phpcs ]; then
               vendor/bin/phpcs -q --report=checkstyle | cs2pr
@@ -253,7 +254,7 @@ jobs:
 
       - name: PHPUnit (if a phpunit config exists)
         run: |
-          if ls phpunit.xml phpunit.xml.dist >/dev/null 2>&1; then
+          if [ -f phpunit.xml ] || [ -f phpunit.xml.dist ]; then
             # The plugin's unit tests run without a WordPress runtime (fakes/stubs),
             # so they belong in this job, not the Playwright one. composer install
             # only if the PHPCS step above did not already provide the vendor dir.

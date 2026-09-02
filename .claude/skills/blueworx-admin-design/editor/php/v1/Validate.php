@@ -65,6 +65,13 @@ final class Validate {
 				$errors[ $field['id'] ] = sprintf( 'Keep this to %d characters or fewer.', (int) $field['max_length'] );
 				continue;
 			}
+			if ( 'gantt' === $field['kind'] ) {
+				$problem = self::timelineProblem( is_array( $value ) ? $value : [] );
+				if ( null !== $problem ) {
+					$errors[ $field['id'] ] = $problem;
+				}
+				continue;
+			}
 		}
 
 		if ( isset( $screen['validate'] ) && is_callable( $screen['validate'] ) ) {
@@ -104,6 +111,46 @@ final class Validate {
 		}
 
 		return ( $values[ $on['field'] ] ?? null ) == $on['value']; // phpcs:ignore WordPress.PHP.StrictComparisons.LooseComparison -- a checkbox sends "1" for the boolean true a schema declares.
+	}
+
+	/**
+	 * The first thing wrong with a timeline, as a sentence naming the fix, or
+	 * null when it is workable. One message, because errors are keyed by field
+	 * and a gantt is one field however many phases it holds — so the first
+	 * problem is the one to fix, and the next save reports the next.
+	 *
+	 * Weeks themselves are not checked against each other: phases are allowed
+	 * to overlap, sit apart, or run in any order. Only a phase that ends before
+	 * it starts is impossible.
+	 */
+	private static function timelineProblem( array $phases ): ?string {
+		$launches = 0;
+
+		foreach ( $phases as $phase ) {
+			$title = trim( (string) ( $phase['title'] ?? '' ) );
+			$start = (int) ( $phase['start'] ?? 1 );
+			$end   = (int) ( $phase['end'] ?? 1 );
+
+			if ( $end < $start ) {
+				return sprintf(
+					'"%s" ends before it starts. Set its end week to week %d or later.',
+					'' === $title ? 'This phase' : $title,
+					$start
+				);
+			}
+			if ( 'launch' === ( $phase['kind'] ?? '' ) ) {
+				$launches++;
+			}
+		}
+
+		if ( $launches > 1 ) {
+			return sprintf(
+				'A timeline has one launch milestone, and this one has %d. It is what separates project work from work after launch, so mark one phase as the launch and change the others.',
+				$launches
+			);
+		}
+
+		return null;
 	}
 
 	private static function isEmpty( $value ): bool {

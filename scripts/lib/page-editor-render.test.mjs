@@ -119,8 +119,10 @@ const DRAWS = {
   record: ['select', 'bw-select__el'],
   facts: ['dl', 'bw-dl'],
   table: ['table', 'bw-table'],
+  gantt: ['div', 'bw-gantt'],
   title: ['input', 'bw-titleinput'],
   slug: ['div', 'bw-permalink'],
+  preview: ['div', 'bw-preview'],
 };
 
 // The minimum a field of each kind needs to be drawable at all.
@@ -131,6 +133,7 @@ function fieldFor(kind) {
   }
   if (kind === 'repeater') field.fields = [{ id: 'cell', kind: 'text', label: 'Cell' }];
   if (kind === 'facts') field.rows = [{ label: 'Members', value: '318' }];
+  if (kind === 'preview') field.url = 'https://example.test/deck/abc';
   if (kind === 'table') {
     field.columns = ['Day'];
     field.rows = [['Monday']];
@@ -294,4 +297,175 @@ test('a conditional field names its dependency even when that field is on anothe
 
   assert.equal(hasControl(tree, 'div', 'bw-conditional'), true);
   assert.match(textOf(tree), /Announcement bar/, 'the note must name the field, not print its raw id');
+});
+
+/* --- A repeater whose rows fall into groups --------------------------------- */
+
+const ESTIMATE = {
+  id: 'items',
+  kind: 'repeater',
+  label: 'Line items',
+  group_by: 'phase',
+  subtotal_of: 'hours',
+  subtotal_suffix: 'hrs',
+  group_empty_label: 'Ungrouped',
+  fields: [
+    { id: 'title', kind: 'text', label: 'Work item' },
+    { id: 'phase', kind: 'select', label: 'Phase', options: [{ value: 'discovery', label: 'Discovery' }, { value: 'design', label: 'UI design' }] },
+    { id: 'hours', kind: 'number', label: 'Hours' },
+  ],
+};
+
+const ESTIMATE_ROWS = [
+  { __rid: 'r1', title: 'Interviews', phase: 'discovery', hours: 16 },
+  { __rid: 'r2', title: 'Key screens', phase: 'design', hours: 30 },
+  { __rid: 'r3', title: 'Competitor review', phase: 'discovery', hours: 8 },
+  { __rid: 'r4', title: 'Not filed yet', phase: '', hours: 4 },
+];
+
+test('grouping follows the select\'s own option order, not the row order', () => {
+  const groups = pe.repeaterGroups(ESTIMATE, ESTIMATE_ROWS);
+  assert.deepEqual(groups.map((g) => g.label), ['Discovery', 'UI design', 'Ungrouped']);
+});
+
+test('a row keeps the index it has in the whole list, not its index in its group', () => {
+  const groups = pe.repeaterGroups(ESTIMATE, ESTIMATE_ROWS);
+  const discovery = groups.find((g) => g.label === 'Discovery');
+  assert.deepEqual(discovery.rows.map((e) => e.index), [0, 2], 'move and remove work on the whole list');
+});
+
+test('a group nobody has filed a row under is not drawn', () => {
+  const groups = pe.repeaterGroups(ESTIMATE, [{ __rid: 'r1', title: 'Interviews', phase: 'discovery', hours: 16 }]);
+  assert.deepEqual(groups.map((g) => g.label), ['Discovery']);
+});
+
+test('a row whose group cell is empty is kept, under the last group', () => {
+  const groups = pe.repeaterGroups(ESTIMATE, ESTIMATE_ROWS);
+  const other = groups[groups.length - 1];
+  assert.equal(other.label, 'Ungrouped');
+  assert.deepEqual(other.rows.map((e) => e.row.title), ['Not filed yet']);
+});
+
+test('a repeater that does not group returns no groups at all', () => {
+  const plain = Object.assign({}, ESTIMATE, { group_by: '' });
+  assert.equal(pe.repeaterGroups(plain, ESTIMATE_ROWS), null, 'the ungrouped path must stay exactly what it was');
+});
+
+test('a subtotal counts its own cell and carries its suffix', () => {
+  const groups = pe.repeaterGroups(ESTIMATE, ESTIMATE_ROWS);
+  const discovery = groups.find((g) => g.label === 'Discovery');
+  assert.equal(pe.repeaterSubtotal(ESTIMATE, discovery.rows), '24 hrs');
+});
+
+test('a blank number reads as zero in a subtotal', () => {
+  const rows = [{ row: { hours: '' } }, { row: { hours: 12 } }];
+  assert.equal(pe.repeaterSubtotal(ESTIMATE, rows), '12 hrs');
+});
+
+test('a grouped repeater draws a header per group with its subtotal', () => {
+  const tree = render(h(pe.Repeater, { field: ESTIMATE, value: ESTIMATE_ROWS, onChange() {} }));
+  assert.equal(hasControl(tree, 'div', 'bw-table__group'), true, 'no group header was drawn');
+  const text = textOf(tree);
+  assert.match(text, /Discovery/);
+  assert.match(text, /24 hrs/);
+  assert.match(text, /30 hrs/, 'the second group subtotals its own rows, not the whole list');
+});
+
+/* --- How a gantt phase reads its own range ---------------------------------- */
+
+test('a phase spanning one week reads as one week, not a range', () => {
+  assert.equal(pe.ganttPhaseRange({ start: 15, end: 15 }, 'weeks', ''), 'Week 15');
+});
+
+test('a phase with a milestone names it after the range', () => {
+  assert.equal(pe.ganttPhaseRange({ start: 4, end: 7, milestone: 'Design sign-off' }, 'weeks', ''), 'Weeks 4–7 · Design sign-off');
+});
+
+test('calendar mode counts weeks forward from the field origin', () => {
+  const range = pe.ganttPhaseRange({ start: 1, end: 3 }, 'dates', '2026-09-01');
+  assert.match(range, /1 Sep/, 'week 1 is the origin itself');
+  assert.match(range, /15 Sep/, 'week 3 is fourteen days later');
+});
+
+/* --- The summary strip ------------------------------------------------------ */
+
+const SUMMARY_VALUES = {
+  items: [
+    { hours: 16, inTotal: true },
+    { hours: 30, inTotal: true },
+    { hours: 260, inTotal: false },
+    { hours: '', inTotal: true },
+  ],
+  timeline: [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }],
+};
+
+test('a summary cell adds up one repeater cell across its rows', () => {
+  const cell = { id: 'estimate', label: 'Project estimate', sum: ['items.hours'], where: [''], suffix: 'hrs', foot: '' };
+  assert.equal(pe.summaryFigure(cell, SUMMARY_VALUES), '306 hrs');
+});
+
+test('a summary cell counts only the rows its condition holds for', () => {
+  const cell = { id: 'estimate', label: 'Project estimate', sum: ['items.hours'], where: ['items.inTotal'], suffix: 'hrs', foot: '' };
+  assert.equal(pe.summaryFigure(cell, SUMMARY_VALUES), '46 hrs', 'the excluded 260 must be left out');
+});
+
+test('a blank number reads as zero in a summary, not as nothing', () => {
+  const cell = { id: 'estimate', label: 'Project estimate', sum: ['items.hours'], where: ['items.inTotal'], suffix: '', foot: '' };
+  assert.equal(pe.summaryFigure(cell, SUMMARY_VALUES), '46');
+});
+
+test('a summary cell counts rows', () => {
+  const cell = { id: 'phases', label: 'Phases', count: ['timeline'], sum: [], where: [''], suffix: '', foot: '' };
+  assert.equal(pe.summaryFigure(cell, SUMMARY_VALUES), '3');
+});
+
+test('a summary cell over a field that holds nothing yet reads zero', () => {
+  const cell = { id: 'phases', label: 'Phases', count: ['timeline'], sum: [], where: [''], suffix: '', foot: '' };
+  assert.equal(pe.summaryFigure(cell, {}), '0');
+});
+
+
+test('a summary cell adds up more than one list into one figure', () => {
+  const values = {
+    items: [{ hours: 16, inPackage: true }, { hours: 30, inPackage: false }],
+    after: [{ hours: 8, inPackage: true }, { hours: 4, inPackage: true }],
+  };
+  const cell = { id: 'package', label: 'In package', sum: ['items.hours', 'after.hours'],
+    where: ['items.inPackage', 'after.inPackage'], suffix: 'hrs', foot: '' };
+  assert.equal(pe.summaryFigure(cell, values), '28 hrs', 'the 30 its own filter excludes must be left out');
+});
+
+test('a list a summary cell adds up may go unfiltered while another is filtered', () => {
+  const values = {
+    items: [{ hours: 16, inPackage: true }, { hours: 30, inPackage: false }],
+    after: [{ hours: 8 }, { hours: 4 }],
+  };
+  const cell = { id: 'package', label: 'In package', sum: ['items.hours', 'after.hours'],
+    where: ['items.inPackage', ''], suffix: 'hrs', foot: '' };
+  assert.equal(pe.summaryFigure(cell, values), '28 hrs');
+});
+
+test('a summary cell counting two lists adds their rows together', () => {
+  const cell = { id: 'rows', label: 'Rows', count: ['items', 'timeline'], sum: [], where: ['', ''], suffix: '', foot: '' };
+  assert.equal(pe.summaryFigure(cell, SUMMARY_VALUES), '7');
+});
+test('the strip draws a labelled cell per figure', () => {
+  const schema = {
+    summary: [
+      { id: 'estimate', label: 'Project estimate', sum: ['items.hours'], where: ['items.inTotal'], suffix: 'hrs', foot: '3 line items' },
+      { id: 'phases', label: 'Phases', count: ['timeline'], sum: [], where: [''], suffix: '', foot: '' },
+    ],
+  };
+  const tree = render(h(pe.SummaryStrip, { schema, values: SUMMARY_VALUES }));
+
+  assert.equal(hasControl(tree, 'div', 'bw-summary'), true);
+  const text = textOf(tree);
+  assert.match(text, /Project estimate/);
+  assert.match(text, /46 hrs/);
+  assert.match(text, /3 line items/);
+});
+
+test('a screen with no summary draws no strip at all', () => {
+  const tree = render(h(pe.SummaryStrip, { schema: {}, values: {} }));
+  assert.equal(tree, null, 'an empty strip would leave a hairline under the header for nothing');
 });
