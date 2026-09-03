@@ -440,17 +440,30 @@
 .bw-upload__title{font-size:var(--bw-size-body);color:var(--bw-text-body);margin:0}
 .bw-upload__hint{font-size:var(--bw-size-sm);color:var(--bw-text-muted);margin:2px 0 0}
 
-.bw-repeater{display:flex;flex-direction:column;gap:var(--bw-space-5)}
-.bw-repeater__row{display:flex;align-items:center;gap:var(--bw-space-5);padding:var(--bw-space-5);border:1px solid var(--bw-border);border-radius:var(--bw-radius-md);background:var(--bw-surface-card)}
-.bw-repeater__grip{color:var(--bw-text-faint);cursor:grab;flex:none}
+/* A row is a card of its own, and its fields run down it one per line at full
+   width. They used to share a wrapping flex line, which put eight controls of
+   different heights across the screen at whatever width was left over — a
+   textarea two words wide beside a toggle in a box its own size. One field per
+   line costs height, which a page can scroll, and buys every control the width
+   its content actually needs. */
+.bw-repeater{display:flex;flex-direction:column;gap:var(--bw-space-6)}
+.bw-repeater__row{display:flex;flex-direction:column;gap:var(--bw-space-6);padding:var(--bw-panel-pad);border:1px solid var(--bw-border);border-radius:var(--bw-radius-lg);background:var(--bw-surface-card);box-shadow:var(--bw-shadow-card)}
+/* Reordering and removing sit in a bar above the fields. Beside a tall stack
+   they would float against nothing in particular; above it they read as
+   belonging to the whole row, which is what they act on. */
+.bw-repeater__bar{display:flex;align-items:center;justify-content:flex-end;gap:var(--bw-space-3)}
+.bw-repeater__grip{color:var(--bw-text-faint);cursor:grab;flex:none;display:flex;align-items:center;gap:var(--bw-space-3)}
 /* Reordering states. The system draws the grip and these two states; the
    behaviour — HTML5 drag, keyboard arrows, whatever the screen needs — stays
    with the screen, because what a reorder means differs every time. */
 .bw-repeater__row.is-dragging{opacity:var(--bw-disabled-opacity)}
 .bw-repeater__row.is-dragging .bw-repeater__grip{cursor:grabbing}
 .bw-repeater.is-drop-target{outline:2px dashed var(--bw-focus-color);outline-offset:var(--bw-space-3);border-radius:var(--bw-radius-md)}
-.bw-repeater__fields{display:flex;gap:var(--bw-space-5);flex:1 1 auto;min-width:0;flex-wrap:wrap}
-.bw-repeater__fields>*{flex:1 1 160px;min-width:0}
+.bw-repeater__fields{display:flex;flex-direction:column;gap:var(--bw-space-6);min-width:0}
+.bw-repeater__fields>*{min-width:0}
+/* A switch is the one control that should not fill the line: it is its own
+   size, so it sits at the left of the line rather than stretching across it. */
+.bw-repeater__fields .bw-switch{align-self:flex-start}
 .bw-repeater__foot{display:flex;justify-content:space-between;align-items:center;gap:var(--bw-space-6)}
 .bw-repeater__empty{padding:var(--bw-space-7);border:1px dashed var(--bw-border-strong);border-radius:var(--bw-radius-md);background:var(--bw-surface-sunken);font-size:var(--bw-size-body);color:var(--bw-text-muted);text-align:center}
 
@@ -532,6 +545,12 @@
 .bw-card__body{padding:var(--bw-panel-pad)}
 .bw-card__note{font-size:var(--bw-size-body);color:var(--bw-text-muted);margin:0 0 var(--bw-space-7)}
 .bw-card__foot{display:flex;justify-content:flex-end;align-items:center;gap:var(--bw-space-5);padding:var(--bw-space-7) var(--bw-panel-pad);border-top:1px solid var(--bw-border);background:var(--bw-surface-sunken);border-radius:0 0 var(--bw-radius-lg) var(--bw-radius-lg)}
+/* A panel that only introduces what follows it: heading, and the sentence
+   explaining it. What it introduces sits outside, in .bw-panel__loose, as its
+   own cards. */
+.bw-card--intro .bw-card__note{margin-bottom:0}
+.bw-card--intro .bw-card__head:only-child{border-bottom:0}
+.bw-panel__loose{display:flex;flex-direction:column;gap:var(--bw-space-5)}
 .bw-card--flush .bw-card__body{padding:0}
 .bw-card--sunken{background:var(--bw-surface-sunken);box-shadow:none}
 
