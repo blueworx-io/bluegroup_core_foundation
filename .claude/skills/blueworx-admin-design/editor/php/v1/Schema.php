@@ -16,7 +16,7 @@ final class Schema {
 		'text', 'textarea', 'richtext', 'number', 'range', 'colour', 'date', 'datetime',
 		'copytext', 'select', 'radio', 'checkboxes', 'toggle', 'tokens', 'scrolllist',
 		'media', 'file', 'repeater', 'record', 'facts', 'table', 'gantt', 'title', 'slug',
-		'preview',
+		'preview', 'schedule',
 	];
 
 	const CHOICE_KINDS = [ 'select', 'radio', 'checkboxes', 'scrolllist', 'record' ];
@@ -875,7 +875,7 @@ final class Schema {
 		// default rather than validated against a kind: every kind can be read.
 		$field['readonly']    = (bool) ( $field['readonly'] ?? false );
 		$field['depends_on']  = $field['depends_on'] ?? null;
-		$field['wide']        = (bool) ( $field['wide'] ?? in_array( $field['kind'], [ 'richtext', 'repeater', 'media', 'file', 'table', 'facts', 'gantt', 'title', 'preview' ], true ) );
+		$field['wide']        = (bool) ( $field['wide'] ?? in_array( $field['kind'], [ 'richtext', 'repeater', 'media', 'file', 'table', 'facts', 'gantt', 'schedule', 'title', 'preview' ], true ) );
 		// What Store::read() hands back for this field when it has never
 		// been saved. A plugin may declare its own; otherwise it follows the
 		// kind, so a never-touched toggle reads false and a never-touched

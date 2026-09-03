@@ -50,7 +50,7 @@ abstract class Store {
 	 * beside PostStore::fromColumn() — that is a WordPress column's own
 	 * translation, this is this library's.
 	 *
-	 * facts, table, copytext and preview are display-only and never submitted —
+	 * facts, table, copytext, preview and schedule are display-only and never submitted —
 	 * Sanitise produces null for them on the way in — so nothing here tries
 	 * to round-trip whatever shape they happen to read back as; nothing ever
 	 * compares it.

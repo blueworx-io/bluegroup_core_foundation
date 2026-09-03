@@ -1245,11 +1245,107 @@
             return h('tr', { key: i }, row.map(function (cell, j) { return h('td', { key: j }, cell); }));
           })));
 
+      case 'schedule':
+        return h(Schedule, { field: field });
+
       default:
         return h('input', { id: field.id, type: 'text', className: 'bw-input',
           value: value || '', onChange: function (e) { set(e.target.value); } });
     }
   }
+
+  // A schedule somebody reads, never one they drag. The gantt above is the
+  // control for a schedule a person sets; this is the one for a schedule that
+  // follows from something else — hours estimated somewhere else on the same
+  // record — so there is nothing to edit, nothing to reorder, and no way to
+  // read the weeks as calendar dates, because a plan derived from estimates
+  // does not know when it starts.
+  //
+  // Bands are the point, and they are shown one at a time. A schedule that runs
+  // through a hand-off — build then support, say — is two plans rather than one
+  // long one: each counts its own weeks from week one, and stacking them would
+  // put two different week ones on the same ruler. So the bands are tabs, each
+  // scaled to its own length, and only the one being read is drawn. A single
+  // band gets no tab strip — there is nothing to switch to.
+  function Schedule(props) {
+    const el = wp().element;
+    const h = el.createElement;
+    const field = props.field;
+    const bands = field.bands || [];
+
+    // Which band is on screen is how it is being read, not anything about the
+    // record, so it lives here rather than being saved.
+    const pickedState = el.useState(0);
+    const picked = Math.min(pickedState[0], Math.max(0, bands.length - 1));
+    const setPicked = pickedState[1];
+
+    if (bands.length === 0) {
+      return h('div', { className: 'bw-empty' },
+        h('i', { className: 'bw-icon bw-icon--28 bw-empty__icon', 'data-lucide': 'calendar' }),
+        h('h3', { className: 'bw-empty__title' }, field.empty_title || 'Nothing to schedule yet'),
+        h('p', { className: 'bw-empty__text' }, field.empty_text || 'This fills in once there are hours to work from.'));
+    }
+
+    const band = bands[picked];
+    const rows = band.rows || [];
+
+    // This band's own length. Scaling every band to the longest would draw the
+    // shorter one as a stub of a plan it is not part of.
+    const span = Math.max.apply(null, [1].concat(rows.map(function (r) { return Number(r.end) || 1; })));
+
+    const ticks = [];
+    for (let week = 1; week <= span; week += 4) ticks.push(week);
+
+    return h('div', { className: 'bw-schedule' },
+      bands.length > 1 ? h('div', { className: 'bw-steps', role: 'tablist' },
+        bands.map(function (each, i) {
+          return h('button', {
+            key: each.id || ('b-' + i),
+            type: 'button',
+            role: 'tab',
+            className: 'bw-step' + (i === picked ? ' is-current' : ''),
+            'aria-selected': i === picked,
+            onClick: function () { setPicked(i); },
+          }, each.label);
+        })) : null,
+
+      h('div', { className: 'bw-schedule__head' },
+        h('span', { className: 'bw-schedule__band-title' }, band.label),
+        band.meta ? h('span', { className: 'bw-schedule__band-meta' }, band.meta) : null),
+
+      ticks.length > 0 ? h('div', { className: 'bw-schedule__ruler' },
+        ticks.map(function (week) {
+          return h('span', { key: week, className: 'bw-schedule__tick' }, 'Week ' + week);
+        })) : null,
+
+      rows.map(function (row, i) {
+        const hidden = row.visible === false;
+        const start = Math.max(1, Number(row.start) || 1);
+        const end = Math.max(start, Number(row.end) || start);
+        return h('div', { key: row.id || (picked + '-' + i), className: 'bw-schedule__row' },
+          h('span', { className: 'bw-schedule__label' },
+            h('span', { className: 'bw-schedule__title' },
+              row.title || 'Untitled',
+              // Not a lock icon: nothing here is locked, the phase simply is
+              // not going to the client, and saying which is the whole job of
+              // this column.
+              hidden ? h('i', { className: 'bw-icon bw-icon--14', 'data-lucide': 'eye-off',
+                title: 'Not shown to the client' }) : null),
+            h('span', { className: 'bw-schedule__range' },
+              (start === end ? 'Week ' + start : 'Weeks ' + start + '–' + end)
+                + (row.meta ? ' · ' + row.meta : ''))),
+          h('span', { className: 'bw-schedule__track' },
+            h('span', {
+              className: 'bw-schedule__bar bw-schedule__bar--' + (row.kind || 'pre') + (hidden ? ' is-hidden' : ''),
+              style: {
+                left: ((start - 1) / span * 100) + '%',
+                width: Math.max(SCHEDULE_MIN_BAR_PERCENT, (end - start + 1) / span * 100) + '%',
+              },
+            }, row.note || '')));
+      }));
+  }
+
+  const SCHEDULE_MIN_BAR_PERCENT = 3.5;
 
   // The view is exported alongside the pure logic so a test can render every
   // field kind without a browser: a fake wp.element whose createElement

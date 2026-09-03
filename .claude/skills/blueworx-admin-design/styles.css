@@ -384,6 +384,13 @@ input.bw-input--mono,textarea.bw-textarea--mono{font-family:var(--bw-font-mono);
 .bw-select .bw-select__el{max-width:none;min-height:0;height:var(--bw-control-h);padding:0 32px 0 12px;line-height:normal;background-image:none;background-color:var(--bw-control-bg);color:var(--bw-control-text);border-color:var(--bw-border-field);border-radius:var(--bw-control-radius)}
 .bw-select .bw-select__el:hover{border-color:var(--bw-border-strong)}
 .bw-select .bw-select__el:focus{border-color:var(--bw-focus-color);box-shadow:none;outline:var(--bw-focus-width) solid var(--bw-focus-color);outline-offset:var(--bw-focus-offset)}
+/* WordPress puts its chevron back for the disabled state, from a rule that
+   outweighs the background-image:none above — and it arrives tiled, because
+   the shared .bw-input rule sets `background` as a shorthand, which resets
+   repeat, size and position to their defaults. So the image is refused again
+   here, and no-repeat is pinned on the control either way: any rule that gets
+   an image past this should still draw one arrow, not forty. */
+.bw-select .bw-select__el,.bw-select .bw-select__el:disabled{background-image:none;background-repeat:no-repeat}
 .bw-select .bw-select__el[disabled]{background-color:var(--bw-surface-sunken);color:var(--bw-text-faint)}
 
 .bw-check{display:inline-flex;align-items:flex-start;gap:var(--bw-space-4);cursor:pointer;font-size:var(--bw-size-body);color:var(--bw-text-body);line-height:1.4}
@@ -436,6 +443,9 @@ input.bw-input--mono,textarea.bw-textarea--mono{font-family:var(--bw-font-mono);
 
 .bw-colorfield{display:flex;align-items:center;gap:var(--bw-space-5)}
 .bw-colorfield__swatch{width:var(--bw-control-h);height:var(--bw-control-h);border-radius:var(--bw-control-radius);border:1px solid var(--bw-border-field);flex:none;padding:0;cursor:pointer}
+/* input[type="color"] is on wp-admin's list too, so the swatch loses its corner
+   and its border the same way every other control here does. */
+input.bw-colorfield__swatch{border:1px solid var(--bw-border-field);border-radius:var(--bw-control-radius);min-height:0;padding:0;box-shadow:none}
 .bw-colorfield__hex{width:120px}
 .bw-colorfield__presets{display:flex;gap:var(--bw-space-3)}
 .bw-colorfield__preset{width:22px;height:22px;border-radius:var(--bw-radius-xs);border:1px solid rgb(10 12 41 / .12);padding:0;cursor:pointer}
@@ -497,6 +507,11 @@ input.bw-input--mono,textarea.bw-textarea--mono{font-family:var(--bw-font-mono);
 
 .bw-tokens{display:flex;flex-wrap:wrap;gap:var(--bw-space-3);align-items:center;padding:var(--bw-space-3);border:1px solid var(--bw-border-field);border-radius:var(--bw-radius-md);background:var(--bw-surface-card)}
 .bw-tokens__input{flex:1 1 90px;min-width:90px;border:0;outline:0;padding:var(--bw-space-2) var(--bw-space-3);font-family:var(--bw-font-body);font-size:var(--bw-size-body);color:var(--bw-text-body);background:none}
+/* This one has to win to have no border at all: wp-admin's input[type="text"]
+   outweighs the single class above and puts a second bordered box inside the
+   token field. */
+input.bw-tokens__input{border:0;border-radius:0;background-color:transparent;min-height:0;padding:var(--bw-space-2) var(--bw-space-3);box-shadow:none}
+input.bw-tokens__input:focus{border:0;outline:0;box-shadow:none}
 
 .bw-scrolllist{max-height:168px;overflow-y:auto;display:flex;flex-direction:column;gap:var(--bw-space-5);padding:var(--bw-space-5) var(--bw-space-6);border:1px solid var(--bw-border-field);border-radius:var(--bw-radius-md);background:var(--bw-surface-card)}
 
@@ -505,6 +520,11 @@ input.bw-input--mono,textarea.bw-textarea--mono{font-family:var(--bw-font-mono);
 .bw-titleinput{width:100%;font-family:var(--bw-font-display);font-weight:var(--bw-weight-semibold);font-size:var(--bw-size-title);line-height:var(--bw-lh-heading);color:var(--bw-text-heading);background:var(--bw-surface-card);border:1px solid var(--bw-border);border-radius:var(--bw-radius-lg);padding:var(--bw-space-7) var(--bw-space-8)}
 .bw-titleinput::placeholder{color:var(--bw-text-faint)}
 .bw-titleinput:focus{outline:2px solid var(--bw-brand);outline-offset:1px;border-color:var(--bw-brand)}
+/* Outweighed by wp-admin's input[type="text"] the same way .bw-input is — see
+   the note above it. This one is the record's own title at the top of a screen,
+   so losing its 12px corner is the most visible of the lot. */
+input.bw-titleinput{border:1px solid var(--bw-border);border-radius:var(--bw-radius-lg);background-color:var(--bw-surface-card);color:var(--bw-text-heading);font-size:var(--bw-size-title);line-height:var(--bw-lh-heading);min-height:0;height:auto;padding:var(--bw-space-7) var(--bw-space-8);box-shadow:none}
+input.bw-titleinput:focus{border-color:var(--bw-brand);box-shadow:none}
 
 .bw-permalink{display:flex;align-items:center;flex-wrap:wrap;gap:var(--bw-space-3);margin-top:var(--bw-space-5);font-size:var(--bw-size-sm);color:var(--bw-text-muted)}
 .bw-permalink code{font-family:var(--bw-font-mono);font-size:var(--bw-size-sm);color:var(--bw-text-body)}
@@ -834,6 +854,37 @@ input.bw-input--mono,textarea.bw-textarea--mono{font-family:var(--bw-font-mono);
 .bw-gantt__key::before{content:"";width:var(--bw-gantt-key-size);height:var(--bw-gantt-key-size);border-radius:var(--bw-radius-xs);background:var(--bw-brand);flex:none}
 .bw-gantt__key--launch::before{background:var(--bw-timeline-launch)}
 .bw-gantt__key--post::before{background:var(--bw-timeline-post)}
+
+/* A schedule that is read, not dragged. Shares the gantt's measurements on
+   purpose — same label column, same track height, same three bar colours — so
+   a screen showing one and a screen showing the other read as the same
+   picture. What it adds is the band: a heading across the rows that belong
+   together, so a plan running through a hand-off reads as two stretches end to
+   end rather than one long one. What it drops is every control. */
+.bw-schedule{display:flex;flex-direction:column;gap:var(--bw-space-3)}
+.bw-schedule__ruler{display:flex;gap:var(--bw-space-6);font-size:var(--bw-size-xs);letter-spacing:var(--bw-track-label);text-transform:uppercase;color:var(--bw-text-faint);font-weight:var(--bw-weight-semibold);padding-left:calc(var(--bw-gantt-label-w) + var(--bw-space-6));margin-bottom:var(--bw-space-3)}
+.bw-schedule__tick{flex:1 1 0;min-width:0}
+/* Names the band on screen and what it adds up to. Spans the whole width
+   rather than sitting over the track, because it names the rows under it and
+   not a stretch of the timeline. */
+.bw-schedule__head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--bw-space-5);padding-bottom:var(--bw-space-3)}
+.bw-schedule__band-title{font-size:var(--bw-size-xs);letter-spacing:var(--bw-track-label);text-transform:uppercase;font-weight:var(--bw-weight-semibold);color:var(--bw-text-heading)}
+.bw-schedule__band-meta{font-size:var(--bw-size-sm);color:var(--bw-text-muted);font-variant-numeric:tabular-nums}
+.bw-schedule__row{display:flex;align-items:center;gap:var(--bw-space-6);padding:var(--bw-space-2) 0}
+.bw-schedule__label{width:var(--bw-gantt-label-w);flex:none;display:flex;flex-direction:column;gap:var(--bw-space-1)}
+.bw-schedule__title{font-weight:var(--bw-weight-semibold);color:var(--bw-text-heading);font-size:var(--bw-size-body);display:flex;align-items:center;gap:var(--bw-space-3)}
+.bw-schedule__range{font-size:var(--bw-size-sm);line-height:var(--bw-lh-body);color:var(--bw-text-muted)}
+.bw-schedule__track{flex:1 1 auto;height:var(--bw-gantt-track-h);border-radius:var(--bw-control-radius);background:var(--bw-surface-sunken);border:1px solid var(--bw-border);position:relative}
+.bw-schedule__bar{position:absolute;top:var(--bw-gantt-bar-inset);bottom:var(--bw-gantt-bar-inset);border-radius:var(--bw-radius-sm);color:var(--bw-text-on-accent);font-size:var(--bw-size-xs);display:flex;align-items:center;padding:0 var(--bw-space-4);overflow:hidden;white-space:nowrap;background:var(--bw-brand)}
+.bw-schedule__bar--pre{background:var(--bw-brand)}
+.bw-schedule__bar--launch{background:var(--bw-timeline-launch)}
+.bw-schedule__bar--post{background:var(--bw-timeline-post)}
+.bw-schedule__bar.is-hidden{opacity:var(--bw-gantt-hidden-opacity)}
+@media (max-width:782px){
+  .bw-schedule__ruler{display:none}
+  .bw-schedule__row{flex-direction:column;align-items:stretch;gap:var(--bw-space-2)}
+  .bw-schedule__label{width:auto}
+}
 
 /* Preview — a page of the site in a device frame, beside the fields that
    change it. The stage scrolls rather than shrinking the frame: a preview

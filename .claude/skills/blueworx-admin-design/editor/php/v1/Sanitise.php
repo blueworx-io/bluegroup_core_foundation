@@ -14,7 +14,7 @@ final class Sanitise {
 	 * a save never carries it as far as the store — writing the null as empty
 	 * post meta would be the field saved anyway, for a value nobody sent.
 	 */
-	const DISPLAY_ONLY_KINDS = [ 'facts', 'table', 'copytext', 'preview' ];
+	const DISPLAY_ONLY_KINDS = [ 'facts', 'table', 'copytext', 'preview', 'schedule' ];
 
 	/**
 	 * What a gantt phase's marker may be. It sets the bar's colour and its
@@ -167,14 +167,16 @@ final class Sanitise {
 				}
 				return $out;
 
-			// facts, table, copytext and preview are display-only on the screen;
-			// nothing comes back, so nothing is accepted back. values() never
-			// reaches this for one of them — see DISPLAY_ONLY_KINDS — but a
-			// direct caller still gets the same refusal.
+			// facts, table, copytext, preview and schedule are display-only on
+			// the screen; nothing comes back, so nothing is accepted back.
+			// values() never reaches this for one of them — see
+			// DISPLAY_ONLY_KINDS — but a direct caller still gets the same
+			// refusal.
 			case 'facts':
 			case 'table':
 			case 'copytext':
 			case 'preview':
+			case 'schedule':
 				return null;
 
 			default:
