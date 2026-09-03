@@ -351,6 +351,22 @@
 .bw-input--invalid,.bw-textarea--invalid,.bw-select__el--invalid{border-color:var(--bw-danger)}
 .bw-input--mono,.bw-textarea--mono{font-family:var(--bw-font-mono);font-size:var(--bw-size-code)}
 .bw-input--sm{height:var(--bw-control-h-sm);font-size:var(--bw-size-body);padding:0 10px}
+/* WordPress styles every text input and textarea in wp-admin by attribute, and
+   input[type="text"] and its dozen siblings outweigh a single class — so a
+   .bw-input ends up wearing WordPress's 2px corner and grey border instead of
+   ours, and grows its own min-height and 16px type under 782px. The select
+   below has the same problem and takes the same answer: match on the element as
+   well, so this weighs what WordPress's rule weighs and sits later in the
+   cascade. */
+input.bw-input,textarea.bw-textarea{border:1px solid var(--bw-border-field);border-radius:var(--bw-control-radius);background-color:var(--bw-control-bg);color:var(--bw-control-text);font-size:var(--bw-size-input);box-shadow:none}
+input.bw-input{height:var(--bw-control-h);min-height:0;line-height:normal;padding:0 12px}
+input.bw-input--sm{height:var(--bw-control-h-sm);font-size:var(--bw-size-body);padding:0 10px}
+textarea.bw-textarea{min-height:96px;line-height:var(--bw-lh-body);padding:9px 12px}
+input.bw-input:hover,textarea.bw-textarea:hover{border-color:var(--bw-border-strong)}
+input.bw-input:focus,textarea.bw-textarea:focus{border-color:var(--bw-focus-color);box-shadow:none;outline:var(--bw-focus-width) solid var(--bw-focus-color);outline-offset:var(--bw-focus-offset)}
+input.bw-input[disabled],textarea.bw-textarea[disabled]{background-color:var(--bw-surface-sunken);color:var(--bw-text-faint)}
+input.bw-input--invalid,textarea.bw-textarea--invalid{border-color:var(--bw-danger)}
+input.bw-input--mono,textarea.bw-textarea--mono{font-family:var(--bw-font-mono);font-size:var(--bw-size-code)}
 
 .bw-inputwrap{position:relative;display:flex;align-items:center}
 .bw-inputwrap__icon{position:absolute;left:10px;color:var(--bw-text-faint);pointer-events:none}

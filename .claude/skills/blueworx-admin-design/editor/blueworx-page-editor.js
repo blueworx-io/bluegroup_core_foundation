@@ -707,8 +707,15 @@
   //
   // Deliberately not Control(): that takes a whole record and sets a value by
   // field id, and a cell belongs to a row rather than to the record.
-  function repeaterCell(cell, id, value, locked, onChange) {
+  function repeaterCell(cell, id, value, given, onChange) {
     const h = wp().element.createElement;
+    // Two ways a cell ends up uneditable, and they mean different things. The
+    // repeater is readonly, so nothing in it may be touched; or this one cell
+    // is, because something other than this screen decides its value — a row
+    // copied from a library that owns which phase the work belongs to, say.
+    // The cell still shows: what it says is the point, and a row with the
+    // column missing reads as a row missing information.
+    const locked = given || Boolean(cell.readonly);
 
     switch (cell.kind) {
       case 'textarea':

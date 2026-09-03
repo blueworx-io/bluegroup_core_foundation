@@ -867,6 +867,13 @@ final class Schema {
 				$field['kind']
 			) );
 		}
+		// A control that shows its value and refuses to change it. Declared by
+		// a plugin for a value something other than this screen owns — a row
+		// copied from a library that decides which phase the work belongs to —
+		// and set here as well by Capabilities::reduce() for a field the
+		// current user may see but not write, which is why it is only given a
+		// default rather than validated against a kind: every kind can be read.
+		$field['readonly']    = (bool) ( $field['readonly'] ?? false );
 		$field['depends_on']  = $field['depends_on'] ?? null;
 		$field['wide']        = (bool) ( $field['wide'] ?? in_array( $field['kind'], [ 'richtext', 'repeater', 'media', 'file', 'table', 'facts', 'gantt', 'title', 'preview' ], true ) );
 		// What Store::read() hands back for this field when it has never
