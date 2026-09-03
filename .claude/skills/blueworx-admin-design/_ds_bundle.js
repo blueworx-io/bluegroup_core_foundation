@@ -1179,20 +1179,22 @@ function Repeater({
   }, emptyLabel) : null, items.map((item, i) => /*#__PURE__*/React.createElement("div", {
     className: "bw-repeater__row",
     key: item.id != null ? item.id : i
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bw-repeater__bar"
   }, reorderable ? /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: "grip-vertical",
     size: 16,
     className: "bw-repeater__grip",
     label: "Drag to reorder"
-  }) : null, /*#__PURE__*/React.createElement("div", {
-    className: "bw-repeater__fields"
-  }, renderRow ? renderRow(item, i) : null), /*#__PURE__*/React.createElement(__ds_scope.IconButton, {
+  }) : null, /*#__PURE__*/React.createElement(__ds_scope.IconButton, {
     icon: "trash-2",
     label: "Remove row",
     size: "sm",
     variant: "danger",
     onClick: () => onRemove && onRemove(item.id != null ? item.id : i)
-  }))), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "bw-repeater__fields"
+  }, renderRow ? renderRow(item, i) : null))), /*#__PURE__*/React.createElement("div", {
     className: "bw-repeater__foot"
   }, /*#__PURE__*/React.createElement(__ds_scope.Button, {
     size: "sm",

@@ -408,18 +408,35 @@
     // field to read at all and is always shown.
     const shown = !switchField || props.record.values[switchField.id] === true;
 
+    const head = h('div', { className: 'bw-card__head' },
+      h('div', { className: 'bw-card__titles' },
+        panel.eyebrow ? h('p', { className: 'bw-card__eyebrow' }, panel.eyebrow) : null,
+        h('h2', { className: 'bw-card__title' }, panel.title)),
+      panel.hideable && switchField ? h('label', { className: 'bw-switch' },
+        h('input', { type: 'checkbox', checked: shown,
+          onChange: function (e) { props.record.setValue(switchField.id, e.target.checked); } }),
+        h('span', { className: 'bw-switch__track' }, h('span', { className: 'bw-switch__thumb' })),
+        h('span', { className: 'bw-switch__label' }, shown ? 'Shown' : 'Hidden')) : null);
+
+    const note = panel.note ? h('p', { className: 'bw-card__note' }, panel.note) : null;
+
+    // A panel holding nothing but a repeater stops boxing it. Every row is
+    // already a card, so keeping the panel's own card around them nests a
+    // list of cards inside one more — and the panel's heading and description
+    // end up sharing a box with rows they only introduce. Split in two, the
+    // heading reads as a heading and each row reads as its own thing.
+    if (fields.length === 1 && fields[0].kind === 'repeater' && !fields[0].depends_on) {
+      return h(wp().element.Fragment, null,
+        h('section', { className: 'bw-card bw-card--intro' }, head,
+          shown && note ? h('div', { className: 'bw-card__body' }, note) : null),
+        shown ? h('div', { className: 'bw-panel__loose' },
+          h(Field, { field: fields[0], record: props.record })) : null);
+    }
+
     return h('section', { className: 'bw-card' },
-      h('div', { className: 'bw-card__head' },
-        h('div', { className: 'bw-card__titles' },
-          panel.eyebrow ? h('p', { className: 'bw-card__eyebrow' }, panel.eyebrow) : null,
-          h('h2', { className: 'bw-card__title' }, panel.title)),
-        panel.hideable && switchField ? h('label', { className: 'bw-switch' },
-          h('input', { type: 'checkbox', checked: shown,
-            onChange: function (e) { props.record.setValue(switchField.id, e.target.checked); } }),
-          h('span', { className: 'bw-switch__track' }, h('span', { className: 'bw-switch__thumb' })),
-          h('span', { className: 'bw-switch__label' }, shown ? 'Shown' : 'Hidden')) : null),
+      head,
       shown ? h('div', { className: 'bw-card__body' },
-        panel.note ? h('p', { className: 'bw-card__note' }, panel.note) : null,
+        note,
         fields.length === 0
           ? h('div', { className: 'bw-empty' }, h('p', null, 'Nothing here yet.'))
           : h('div', { className: 'bw-fields' }, fields.map(function (field) {
@@ -496,10 +513,24 @@
         return h('input', { id: field.id, type: 'text', className: 'bw-titleinput', placeholder: field.label,
           disabled: Boolean(field.readonly), value: value || '', onChange: function (e) { set(e.target.value); } });
 
-      case 'slug':
+      case 'slug': {
+        const home = (root.blueworxPageEditor && root.blueworxPageEditor.home) || '/';
+        // A slug nobody may change is shown as the whole address, ready to
+        // copy, rather than as a disabled box: read-only here means the
+        // address is the answer, and half of it sitting in grey prefix text
+        // is not something anyone can take away with them.
+        if (field.readonly) {
+          const address = home + (value || '');
+          return h('div', { className: 'bw-copyfield' },
+            h('input', { id: field.id, type: 'text', readOnly: true, value: address,
+              className: 'bw-input bw-input--mono' }),
+            h('button', { type: 'button', className: 'bw-btn bw-btn--secondary bw-copyfield__btn',
+              onClick: function () { root.navigator.clipboard.writeText(address); } }, 'Copy'));
+        }
         return h('div', { className: 'bw-permalink' },
-          h('code', null, (root.blueworxPageEditor && root.blueworxPageEditor.home) || '/'),
+          h('code', null, home),
           h('input', Object.assign({}, common, { type: 'text', value: value || '', onChange: function (e) { set(e.target.value); } })));
+      }
 
       case 'text': {
         const input = h('input', Object.assign({}, common, suggestionProps(field, field.id),
@@ -1025,24 +1056,32 @@
       // Keyed on the row's own id, not its position: move() swaps whole
       // row objects, so the id travels with the content, and the row the
       // pointer is over stays the row that actually moved.
-      return h('div', { key: rowValue.__rid || ('row-' + i), className: 'bw-repeater__row' },
+      // The row's own controls run along a bar at the top of it. The fields
+      // below them are a full-width stack, and a reorder button floating
+      // beside a stack that tall belongs to nothing the eye can see. A fixed
+      // list has no controls at all, so it gets no bar either rather than an
+      // empty strip above every row.
+      const bar = fixed ? null : h('div', { className: 'bw-repeater__bar' },
         // Dragging is a nice-to-have; these two buttons are how a reorder is
         // actually done, so it works from the keyboard like everything else.
-        fixed ? null : h('span', { className: 'bw-repeater__grip' },
+        h('span', { className: 'bw-repeater__grip' },
           h('button', { type: 'button', className: 'bw-iconbtn', 'aria-label': 'Move up', disabled: locked,
             onClick: function () { move(i, -1); } },
             h('i', { className: 'bw-icon', 'data-lucide': 'chevron-up' })),
           h('button', { type: 'button', className: 'bw-iconbtn', 'aria-label': 'Move down', disabled: locked,
             onClick: function () { move(i, 1); } },
             h('i', { className: 'bw-icon', 'data-lucide': 'chevron-down' }))),
+        h('button', { type: 'button', className: 'bw-iconbtn bw-iconbtn--danger', 'aria-label': 'Remove this row', disabled: locked,
+          onClick: function () { props.onChange(rows.filter(function (_, j) { return j !== i; })); } },
+          h('i', { className: 'bw-icon', 'data-lucide': 'trash-2' })));
+
+      return h('div', { key: rowValue.__rid || ('row-' + i), className: 'bw-repeater__row' },
+        bar,
         h('div', { className: 'bw-repeater__fields' }, (props.field.fields || []).map(function (cell) {
           return h('div', { key: cell.id, className: 'bw-field' },
             h('label', { className: 'bw-field__label', htmlFor: cell.id + '-' + i }, cell.label),
             repeaterCell(cell, cell.id + '-' + i, rowValue[cell.id], locked, function (v) { change(i, cell, v); }));
-        })),
-        fixed ? null : h('button', { type: 'button', className: 'bw-iconbtn bw-iconbtn--danger', 'aria-label': 'Remove this row', disabled: locked,
-          onClick: function () { props.onChange(rows.filter(function (_, j) { return j !== i; })); } },
-          h('i', { className: 'bw-icon', 'data-lucide': 'trash-2' })));
+        })));
     }
 
     const groups = repeaterGroups(props.field, rows);

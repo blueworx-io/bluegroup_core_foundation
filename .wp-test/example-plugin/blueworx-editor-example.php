@@ -234,4 +234,42 @@ add_action( 'plugins_loaded', function () {
 			],
 		],
 	] );
+
+	// A second screen on the same records, for the one thing the screen above
+	// cannot show: what the Publish and settings tab looks like when a screen
+	// says it does not want all of it. A record that is not a page of the site
+	// has no excerpt, no comments, no categories and no parent, and its
+	// address is something to copy rather than something to retype.
+	//
+	// Registered separately rather than by trimming the screen above, so that
+	// screen goes on proving the other half — that a screen which says nothing
+	// still gets the whole tab.
+	\Blueworx\PageEditor\v1\Editor::register( [
+		'slug'       => 'bwx-sport-trimmed',
+		'title'      => 'Edit sport (trimmed)',
+		'post_type'  => 'bwx_sport',
+		'capability' => 'edit_posts',
+		'publishing' => [
+			'slug'       => 'readonly',
+			'excerpt'    => false,
+			'comments'   => false,
+			'taxonomies' => false,
+			'parent'     => false,
+		],
+		'tabs'       => [
+			[
+				'id'     => 'content',
+				'label'  => 'Content',
+				'panels' => [
+					[
+						'id'     => 'basics',
+						'title'  => 'The basics',
+						'fields' => [
+							[ 'id' => 'post_title', 'kind' => 'title', 'label' => 'Name' ],
+						],
+					],
+				],
+			],
+		],
+	] );
 } );

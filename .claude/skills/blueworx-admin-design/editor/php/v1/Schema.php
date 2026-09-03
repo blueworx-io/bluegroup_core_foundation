@@ -125,6 +125,8 @@ final class Schema {
 			throw new InvalidArgumentException( sprintf( 'The "%s" editor screen stores to options, so it needs an option_name.', $screen['slug'] ) );
 		}
 
+		$screen['publishing'] = self::publishing( $screen );
+
 		$seen            = [];
 		$tab_ids         = [];
 		$panel_ids       = [];
@@ -144,6 +146,45 @@ final class Schema {
 		$screen['summary'] = self::summary( $screen );
 
 		return $screen;
+	}
+
+	/**
+	 * What this screen asked to leave off the Publish and settings tab.
+	 *
+	 * Checked strictly, and by name: a typo here is a screen that quietly
+	 * keeps drawing the field somebody meant to take away, and nobody would
+	 * find that by looking at it.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private static function publishing( array $screen ): array {
+		if ( ! isset( $screen['publishing'] ) ) {
+			return [];
+		}
+		if ( ! is_array( $screen['publishing'] ) ) {
+			throw new InvalidArgumentException( sprintf( 'The "%s" editor screen has a publishing setting that is not an array. Give it a list of what to leave off the Publish and settings tab.', $screen['slug'] ) );
+		}
+		if ( 'post' !== $screen['store'] && [] !== $screen['publishing'] ) {
+			throw new InvalidArgumentException( sprintf( 'The "%s" editor screen stores to options, so it has no Publish and settings tab and nothing to leave off it.', $screen['slug'] ) );
+		}
+
+		$allowed = Settings::preferences();
+		foreach ( $screen['publishing'] as $key => $value ) {
+			if ( ! in_array( $key, $allowed, true ) ) {
+				throw new InvalidArgumentException( sprintf( 'The "%1$s" editor screen asks about "%2$s" on the Publish and settings tab. It can only ask about: %3$s.', $screen['slug'], $key, implode( ', ', $allowed ) ) );
+			}
+			if ( 'slug' === $key ) {
+				if ( ! in_array( $value, Settings::slugModes(), true ) ) {
+					throw new InvalidArgumentException( sprintf( 'The "%1$s" editor screen sets the slug to "%2$s". It must be one of: %3$s.', $screen['slug'], is_scalar( $value ) ? (string) $value : gettype( $value ), implode( ', ', Settings::slugModes() ) ) );
+				}
+				continue;
+			}
+			if ( ! is_bool( $value ) ) {
+				throw new InvalidArgumentException( sprintf( 'The "%1$s" editor screen sets "%2$s" on the Publish and settings tab to something that is not true or false.', $screen['slug'], $key ) );
+			}
+		}
+
+		return $screen['publishing'];
 	}
 
 	/**
