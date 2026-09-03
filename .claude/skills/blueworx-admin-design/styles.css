@@ -132,6 +132,10 @@
 
   --bw-control-h:34px;
   --bw-control-h-sm:28px;
+  /* A comfortable reading measure. No component applies it any more: body and
+     help text now run the width of whatever holds them and wrap only when the
+     screen makes them, which is what these admin screens are asked for. Kept as
+     a token so a screen with genuinely long prose can still opt into it. */
   --bw-content-max:60ch;
 }
 
@@ -330,7 +334,7 @@
 .bw-field{display:flex;flex-direction:column;gap:var(--bw-space-3)}
 .bw-field__label{font-size:var(--bw-size-xs);letter-spacing:var(--bw-track-label);text-transform:uppercase;color:var(--bw-text-muted);font-weight:var(--bw-weight-semibold)}
 .bw-field__req{color:var(--bw-text-danger);margin-left:2px}
-.bw-field__help{font-size:var(--bw-size-sm);color:var(--bw-text-muted);margin:0;max-width:var(--bw-content-max)}
+.bw-field__help{font-size:var(--bw-size-sm);color:var(--bw-text-muted);margin:0}
 .bw-field__error{font-size:var(--bw-size-sm);color:var(--bw-text-danger);margin:0}
 .bw-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--bw-field-gap)}
 .bw-fields--single{grid-template-columns:1fr}
@@ -411,7 +415,7 @@
 .bw-formrow__label{font-size:var(--bw-size-body);font-weight:var(--bw-weight-semibold);color:var(--bw-text-heading);padding-top:8px;display:flex;align-items:center;gap:var(--bw-space-3)}
 .bw-formrow__req{color:var(--bw-text-danger)}
 .bw-formrow__control{display:flex;flex-direction:column;gap:var(--bw-space-4);min-width:0}
-.bw-formrow__help{font-size:var(--bw-size-sm);color:var(--bw-text-muted);margin:0;max-width:var(--bw-content-max)}
+.bw-formrow__help{font-size:var(--bw-size-sm);color:var(--bw-text-muted);margin:0}
 @media (max-width:782px){.bw-formrow{grid-template-columns:1fr;gap:var(--bw-space-4)}.bw-formrow__label{padding-top:0}}
 
 .bw-colorfield{display:flex;align-items:center;gap:var(--bw-space-5)}
@@ -509,7 +513,7 @@
 .bw-pagehead__titles{display:flex;flex-direction:column;min-width:0;flex:1 1 420px}
 .bw-pagehead__eyebrow{font-size:var(--bw-size-xs);letter-spacing:var(--bw-track-eyebrow);text-transform:uppercase;color:var(--bw-text-accent);margin:0 0 var(--bw-space-3);font-weight:var(--bw-weight-semibold)}
 .bw-pagehead__h1{font-family:var(--bw-font-display);font-size:var(--bw-size-h1);font-weight:var(--bw-weight-semibold);line-height:var(--bw-lh-tight);margin:0;color:var(--bw-text-heading)}
-.bw-pagehead__lede{font-size:var(--bw-size-lede);color:var(--bw-text-muted);margin:var(--bw-space-4) 0 0;max-width:var(--bw-content-max)}
+.bw-pagehead__lede{font-size:var(--bw-size-lede);color:var(--bw-text-muted);margin:var(--bw-space-4) 0 0}
 .bw-pagehead__actions{display:flex;align-items:center;gap:var(--bw-space-5);flex:0 1 auto;flex-wrap:wrap;row-gap:var(--bw-space-5);justify-content:flex-end;margin-left:auto}
 @media (max-width:782px){.bw-pagehead{flex-direction:column;align-items:flex-start}}
 
@@ -519,8 +523,14 @@
 .bw-card__eyebrow{font-size:var(--bw-size-2xs);letter-spacing:var(--bw-track-panel);text-transform:uppercase;color:var(--bw-text-muted);margin:0;font-weight:var(--bw-weight-semibold)}
 .bw-card__title{font-family:var(--bw-font-display);font-size:var(--bw-size-h3);font-weight:var(--bw-weight-semibold);letter-spacing:var(--bw-track-tight);margin:0;color:var(--bw-text-heading)}
 .bw-card__actions{display:flex;align-items:center;gap:var(--bw-space-4);flex:none}
+/* A card head's actions are often a switch and its Save, wrapped in a form so
+   they post together. A form is a block box, so its children fall back to inline
+   layout and the gap between them becomes whatever whitespace the markup happens
+   to carry — visibly uneven beside the flex gap outside it. Laying the form out
+   the same way its container is laid out makes the spacing one value again. */
+.bw-card__actions form{display:flex;align-items:center;gap:var(--bw-space-4)}
 .bw-card__body{padding:var(--bw-panel-pad)}
-.bw-card__note{font-size:var(--bw-size-body);color:var(--bw-text-muted);margin:0 0 var(--bw-space-7);max-width:var(--bw-content-max)}
+.bw-card__note{font-size:var(--bw-size-body);color:var(--bw-text-muted);margin:0 0 var(--bw-space-7)}
 .bw-card__foot{display:flex;justify-content:flex-end;align-items:center;gap:var(--bw-space-5);padding:var(--bw-space-7) var(--bw-panel-pad);border-top:1px solid var(--bw-border);background:var(--bw-surface-sunken);border-radius:0 0 var(--bw-radius-lg) var(--bw-radius-lg)}
 .bw-card--flush .bw-card__body{padding:0}
 .bw-card--sunken{background:var(--bw-surface-sunken);box-shadow:none}
@@ -577,7 +587,7 @@
 @media (max-width:1100px){.bw-screen{grid-template-columns:1fr}.bw-screen__side{position:static}}
 
 .bw-settingscard .bw-card__head{align-items:flex-start}
-.bw-settingscard__desc{font-size:var(--bw-size-body);color:var(--bw-text-muted);margin:var(--bw-space-3) 0 0;max-width:var(--bw-content-max)}
+.bw-settingscard__desc{font-size:var(--bw-size-body);color:var(--bw-text-muted);margin:var(--bw-space-3) 0 0}
 .bw-settingscard__body>.bw-formrow:first-child{padding-top:0}
 .bw-settingscard__body>.bw-formrow:last-child{padding-bottom:0}
 .bw-settingscard .bw-card__foot{gap:var(--bw-space-6)}
@@ -616,7 +626,7 @@
 .bw-fncard{background:var(--bw-surface-card);border:1px solid var(--bw-border);border-radius:10px;overflow:hidden;box-shadow:var(--bw-shadow-card)}
 .bw-fncard__row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--bw-space-9);align-items:start;padding:18px var(--bw-panel-pad)}
 .bw-fncard__name{display:block;font-size:var(--bw-size-body);font-weight:var(--bw-weight-semibold);color:var(--bw-text-heading)}
-.bw-fncard__desc{margin:var(--bw-space-2) 0 0;font-size:var(--bw-size-sm);color:var(--bw-text-muted);max-width:var(--bw-content-max)}
+.bw-fncard__desc{margin:var(--bw-space-2) 0 0;font-size:var(--bw-size-sm);color:var(--bw-text-muted)}
 .bw-fncard__panel{padding:0 var(--bw-panel-pad) var(--bw-space-8)}
 .bw-fncard__panel>.bw-card--sunken{border-left:2px solid var(--bw-brand)}
 .bw-fncard__panel .bw-card__eyebrow{margin-bottom:var(--bw-space-7)}
@@ -639,7 +649,7 @@
 .bw-notice__icon{flex:none;margin-top:1px}
 .bw-notice__body{flex:1 1 auto;min-width:0}
 .bw-notice__title{font-weight:var(--bw-weight-semibold);font-size:var(--bw-size-body);margin:0 0 2px;color:var(--bw-text-heading)}
-.bw-notice__text{margin:0;font-size:var(--bw-size-body);color:var(--bw-text-muted);max-width:var(--bw-content-max)}
+.bw-notice__text{margin:0;font-size:var(--bw-size-body);color:var(--bw-text-muted)}
 .bw-notice__actions{display:flex;gap:var(--bw-space-5);align-items:center;margin-top:var(--bw-space-5)}
 .bw-notice--info{background:var(--bw-info-wash);border-color:#CBDFF0}
 .bw-notice--success{background:var(--bw-success-wash);border-color:#C6E9CE}
