@@ -16,7 +16,7 @@ final class Schema {
 		'text', 'textarea', 'richtext', 'number', 'range', 'colour', 'date', 'datetime',
 		'copytext', 'select', 'radio', 'checkboxes', 'toggle', 'tokens', 'scrolllist',
 		'media', 'file', 'repeater', 'record', 'facts', 'table', 'gantt', 'title', 'slug',
-		'preview',
+		'preview', 'schedule',
 	];
 
 	const CHOICE_KINDS = [ 'select', 'radio', 'checkboxes', 'scrolllist', 'record' ];
@@ -125,6 +125,8 @@ final class Schema {
 			throw new InvalidArgumentException( sprintf( 'The "%s" editor screen stores to options, so it needs an option_name.', $screen['slug'] ) );
 		}
 
+		$screen['publishing'] = self::publishing( $screen );
+
 		$seen            = [];
 		$tab_ids         = [];
 		$panel_ids       = [];
@@ -144,6 +146,45 @@ final class Schema {
 		$screen['summary'] = self::summary( $screen );
 
 		return $screen;
+	}
+
+	/**
+	 * What this screen asked to leave off the Publish and settings tab.
+	 *
+	 * Checked strictly, and by name: a typo here is a screen that quietly
+	 * keeps drawing the field somebody meant to take away, and nobody would
+	 * find that by looking at it.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private static function publishing( array $screen ): array {
+		if ( ! isset( $screen['publishing'] ) ) {
+			return [];
+		}
+		if ( ! is_array( $screen['publishing'] ) ) {
+			throw new InvalidArgumentException( sprintf( 'The "%s" editor screen has a publishing setting that is not an array. Give it a list of what to leave off the Publish and settings tab.', $screen['slug'] ) );
+		}
+		if ( 'post' !== $screen['store'] && [] !== $screen['publishing'] ) {
+			throw new InvalidArgumentException( sprintf( 'The "%s" editor screen stores to options, so it has no Publish and settings tab and nothing to leave off it.', $screen['slug'] ) );
+		}
+
+		$allowed = Settings::preferences();
+		foreach ( $screen['publishing'] as $key => $value ) {
+			if ( ! in_array( $key, $allowed, true ) ) {
+				throw new InvalidArgumentException( sprintf( 'The "%1$s" editor screen asks about "%2$s" on the Publish and settings tab. It can only ask about: %3$s.', $screen['slug'], $key, implode( ', ', $allowed ) ) );
+			}
+			if ( 'slug' === $key ) {
+				if ( ! in_array( $value, Settings::slugModes(), true ) ) {
+					throw new InvalidArgumentException( sprintf( 'The "%1$s" editor screen sets the slug to "%2$s". It must be one of: %3$s.', $screen['slug'], is_scalar( $value ) ? (string) $value : gettype( $value ), implode( ', ', Settings::slugModes() ) ) );
+				}
+				continue;
+			}
+			if ( ! is_bool( $value ) ) {
+				throw new InvalidArgumentException( sprintf( 'The "%1$s" editor screen sets "%2$s" on the Publish and settings tab to something that is not true or false.', $screen['slug'], $key ) );
+			}
+		}
+
+		return $screen['publishing'];
 	}
 
 	/**
@@ -826,8 +867,15 @@ final class Schema {
 				$field['kind']
 			) );
 		}
+		// A control that shows its value and refuses to change it. Declared by
+		// a plugin for a value something other than this screen owns — a row
+		// copied from a library that decides which phase the work belongs to —
+		// and set here as well by Capabilities::reduce() for a field the
+		// current user may see but not write, which is why it is only given a
+		// default rather than validated against a kind: every kind can be read.
+		$field['readonly']    = (bool) ( $field['readonly'] ?? false );
 		$field['depends_on']  = $field['depends_on'] ?? null;
-		$field['wide']        = (bool) ( $field['wide'] ?? in_array( $field['kind'], [ 'richtext', 'repeater', 'media', 'file', 'table', 'facts', 'gantt', 'title', 'preview' ], true ) );
+		$field['wide']        = (bool) ( $field['wide'] ?? in_array( $field['kind'], [ 'richtext', 'repeater', 'media', 'file', 'table', 'facts', 'gantt', 'schedule', 'title', 'preview' ], true ) );
 		// What Store::read() hands back for this field when it has never
 		// been saved. A plugin may declare its own; otherwise it follows the
 		// kind, so a never-touched toggle reads false and a never-touched

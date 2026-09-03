@@ -120,6 +120,7 @@ const DRAWS = {
   facts: ['dl', 'bw-dl'],
   table: ['table', 'bw-table'],
   gantt: ['div', 'bw-gantt'],
+  schedule: ['div', 'bw-schedule'],
   title: ['input', 'bw-titleinput'],
   slug: ['div', 'bw-permalink'],
   preview: ['div', 'bw-preview'],
@@ -137,6 +138,11 @@ function fieldFor(kind) {
   if (kind === 'table') {
     field.columns = ['Day'];
     field.rows = [['Monday']];
+  }
+  // A schedule with no bands is the empty state, which is a different control.
+  // One band is the minimum that draws the schedule itself.
+  if (kind === 'schedule') {
+    field.bands = [{ id: 'build', label: 'Build', rows: [{ id: 'r1', title: 'Discovery', start: 1, end: 2 }] }];
   }
   return field;
 }

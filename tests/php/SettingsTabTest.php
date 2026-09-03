@@ -18,7 +18,7 @@ final class SettingsTabTest extends TestCase {
 		$GLOBALS['bwpe_stub']['posts'][7]     = [ 'post_type' => 'bw_sport' ];
 	}
 
-	private function register( string $store = 'post' ): void {
+	private function register( string $store = 'post', array $extra = [] ): void {
 		Editor::register( array_merge(
 			[
 				'slug' => 'sports', 'title' => 'Edit sport',
@@ -26,7 +26,8 @@ final class SettingsTabTest extends TestCase {
 					[ 'id' => 'b', 'title' => 'Basics', 'fields' => [ [ 'id' => 'name', 'kind' => 'text', 'label' => 'Name' ] ] ],
 				] ] ],
 			],
-			'post' === $store ? [ 'post_type' => 'bw_sport' ] : [ 'store' => 'option', 'option_name' => 'bw_x' ]
+			'post' === $store ? [ 'post_type' => 'bw_sport' ] : [ 'store' => 'option', 'option_name' => 'bw_x' ],
+			$extra
 		) );
 	}
 
@@ -106,6 +107,84 @@ final class SettingsTabTest extends TestCase {
 		$tab = Settings::tab( [ 'store' => 'post', 'slug' => 'sports', 'post_type' => 'bw_sport' ] );
 
 		$this->assertSame( 'publish_posts', $this->settingsField( $tab, 'post_status' )['capability'] );
+	}
+
+	/* --- What a screen may leave out --------------------------------------- */
+
+	public function test_a_screen_that_says_nothing_still_gets_everything(): void {
+		$this->register( 'post' );
+		$tabs = Editor::load( 'sports', 7 )['schema']['tabs'];
+		$ids  = [];
+		foreach ( end( $tabs )['panels'] as $panel ) {
+			$ids = array_merge( $ids, array_column( $panel['fields'], 'id' ) );
+		}
+		foreach ( [ 'post_name', 'post_excerpt', 'comment_status', 'post_tags', 'featured_image', 'post_parent', 'menu_order' ] as $id ) {
+			$this->assertContains( $id, $ids );
+		}
+	}
+
+	public function test_a_screen_can_leave_out_whole_panels(): void {
+		$this->register( 'post', [ 'publishing' => [ 'taxonomies' => false, 'parent' => false ] ] );
+		$tabs   = Editor::load( 'sports', 7 )['schema']['tabs'];
+		$panels = array_column( end( $tabs )['panels'], 'id' );
+		$this->assertSame( [ 'status' ], $panels );
+	}
+
+	public function test_a_screen_can_leave_out_the_excerpt_and_the_comment_switch(): void {
+		$this->register( 'post', [ 'publishing' => [ 'excerpt' => false, 'comments' => false ] ] );
+		$tabs = Editor::load( 'sports', 7 )['schema']['tabs'];
+		$ids  = array_column( end( $tabs )['panels'][0]['fields'], 'id' );
+		$this->assertNotContains( 'post_excerpt', $ids );
+		$this->assertNotContains( 'comment_status', $ids );
+		$this->assertContains( 'post_status', $ids );
+		$this->assertContains( 'post_name', $ids );
+	}
+
+	public function test_a_screen_can_show_the_slug_without_letting_anyone_change_it(): void {
+		$this->register( 'post', [ 'publishing' => [ 'slug' => 'readonly' ] ] );
+		$tabs = Editor::load( 'sports', 7 )['schema']['tabs'];
+		$slug = $this->settingsField( [ 'panels' => end( $tabs )['panels'] ], 'post_name' );
+		$this->assertTrue( $slug['readonly'] );
+	}
+
+	/**
+	 * A field left out is still a field this library owns. Freeing up its id
+	 * the moment it stops being drawn would mean a screen that hides the
+	 * excerpt today silently writes over the real post_excerpt tomorrow —
+	 * the one thing reservedFieldIds() exists to stop.
+	 */
+	public function test_leaving_a_field_out_does_not_free_up_its_id(): void {
+		Editor::register(
+			[
+				'slug'       => 'sports',
+				'title'      => 'Edit sport',
+				'post_type'  => 'bw_sport',
+				'publishing' => [ 'excerpt' => false ],
+				'tabs'       => [ [ 'id' => 'd', 'label' => 'Details', 'panels' => [
+					[ 'id' => 'b', 'title' => 'Basics', 'fields' => [ [ 'id' => 'post_excerpt', 'kind' => 'text', 'label' => 'Blurb' ] ] ],
+				] ] ],
+			]
+		);
+
+		$this->assertStringContainsString( 'not ready', Editor::load( 'sports', 7 )['problem'] );
+	}
+
+	public function test_a_publishing_key_nobody_recognises_is_refused(): void {
+		$this->register( 'post', [ 'publishing' => [ 'excerpts' => false ] ] );
+
+		$this->assertStringContainsString( 'not ready', Editor::load( 'sports', 7 )['problem'] );
+	}
+
+	public function test_a_settings_screen_may_not_ask_about_a_tab_it_never_gets(): void {
+		$this->register( 'option', [ 'publishing' => [ 'excerpt' => false ] ] );
+
+		$this->assertStringContainsString( 'not ready', Editor::load( 'sports' )['problem'] );
+	}
+
+	public function test_a_slug_setting_nobody_recognises_is_refused(): void {
+		$this->register( 'post', [ 'publishing' => [ 'slug' => 'maybe' ] ] );
+
+		$this->assertStringContainsString( 'not ready', Editor::load( 'sports', 7 )['problem'] );
 	}
 
 	private function settingsField( array $tab, string $id ): array {

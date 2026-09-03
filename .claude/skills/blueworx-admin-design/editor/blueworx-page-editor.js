@@ -408,18 +408,35 @@
     // field to read at all and is always shown.
     const shown = !switchField || props.record.values[switchField.id] === true;
 
+    const head = h('div', { className: 'bw-card__head' },
+      h('div', { className: 'bw-card__titles' },
+        panel.eyebrow ? h('p', { className: 'bw-card__eyebrow' }, panel.eyebrow) : null,
+        h('h2', { className: 'bw-card__title' }, panel.title)),
+      panel.hideable && switchField ? h('label', { className: 'bw-switch' },
+        h('input', { type: 'checkbox', checked: shown,
+          onChange: function (e) { props.record.setValue(switchField.id, e.target.checked); } }),
+        h('span', { className: 'bw-switch__track' }, h('span', { className: 'bw-switch__thumb' })),
+        h('span', { className: 'bw-switch__label' }, shown ? 'Shown' : 'Hidden')) : null);
+
+    const note = panel.note ? h('p', { className: 'bw-card__note' }, panel.note) : null;
+
+    // A panel holding nothing but a repeater stops boxing it. Every row is
+    // already a card, so keeping the panel's own card around them nests a
+    // list of cards inside one more — and the panel's heading and description
+    // end up sharing a box with rows they only introduce. Split in two, the
+    // heading reads as a heading and each row reads as its own thing.
+    if (fields.length === 1 && fields[0].kind === 'repeater' && !fields[0].depends_on) {
+      return h(wp().element.Fragment, null,
+        h('section', { className: 'bw-card bw-card--intro' }, head,
+          shown && note ? h('div', { className: 'bw-card__body' }, note) : null),
+        shown ? h('div', { className: 'bw-panel__loose' },
+          h(Field, { field: fields[0], record: props.record })) : null);
+    }
+
     return h('section', { className: 'bw-card' },
-      h('div', { className: 'bw-card__head' },
-        h('div', { className: 'bw-card__titles' },
-          panel.eyebrow ? h('p', { className: 'bw-card__eyebrow' }, panel.eyebrow) : null,
-          h('h2', { className: 'bw-card__title' }, panel.title)),
-        panel.hideable && switchField ? h('label', { className: 'bw-switch' },
-          h('input', { type: 'checkbox', checked: shown,
-            onChange: function (e) { props.record.setValue(switchField.id, e.target.checked); } }),
-          h('span', { className: 'bw-switch__track' }, h('span', { className: 'bw-switch__thumb' })),
-          h('span', { className: 'bw-switch__label' }, shown ? 'Shown' : 'Hidden')) : null),
+      head,
       shown ? h('div', { className: 'bw-card__body' },
-        panel.note ? h('p', { className: 'bw-card__note' }, panel.note) : null,
+        note,
         fields.length === 0
           ? h('div', { className: 'bw-empty' }, h('p', null, 'Nothing here yet.'))
           : h('div', { className: 'bw-fields' }, fields.map(function (field) {
@@ -496,10 +513,24 @@
         return h('input', { id: field.id, type: 'text', className: 'bw-titleinput', placeholder: field.label,
           disabled: Boolean(field.readonly), value: value || '', onChange: function (e) { set(e.target.value); } });
 
-      case 'slug':
+      case 'slug': {
+        const home = (root.blueworxPageEditor && root.blueworxPageEditor.home) || '/';
+        // A slug nobody may change is shown as the whole address, ready to
+        // copy, rather than as a disabled box: read-only here means the
+        // address is the answer, and half of it sitting in grey prefix text
+        // is not something anyone can take away with them.
+        if (field.readonly) {
+          const address = home + (value || '');
+          return h('div', { className: 'bw-copyfield' },
+            h('input', { id: field.id, type: 'text', readOnly: true, value: address,
+              className: 'bw-input bw-input--mono' }),
+            h('button', { type: 'button', className: 'bw-btn bw-btn--secondary bw-copyfield__btn',
+              onClick: function () { root.navigator.clipboard.writeText(address); } }, 'Copy'));
+        }
         return h('div', { className: 'bw-permalink' },
-          h('code', null, (root.blueworxPageEditor && root.blueworxPageEditor.home) || '/'),
+          h('code', null, home),
           h('input', Object.assign({}, common, { type: 'text', value: value || '', onChange: function (e) { set(e.target.value); } })));
+      }
 
       case 'text': {
         const input = h('input', Object.assign({}, common, suggestionProps(field, field.id),
@@ -676,8 +707,15 @@
   //
   // Deliberately not Control(): that takes a whole record and sets a value by
   // field id, and a cell belongs to a row rather than to the record.
-  function repeaterCell(cell, id, value, locked, onChange) {
+  function repeaterCell(cell, id, value, given, onChange) {
     const h = wp().element.createElement;
+    // Two ways a cell ends up uneditable, and they mean different things. The
+    // repeater is readonly, so nothing in it may be touched; or this one cell
+    // is, because something other than this screen decides its value — a row
+    // copied from a library that owns which phase the work belongs to, say.
+    // The cell still shows: what it says is the point, and a row with the
+    // column missing reads as a row missing information.
+    const locked = given || Boolean(cell.readonly);
 
     switch (cell.kind) {
       case 'textarea':
@@ -1025,24 +1063,32 @@
       // Keyed on the row's own id, not its position: move() swaps whole
       // row objects, so the id travels with the content, and the row the
       // pointer is over stays the row that actually moved.
-      return h('div', { key: rowValue.__rid || ('row-' + i), className: 'bw-repeater__row' },
+      // The row's own controls run along a bar at the top of it. The fields
+      // below them are a full-width stack, and a reorder button floating
+      // beside a stack that tall belongs to nothing the eye can see. A fixed
+      // list has no controls at all, so it gets no bar either rather than an
+      // empty strip above every row.
+      const bar = fixed ? null : h('div', { className: 'bw-repeater__bar' },
         // Dragging is a nice-to-have; these two buttons are how a reorder is
         // actually done, so it works from the keyboard like everything else.
-        fixed ? null : h('span', { className: 'bw-repeater__grip' },
+        h('span', { className: 'bw-repeater__grip' },
           h('button', { type: 'button', className: 'bw-iconbtn', 'aria-label': 'Move up', disabled: locked,
             onClick: function () { move(i, -1); } },
             h('i', { className: 'bw-icon', 'data-lucide': 'chevron-up' })),
           h('button', { type: 'button', className: 'bw-iconbtn', 'aria-label': 'Move down', disabled: locked,
             onClick: function () { move(i, 1); } },
             h('i', { className: 'bw-icon', 'data-lucide': 'chevron-down' }))),
+        h('button', { type: 'button', className: 'bw-iconbtn bw-iconbtn--danger', 'aria-label': 'Remove this row', disabled: locked,
+          onClick: function () { props.onChange(rows.filter(function (_, j) { return j !== i; })); } },
+          h('i', { className: 'bw-icon', 'data-lucide': 'trash-2' })));
+
+      return h('div', { key: rowValue.__rid || ('row-' + i), className: 'bw-repeater__row' },
+        bar,
         h('div', { className: 'bw-repeater__fields' }, (props.field.fields || []).map(function (cell) {
           return h('div', { key: cell.id, className: 'bw-field' },
             h('label', { className: 'bw-field__label', htmlFor: cell.id + '-' + i }, cell.label),
             repeaterCell(cell, cell.id + '-' + i, rowValue[cell.id], locked, function (v) { change(i, cell, v); }));
-        })),
-        fixed ? null : h('button', { type: 'button', className: 'bw-iconbtn bw-iconbtn--danger', 'aria-label': 'Remove this row', disabled: locked,
-          onClick: function () { props.onChange(rows.filter(function (_, j) { return j !== i; })); } },
-          h('i', { className: 'bw-icon', 'data-lucide': 'trash-2' })));
+        })));
     }
 
     const groups = repeaterGroups(props.field, rows);
@@ -1199,11 +1245,107 @@
             return h('tr', { key: i }, row.map(function (cell, j) { return h('td', { key: j }, cell); }));
           })));
 
+      case 'schedule':
+        return h(Schedule, { field: field });
+
       default:
         return h('input', { id: field.id, type: 'text', className: 'bw-input',
           value: value || '', onChange: function (e) { set(e.target.value); } });
     }
   }
+
+  // A schedule somebody reads, never one they drag. The gantt above is the
+  // control for a schedule a person sets; this is the one for a schedule that
+  // follows from something else — hours estimated somewhere else on the same
+  // record — so there is nothing to edit, nothing to reorder, and no way to
+  // read the weeks as calendar dates, because a plan derived from estimates
+  // does not know when it starts.
+  //
+  // Bands are the point, and they are shown one at a time. A schedule that runs
+  // through a hand-off — build then support, say — is two plans rather than one
+  // long one: each counts its own weeks from week one, and stacking them would
+  // put two different week ones on the same ruler. So the bands are tabs, each
+  // scaled to its own length, and only the one being read is drawn. A single
+  // band gets no tab strip — there is nothing to switch to.
+  function Schedule(props) {
+    const el = wp().element;
+    const h = el.createElement;
+    const field = props.field;
+    const bands = field.bands || [];
+
+    // Which band is on screen is how it is being read, not anything about the
+    // record, so it lives here rather than being saved.
+    const pickedState = el.useState(0);
+    const picked = Math.min(pickedState[0], Math.max(0, bands.length - 1));
+    const setPicked = pickedState[1];
+
+    if (bands.length === 0) {
+      return h('div', { className: 'bw-empty' },
+        h('i', { className: 'bw-icon bw-icon--28 bw-empty__icon', 'data-lucide': 'calendar' }),
+        h('h3', { className: 'bw-empty__title' }, field.empty_title || 'Nothing to schedule yet'),
+        h('p', { className: 'bw-empty__text' }, field.empty_text || 'This fills in once there are hours to work from.'));
+    }
+
+    const band = bands[picked];
+    const rows = band.rows || [];
+
+    // This band's own length. Scaling every band to the longest would draw the
+    // shorter one as a stub of a plan it is not part of.
+    const span = Math.max.apply(null, [1].concat(rows.map(function (r) { return Number(r.end) || 1; })));
+
+    const ticks = [];
+    for (let week = 1; week <= span; week += 4) ticks.push(week);
+
+    return h('div', { className: 'bw-schedule' },
+      bands.length > 1 ? h('div', { className: 'bw-steps', role: 'tablist' },
+        bands.map(function (each, i) {
+          return h('button', {
+            key: each.id || ('b-' + i),
+            type: 'button',
+            role: 'tab',
+            className: 'bw-step' + (i === picked ? ' is-current' : ''),
+            'aria-selected': i === picked,
+            onClick: function () { setPicked(i); },
+          }, each.label);
+        })) : null,
+
+      h('div', { className: 'bw-schedule__head' },
+        h('span', { className: 'bw-schedule__band-title' }, band.label),
+        band.meta ? h('span', { className: 'bw-schedule__band-meta' }, band.meta) : null),
+
+      ticks.length > 0 ? h('div', { className: 'bw-schedule__ruler' },
+        ticks.map(function (week) {
+          return h('span', { key: week, className: 'bw-schedule__tick' }, 'Week ' + week);
+        })) : null,
+
+      rows.map(function (row, i) {
+        const hidden = row.visible === false;
+        const start = Math.max(1, Number(row.start) || 1);
+        const end = Math.max(start, Number(row.end) || start);
+        return h('div', { key: row.id || (picked + '-' + i), className: 'bw-schedule__row' },
+          h('span', { className: 'bw-schedule__label' },
+            h('span', { className: 'bw-schedule__title' },
+              row.title || 'Untitled',
+              // Not a lock icon: nothing here is locked, the phase simply is
+              // not going to the client, and saying which is the whole job of
+              // this column.
+              hidden ? h('i', { className: 'bw-icon bw-icon--14', 'data-lucide': 'eye-off',
+                title: 'Not shown to the client' }) : null),
+            h('span', { className: 'bw-schedule__range' },
+              (start === end ? 'Week ' + start : 'Weeks ' + start + '–' + end)
+                + (row.meta ? ' · ' + row.meta : ''))),
+          h('span', { className: 'bw-schedule__track' },
+            h('span', {
+              className: 'bw-schedule__bar bw-schedule__bar--' + (row.kind || 'pre') + (hidden ? ' is-hidden' : ''),
+              style: {
+                left: ((start - 1) / span * 100) + '%',
+                width: Math.max(SCHEDULE_MIN_BAR_PERCENT, (end - start + 1) / span * 100) + '%',
+              },
+            }, row.note || '')));
+      }));
+  }
+
+  const SCHEDULE_MIN_BAR_PERCENT = 3.5;
 
   // The view is exported alongside the pure logic so a test can render every
   // field kind without a browser: a fake wp.element whose createElement

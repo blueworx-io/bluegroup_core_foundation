@@ -14,10 +14,42 @@ namespace Blueworx\PageEditor\v1;
  */
 final class Settings {
 
+	/**
+	 * What a screen is allowed to say about this tab, and what it gets when it
+	 * says nothing. Every default here is the whole tab as it has always been,
+	 * so a screen that declares no 'publishing' key is untouched.
+	 *
+	 * A screen may leave a part out; it may never add to this tab, reorder it
+	 * or reword it. That is still the point — a record editor that keeps the
+	 * excerpt looks exactly like every other one that keeps it.
+	 */
+	private const DEFAULTS = [
+		'slug'       => 'edit',
+		'excerpt'    => true,
+		'comments'   => true,
+		'taxonomies' => true,
+		'parent'     => true,
+	];
+
+	/** How a screen may present the slug. */
+	private const SLUG_MODES = [ 'edit', 'readonly', 'hidden' ];
+
+	/** Everything a screen's 'publishing' key may name. */
+	public static function preferences(): array {
+		return array_keys( self::DEFAULTS );
+	}
+
+	/** Everything 'slug' may be set to. */
+	public static function slugModes(): array {
+		return self::SLUG_MODES;
+	}
+
 	public static function tab( array $screen ): ?array {
 		if ( 'post' !== $screen['store'] ) {
 			return null;
 		}
+
+		$wants = array_merge( self::DEFAULTS, $screen['publishing'] ?? [] );
 
 		$tab = [
 			'id'     => 'publish',
@@ -81,7 +113,91 @@ final class Settings {
 			],
 		];
 
-		return Schema::normaliseTab( $tab, $screen['slug'] );
+		return Schema::normaliseTab( self::prune( $tab, $wants ), $screen['slug'] );
+	}
+
+	/**
+	 * Take out the parts this screen said it did not want.
+	 *
+	 * The tab is written out in full above and cut down here rather than
+	 * assembled piece by piece, so the declaration stays one readable list of
+	 * what the tab is — and so leaving something out can never quietly change
+	 * the order of what is left.
+	 *
+	 * Nothing here touches Schema::reservedFieldIds(), which asks for the tab
+	 * with no screen preferences at all: a field a screen stops drawing is
+	 * still a field this library owns, and a plugin may not take its id.
+	 */
+	private static function prune( array $tab, array $wants ): array {
+		$drop_fields = [];
+		if ( 'hidden' === $wants['slug'] ) {
+			$drop_fields[] = 'post_name';
+		}
+		if ( ! $wants['excerpt'] ) {
+			$drop_fields[] = 'post_excerpt';
+		}
+		if ( ! $wants['comments'] ) {
+			$drop_fields[] = 'comment_status';
+		}
+
+		$drop_panels = [];
+		foreach ( [ 'taxonomies', 'parent' ] as $panel ) {
+			if ( ! $wants[ $panel ] ) {
+				$drop_panels[] = $panel;
+			}
+		}
+
+		$panels = [];
+		foreach ( $tab['panels'] as $panel ) {
+			if ( in_array( $panel['id'], $drop_panels, true ) ) {
+				continue;
+			}
+			$panel['fields'] = array_values(
+				array_filter(
+					$panel['fields'],
+					static function ( array $field ) use ( $drop_fields ): bool {
+						return ! in_array( $field['id'], $drop_fields, true );
+					}
+				)
+			);
+			foreach ( $panel['fields'] as $i => $field ) {
+				if ( 'post_name' === $field['id'] && 'readonly' === $wants['slug'] ) {
+					// Read-only rather than absent: the address is the one
+					// thing a record editor is most often opened to copy, and
+					// a field nobody may change still has to be readable.
+					$panel['fields'][ $i ]['readonly'] = true;
+					$panel['fields'][ $i ]['help']     = 'This is the address the record is served at. It cannot be changed here.';
+				}
+			}
+			$panels[] = $panel;
+		}
+
+		$tab['panels'] = $panels;
+
+		// The first panel is named after what it holds, so it stops promising
+		// an excerpt it no longer shows.
+		$tab['panels'][0]['title'] = self::statusTitle( $tab['panels'][0]['fields'] );
+
+		return $tab;
+	}
+
+	/**
+	 * What to call the first panel, given what survived.
+	 */
+	private static function statusTitle( array $fields ): string {
+		$ids   = array_column( $fields, 'id' );
+		$parts = [ 'Status' ];
+		if ( in_array( 'post_name', $ids, true ) ) {
+			$parts[] = 'slug';
+		}
+		if ( in_array( 'post_excerpt', $ids, true ) ) {
+			$parts[] = 'excerpt';
+		}
+		if ( count( $parts ) === 1 ) {
+			return 'Status';
+		}
+		$last = array_pop( $parts );
+		return implode( ', ', $parts ) . ' and ' . $last;
 	}
 
 	/**

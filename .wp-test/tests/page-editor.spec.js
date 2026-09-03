@@ -452,3 +452,71 @@ test('a fixed timeline keeps edit and hide, and loses the rest', async ({ page }
   await expect(rows.first().getByRole('button', { name: /^Edit/ })).toBeVisible();
   await expect(rows.first().getByRole('button', { name: /the client$/ })).toBeVisible();
 });
+
+/* --- How a repeater is laid out ------------------------------------------ */
+
+// Cells used to share one wrapping flex line, which put every control across
+// the screen at whatever width was left over — a textarea two words wide
+// beside a toggle in a box its own size. This asserts the geometry rather
+// than the class name: a stylesheet that stopped stacking would keep the
+// markup and fail here, which is the whole point.
+test('a repeater row stacks its fields one per line, each the full width', async ({ page }) => {
+  await page.locator('.bw-repeater__foot .bw-btn').click();
+
+  const row = page.locator('.bw-repeater__row').first();
+  const day = await row.locator('.bw-field').nth(0).boundingBox();
+  const venue = await row.locator('.bw-field').nth(1).boundingBox();
+
+  expect(day.x).toBeCloseTo(venue.x, 0);
+  expect(venue.y).toBeGreaterThan(day.y + day.height - 1);
+
+  // Full width means the row's own width, less its padding — not a share of
+  // a line split between however many cells the schema happens to declare.
+  const fields = await row.locator('.bw-repeater__fields').boundingBox();
+  expect(day.width).toBeCloseTo(fields.width, 0);
+});
+
+// A panel holding nothing but a repeater draws its heading and description in
+// one card and every row in its own, rather than nesting a list of cards
+// inside one more card that also carries the introduction to them.
+test('a panel holding only a repeater does not box the rows', async ({ page }) => {
+  await page.getByRole('tab', { name: /Delivery/ }).click();
+
+  const intro = page.locator('.bw-card:has(.bw-card__title:text-is("Planned coaching"))');
+  await expect(intro).toHaveClass(/bw-card--intro/);
+  await expect(intro.locator('.bw-card__note')).toContainText('Rows fall under the block');
+  await expect(intro.locator('.bw-repeater')).toHaveCount(0);
+
+  await expect(page.locator('.bw-panel__loose .bw-repeater')).toHaveCount(1);
+});
+
+/* --- What a screen may leave off the publish tab -------------------------- */
+
+async function trimmedScreen(page) {
+  const url = new URL(page.url(), 'http://x');
+  await page.goto(`/wp-admin/admin.php?page=bwx-sport-trimmed&id=${url.searchParams.get('id')}`);
+  await page.getByRole('tab', { name: /Publish & settings/ }).click();
+}
+
+test('a screen that leaves parts off the publish tab does not draw them', async ({ page }) => {
+  await trimmedScreen(page);
+
+  await expect(page.locator('#post_status')).toBeVisible();
+  await expect(page.locator('#post_excerpt')).toHaveCount(0);
+  await expect(page.locator('#comment_status')).toHaveCount(0);
+  await expect(page.locator('.bw-card__title:text-is("Categories and tags")')).toHaveCount(0);
+  await expect(page.locator('.bw-card__title:text-is("Parent and template")')).toHaveCount(0);
+  await expect(page.locator('.bw-card__title:text-is("Status and slug")')).toBeVisible();
+});
+
+// Read-only here means the address is the answer. A disabled input holding
+// half of it, with the site's own address in grey beside it, is not something
+// anyone can take away with them.
+test('a read-only slug shows the whole address, ready to copy', async ({ page }) => {
+  await trimmedScreen(page);
+
+  const slug = page.locator('#post_name');
+  await expect(slug).toHaveJSProperty('readOnly', true);
+  await expect(slug).toHaveValue(/^https?:\/\/.+/);
+  await expect(page.locator('.bw-copyfield').getByRole('button', { name: 'Copy' })).toBeVisible();
+});
