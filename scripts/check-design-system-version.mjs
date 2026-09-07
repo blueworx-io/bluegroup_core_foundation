@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-// Foundation-only. Fails the run if this PR changes the design system's
-// stylesheet without moving its version. See scripts/lib/design-system-version.mjs
-// for why the two travel together.
+// Foundation-only. Fails the run if this PR changes a file the design system
+// ships to plugins — the stylesheet, the icon module, or a font — without
+// moving its version. See scripts/lib/design-system-version.mjs for why they
+// travel together.
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { designSystemVersionBump, parseDesignSystemVersion } from './lib/design-system-version.mjs';
+import { changedDesignSystemPaths, designSystemVersionBump, parseDesignSystemVersion } from './lib/design-system-version.mjs';
 
 const base = process.env.BASE_REF || 'main';
 const baseRefName = `origin/${base}`;
@@ -57,10 +58,10 @@ const baseRefExists = changed !== null;
 const baseRegistrarExisted = baseRefExists && pathExistsAtRef(baseRefName, registrarPath);
 
 const result = designSystemVersionBump({
-  // A ref this script can't diff against is treated as if the stylesheet
+  // A ref this script can't diff against is treated as if a watched file
   // changed: it has no way to prove otherwise, and the whole point of this
   // guard is to never pass silently just because it lost the ability to check.
-  styleChanged: baseRefExists ? changed.includes(`${skill}/styles.css`) : true,
+  changedPaths: baseRefExists ? changedDesignSystemPaths(changed, skill) : [`${skill}/styles.css`],
   baseRefExists,
   baseRegistrarExisted,
   baseRef: baseRefName,

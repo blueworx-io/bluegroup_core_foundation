@@ -1,7 +1,8 @@
 // The design system's version is what decides which copy loads on a site with
-// two BlueWorx plugins (see the skill's design-system.php). A stylesheet change
-// that ships under an unchanged version never reaches a site where an older copy
-// is already installed — it ties, and the tie goes to whoever registered first.
+// two BlueWorx plugins (see the skill's design-system.php). A change to any
+// file it ships — the stylesheet, the icon module, or a font — that lands
+// under an unchanged version never reaches a site where an older copy is
+// already installed — it ties, and the tie goes to whoever registered first.
 // So the two move together, and this is what says so.
 
 import { compareSemver } from './semver.mjs';
@@ -9,6 +10,27 @@ import { compareSemver } from './semver.mjs';
 export function parseDesignSystemVersion(php) {
   const m = /blueworx_admin_design_register\(\s*'([0-9]+\.[0-9]+\.[0-9]+)'/.exec(php ?? '');
   return m ? m[1] : '';
+}
+
+// The paths whose content the winning copy serves at the winning version —
+// so a change to any of them that ships under an unchanged version is the
+// silent-loses-to-an-older-copy bug this whole guard exists to catch.
+// `skillDir` is the design system's own directory, e.g.
+// '.claude/skills/blueworx-admin-design'.
+export function designSystemWatchedPaths(skillDir) {
+  return {
+    files: [`${skillDir}/styles.css`, `${skillDir}/assets/icons/lucide-icons.js`],
+    dirs: [`${skillDir}/fonts/`],
+  };
+}
+
+// Which of `changedFiles` (paths relative to the repo root) are ones the
+// version guard watches, out of the full set changed on this PR.
+export function changedDesignSystemPaths(changedFiles, skillDir) {
+  const { files, dirs } = designSystemWatchedPaths(skillDir);
+  return (changedFiles ?? []).filter(
+    (path) => files.includes(path) || dirs.some((dir) => path.startsWith(dir))
+  );
 }
 
 // `baseVersion` alone cannot tell "the file was new on this PR" apart from
@@ -19,15 +41,15 @@ export function parseDesignSystemVersion(php) {
 // at all, and did the registrar exist there — are passed in separately, and
 // only the "existed but unreadable" case fails.
 export function designSystemVersionBump({
-  styleChanged,
+  changedPaths,
   baseVersion,
   headVersion,
   baseRefExists,
   baseRegistrarExisted,
   baseRef,
 }) {
-  if (!styleChanged) {
-    return { ok: true, message: 'Design system version: styles.css unchanged — nothing to bump.' };
+  if (!changedPaths || changedPaths.length === 0) {
+    return { ok: true, message: 'Design system version: no watched design system files changed — nothing to bump.' };
   }
   if (!headVersion) {
     return { ok: false, message: 'Design system version: could not read the version from design-system.php.' };
@@ -68,12 +90,12 @@ export function designSystemVersionBump({
     return {
       ok: false,
       message: [
-        `Design system version: styles.css changed but the version is still ${headVersion}.`,
+        `Design system version: ${changedPaths.join(', ')} changed but the version is still ${headVersion}.`,
         '',
-        "Bump the version in the register call at the bottom of",
-        '.claude/skills/blueworx-admin-design/design-system.php — a stylesheet change',
-        'under an unchanged version never reaches a site that already has an older',
-        'copy of the design system installed.',
+        'Bump the version in the register call at the bottom of',
+        '.claude/skills/blueworx-admin-design/design-system.php — a change to a file',
+        'the design system ships that lands under an unchanged version never reaches',
+        'a site that already has an older copy installed.',
       ].join('\n'),
     };
   }

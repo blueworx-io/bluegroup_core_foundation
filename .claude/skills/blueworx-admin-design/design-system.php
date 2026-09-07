@@ -6,6 +6,12 @@
  * stylesheet it enqueues, and it works out its own URL from there — no guessing
  * at directory depth, no constant for the plugin to define.
  *
+ * Require this file at plugin load time (top level, not from inside an
+ * admin_enqueue_scripts callback or any other hook). Registration has to run
+ * before any copy's enqueue call, and hooks give no guarantee of that — a copy
+ * that only registers once its own hook fires can lose to a copy that already
+ * enqueued and latched, which is the exact bug this file exists to remove.
+ *
  * WHY THIS EXISTS
  * Every BlueWorx plugin ships its own copy of the design system, deliberately:
  * there is no shared runtime package, because two plugins on one site can be
@@ -23,13 +29,17 @@
  * winner, and the same winner no matter what order plugins happen to load in.
  *
  * BUMPING THE VERSION
- * The constant below travels with styles.css: change the stylesheet in the
- * foundation and this moves too, or an older copy elsewhere keeps winning.
- * scripts/check-design-system-version.mjs fails the foundation's own CI if a PR
- * touches one without the other.
+ * The version passed to blueworx_admin_design_register() below travels with
+ * styles.css: change the stylesheet in the foundation and this moves too, or
+ * an older copy elsewhere keeps winning. scripts/check-design-system-version.mjs
+ * fails the foundation's own CI if a PR touches one without the other.
  *
  * @package BlueWorx\AdminDesign
  */
+
+if ( ! defined( 'ABSPATH' ) && ! defined( 'BWPE_TESTING' ) ) {
+	exit;
+}
 
 // Guard the behaviour, not the registration. Each plugin ships its own copy of
 // this file, so the function bodies must be declared once — but every copy still
@@ -49,8 +59,9 @@ if ( ! function_exists( 'blueworx_admin_design_register' ) ) {
 			$GLOBALS['blueworx_admin_design_copies'] = [];
 		}
 		// Keyed by file, so a plugin loaded twice in one request (a test
-		// harness, a mu-plugin mirror) counts once rather than skewing nothing
-		// in particular.
+		// harness, a mu-plugin mirror) counts once rather than as two separate
+		// copies — the highest version still wins either way, but a duplicate
+		// entry would be wrong for anything that later counts copies on the site.
 		$GLOBALS['blueworx_admin_design_copies'][ $file ] = (string) $version;
 	}
 
@@ -142,7 +153,7 @@ if ( ! function_exists( 'blueworx_admin_design_register' ) ) {
 			$winner['version'],
 			true
 		);
-		add_filter( 'script_loader_tag', 'blueworx_admin_design_icons_module', 10, 2 );
+		add_filter( 'script_loader_tag', 'blueworx_admin_design_icons_script_tag', 10, 2 );
 	}
 
 	/**
@@ -153,11 +164,17 @@ if ( ! function_exists( 'blueworx_admin_design_register' ) ) {
 	 * to 4.1. WordPress prints its own type attribute on older versions, so the
 	 * replacement inserts ours rather than assuming none is there.
 	 *
+	 * Named unusually specifically on purpose: every copy of this file declares
+	 * this function unconditionally (see the guard above), so a name another
+	 * BlueWorx plugin already declares at load time fatals the whole site with
+	 * "Cannot redeclare" the moment both are active. Check sibling plugin repos
+	 * before ever renaming this again.
+	 *
 	 * @param string $tag    The script tag.
 	 * @param string $handle The script handle.
 	 * @return string
 	 */
-	function blueworx_admin_design_icons_module( $tag, $handle ) {
+	function blueworx_admin_design_icons_script_tag( $tag, $handle ) {
 		if ( 'blueworx-admin-design-icons' !== $handle ) {
 			return $tag;
 		}

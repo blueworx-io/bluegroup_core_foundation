@@ -64,6 +64,19 @@ final class Screen {
 			return;
 		}
 
+		if ( ! function_exists( 'blueworx_admin_design_enqueue' ) ) {
+			// A plugin that re-pulled this editor library but not
+			// assets/blueworx-admin-design.php beside it. This used to render a
+			// blank #bw-page-editor with nothing on the page, no console error
+			// and no admin notice — genuinely difficult to debug, since nothing
+			// anywhere says the design system is what's missing. Same notice
+			// markup render() prints below for a screen that isn't ready, so this
+			// says so instead, and the media library enqueue below never runs
+			// for a screen that's about to bail anyway.
+			add_action( 'admin_notices', [ __CLASS__, 'missingDesignSystemNotice' ] );
+			return;
+		}
+
 		$base   = self::url();
 		$screen = Editor::get( $slug );
 
@@ -76,13 +89,6 @@ final class Screen {
 		// screen whose schema has no such field.
 		if ( null !== $screen && self::hasMediaField( $screen ) ) {
 			wp_enqueue_media();
-		}
-
-		if ( ! function_exists( 'blueworx_admin_design_enqueue' ) ) {
-			// A plugin that has not re-pulled the design system yet. Nothing to
-			// enqueue is better than a fatal on an admin screen; CI's design
-			// system sync check is what tells them to catch up.
-			return;
 		}
 
 		// The design system decides which copy of itself loads — the newest on
@@ -118,6 +124,21 @@ final class Screen {
 				'nonce'     => wp_create_nonce( 'wp_rest' ),
 			] ) . ';',
 			'before'
+		);
+	}
+
+	/**
+	 * Prints the same notice markup render() uses for "screen not ready",
+	 * for the "design system not re-pulled" case caught in assets() above.
+	 * It cannot rely on the design system's own stylesheet for that markup —
+	 * the whole reason it is showing is that the stylesheet failed to load —
+	 * so the notice is plain rather than styled, but plain and visible beats
+	 * a blank screen with no explanation anywhere.
+	 */
+	public static function missingDesignSystemNotice(): void {
+		printf(
+			'<div class="wrap bw-admin"><div class="bw-notice bw-notice--danger"><p>%s</p></div></div>',
+			esc_html__( "This plugin's copy of the BlueWorx design system is missing or incomplete — re-pull assets/blueworx-admin-design.php from the design system, then reload this page.", 'blueworx-page-editor' )
 		);
 	}
 

@@ -65,14 +65,14 @@ final class DesignSystemTest extends TestCase {
 		$this->assertCount( 1, $GLOBALS['blueworx_admin_design_copies'] );
 	}
 
-	// blueworx_admin_design_icons_module() is registered as a script_loader_tag
+	// blueworx_admin_design_icons_script_tag() is registered as a script_loader_tag
 	// filter, but the stub add_filter() only records the registration — it
 	// never calls the callback. Nothing above exercises the regex itself, so
 	// it is tested directly here with the exact tag shapes WordPress prints.
 	public function test_icons_module_adds_type_module_when_tag_has_no_type_attribute() {
 		$tag = "<script src='https://example.test/blueworx-admin-icons.js' id='blueworx-admin-design-icons-js'></script>\n";
 
-		$result = blueworx_admin_design_icons_module( $tag, 'blueworx-admin-design-icons' );
+		$result = blueworx_admin_design_icons_script_tag( $tag, 'blueworx-admin-design-icons' );
 
 		$this->assertSame(
 			"<script type=\"module\" src='https://example.test/blueworx-admin-icons.js' id='blueworx-admin-design-icons-js'></script>\n",
@@ -84,7 +84,7 @@ final class DesignSystemTest extends TestCase {
 		// WordPress 4.1-6.3 prints type='text/javascript' with single quotes.
 		$tag = "<script type='text/javascript' src='https://example.test/blueworx-admin-icons.js'></script>\n";
 
-		$result = blueworx_admin_design_icons_module( $tag, 'blueworx-admin-design-icons' );
+		$result = blueworx_admin_design_icons_script_tag( $tag, 'blueworx-admin-design-icons' );
 
 		$this->assertSame(
 			"<script type=\"module\" src='https://example.test/blueworx-admin-icons.js'></script>\n",
@@ -96,7 +96,7 @@ final class DesignSystemTest extends TestCase {
 	public function test_icons_module_replaces_double_quoted_text_javascript_type() {
 		$tag = '<script type="text/javascript" src="https://example.test/blueworx-admin-icons.js"></script>' . "\n";
 
-		$result = blueworx_admin_design_icons_module( $tag, 'blueworx-admin-design-icons' );
+		$result = blueworx_admin_design_icons_script_tag( $tag, 'blueworx-admin-design-icons' );
 
 		$this->assertSame(
 			'<script type="module" src="https://example.test/blueworx-admin-icons.js"></script>' . "\n",
@@ -108,7 +108,7 @@ final class DesignSystemTest extends TestCase {
 	public function test_icons_module_leaves_other_handles_unchanged() {
 		$tag = "<script type='text/javascript' src='https://example.test/some-other-script.js'></script>\n";
 
-		$result = blueworx_admin_design_icons_module( $tag, 'some-other-handle' );
+		$result = blueworx_admin_design_icons_script_tag( $tag, 'some-other-handle' );
 
 		$this->assertSame( $tag, $result );
 	}
