@@ -112,4 +112,12 @@ final class DesignSystemTest extends TestCase {
 
 		$this->assertSame( $tag, $result );
 	}
+
+	public function test_the_library_does_not_enqueue_the_design_system_itself() {
+		$screen = file_get_contents( __DIR__ . '/../../.claude/skills/blueworx-admin-design/editor/php/v1/Screen.php' );
+
+		$this->assertStringNotContainsString( "wp_enqueue_style( 'blueworx-admin-design'", $screen );
+		$this->assertStringContainsString( 'blueworx_admin_design_enqueue()', $screen );
+		$this->assertStringContainsString( 'blueworx_admin_design_enqueue_icons()', $screen );
+	}
 }
