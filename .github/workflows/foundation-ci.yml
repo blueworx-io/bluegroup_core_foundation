@@ -64,8 +64,8 @@ jobs:
       - name: Install PHP dependencies
         run: composer install --no-interaction --no-progress
 
-      - name: Syntax-check the library
-        run: find .claude/skills/blueworx-admin-design/editor/php -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Syntax-check the design system
+        run: find .claude/skills/blueworx-admin-design -name '*.php' -print0 | xargs -0 -n1 php -l
 
       - name: PHPUnit
         run: vendor/bin/phpunit
