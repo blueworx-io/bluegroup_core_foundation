@@ -684,6 +684,18 @@ test('designSystemSync: passes when the registrar matches', () => {
   assert.equal(result.ok, true);
 });
 
+test('designSystemSync: fix instructions cover the registrar too', () => {
+  const r = designSystemSync({
+    foundationFiles: new Map([['styles.css', 'a']]),
+    pluginFiles: new Map([['styles.css', 'a']]),
+    canonicalCss: 'a',
+    shippedCss: 'a',
+    canonicalRegistrar: 'registrar-new',
+    shippedRegistrar: 'registrar-old',
+  });
+  assert.match(r.message, /cp .*design-system\.php .*assets\/blueworx-admin-design\.php/);
+});
+
 const DS_VOCAB = { tokens: new Set(['--bw-brand']), classes: new Set(['bw-card', 'bw-btn']), components: new Set(['Button']) };
 const SCREEN = 'add_menu_page( "X", "X", "manage_options", "x", "render" );';
 

@@ -524,6 +524,7 @@ export function designSystemSync({
     `  cp -R /tmp/bw-foundation/${skillPath} .claude/skills/`,
     '  rm -rf /tmp/bw-foundation',
     `  cp ${skillPath}/styles.css ${cssPath}`,
+    `  cp ${skillPath}/design-system.php ${registrarPath}`,
     `  mkdir -p ${fontsPath} && cp ${skillPath}/fonts/* ${fontsPath}/`,
     `  cp ${skillPath}/assets/icons/lucide-icons.js ${iconsPath}`,
     `  if [ -d ${editorPhpPath} ] || [ -f ${editorJsPath} ]; then rm -rf ${editorPhpPath} && cp -R ${skillPath}/editor/php/. ${editorPhpPath}/ && cp ${skillPath}/editor/blueworx-page-editor.js ${editorJsPath}; fi`,
