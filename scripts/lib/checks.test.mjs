@@ -643,6 +643,47 @@ test('designSystemSync: fix instructions cover the editor library too, and remov
   assert.match(r.message, /cp .*editor\/blueworx-page-editor\.js assets\/blueworx-page-editor\.js/);
 });
 
+test('designSystemSync: fails when the shipped registrar differs from the foundation', () => {
+  const result = designSystemSync({
+    foundationFiles: new Map([['styles.css', 'a']]),
+    pluginFiles: new Map([['styles.css', 'a']]),
+    canonicalCss: 'css',
+    shippedCss: 'css',
+    canonicalRegistrar: 'registrar-new',
+    shippedRegistrar: 'registrar-old',
+  });
+
+  assert.equal(result.ok, false);
+  assert.ok(result.problems.some((p) => p.includes('assets/blueworx-admin-design.php')));
+});
+
+test('designSystemSync: fails when the plugin ships no registrar at all', () => {
+  const result = designSystemSync({
+    foundationFiles: new Map([['styles.css', 'a']]),
+    pluginFiles: new Map([['styles.css', 'a']]),
+    canonicalCss: 'css',
+    shippedCss: 'css',
+    canonicalRegistrar: 'registrar-new',
+    shippedRegistrar: null,
+  });
+
+  assert.equal(result.ok, false);
+  assert.ok(result.problems.some((p) => p.includes('missing')));
+});
+
+test('designSystemSync: passes when the registrar matches', () => {
+  const result = designSystemSync({
+    foundationFiles: new Map([['styles.css', 'a']]),
+    pluginFiles: new Map([['styles.css', 'a']]),
+    canonicalCss: 'css',
+    shippedCss: 'css',
+    canonicalRegistrar: 'same',
+    shippedRegistrar: 'same',
+  });
+
+  assert.equal(result.ok, true);
+});
+
 const DS_VOCAB = { tokens: new Set(['--bw-brand']), classes: new Set(['bw-card', 'bw-btn']), components: new Set(['Button']) };
 const SCREEN = 'add_menu_page( "X", "X", "manage_options", "x", "render" );';
 

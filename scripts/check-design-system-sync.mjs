@@ -22,6 +22,7 @@ const skillPath = process.env.SKILL_PATH || '.claude/skills/blueworx-admin-desig
 const cssPath = process.env.CSS_PATH || 'assets/blueworx-admin-design.css';
 const fontsPath = process.env.FONTS_PATH || 'assets/fonts';
 const iconsPath = process.env.ICONS_PATH || 'assets/blueworx-admin-icons.js';
+const registrarPath = process.env.REGISTRAR_PATH || 'assets/blueworx-admin-design.php';
 const editorPhpPath = process.env.EDITOR_PHP_PATH || 'blueworx-page-editor';
 const editorJsPath = process.env.EDITOR_JS_PATH || 'assets/blueworx-page-editor.js';
 // The ref the workflow fetched the foundation at, so the printed fix pulls the
@@ -41,6 +42,9 @@ const result = designSystemSync({
   shippedEditorPhp: hashTree(editorPhpPath),
   canonicalEditorJs: hashFile(join(foundationDir, skillPath, 'editor/blueworx-page-editor.js')),
   shippedEditorJs: hashFile(editorJsPath),
+  canonicalRegistrar: hashFile(join(foundationDir, skillPath, 'design-system.php')),
+  shippedRegistrar: hashFile(registrarPath),
+  registrarPath,
   skillPath,
   cssPath,
   fontsPath,

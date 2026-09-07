@@ -404,6 +404,9 @@ export function designSystemSync({
   shippedEditorPhp = null,
   canonicalEditorJs = null,
   shippedEditorJs = null,
+  canonicalRegistrar = null,
+  shippedRegistrar = null,
+  registrarPath = 'assets/blueworx-admin-design.php',
   skillPath = '.claude/skills/blueworx-admin-design',
   cssPath = 'assets/blueworx-admin-design.css',
   fontsPath = 'assets/fonts',
@@ -435,6 +438,18 @@ export function designSystemSync({
     problems.push(`${cssPath} — missing; the plugin must ship the stylesheet it enqueues`);
   } else if (shippedCss !== canonicalCss) {
     problems.push(`${cssPath} — differs from ${skillPath}/styles.css`);
+  }
+
+  // The registrar decides which copy of the design system loads on a site with
+  // more than one BlueWorx plugin. A plugin shipping a stale one keeps the old
+  // "first handle registered wins" behaviour and nothing says so at runtime, so
+  // it is checked exactly as hard as the stylesheet is.
+  if (canonicalRegistrar !== null) {
+    if (shippedRegistrar === null) {
+      problems.push(`${registrarPath} — missing; the plugin must ship the design system registrar beside the stylesheet`);
+    } else if (shippedRegistrar !== canonicalRegistrar) {
+      problems.push(`${registrarPath} — differs from ${skillPath}/design-system.php`);
+    }
   }
 
   // styles.css loads its webfonts with url("fonts/…"), relative to itself, so a
