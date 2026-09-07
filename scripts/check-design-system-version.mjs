@@ -8,24 +8,64 @@ import { readFileSync } from 'node:fs';
 import { designSystemVersionBump, parseDesignSystemVersion } from './lib/design-system-version.mjs';
 
 const base = process.env.BASE_REF || 'main';
+const baseRefName = `origin/${base}`;
 const skill = '.claude/skills/blueworx-admin-design';
+const registrarPath = `${skill}/design-system.php`;
 
 function gitShow(ref, path) {
   try {
-    return execFileSync('git', ['show', `${ref}:${path}`], { encoding: 'utf8' });
+    return execFileSync('git', ['show', `${ref}:${path}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   } catch {
     return '';
   }
 }
 
-const changed = execFileSync('git', ['diff', '--name-only', `origin/${base}...HEAD`], { encoding: 'utf8' })
-  .split('\n')
-  .filter(Boolean);
+function pathExistsAtRef(ref, path) {
+  try {
+    execFileSync('git', ['cat-file', '-e', `${ref}:${path}`], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Diffing against a ref that can't be resolved — or that a shallow clone
+// can't find a merge base with — throws instead of returning an empty list.
+// That is exactly the "guard is dead" situation this whole script exists to
+// catch, so it is treated as a signal (null), not left to crash the run with
+// a raw stack trace before the check ever gets to say so.
+function changedFiles(ref) {
+  try {
+    return execFileSync('git', ['diff', '--name-only', `${ref}...HEAD`], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .split('\n')
+      .filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
+const headVersion = parseDesignSystemVersion(readFileSync(registrarPath, 'utf8'));
+const changed = changedFiles(baseRefName);
+const baseRefExists = changed !== null;
+// Only worth asking whether the registrar existed on a ref that itself
+// resolved — on an unresolved ref this would come back false anyway and get
+// lost behind the "ref could not be resolved" failure, which is the one that
+// actually applies there.
+const baseRegistrarExisted = baseRefExists && pathExistsAtRef(baseRefName, registrarPath);
 
 const result = designSystemVersionBump({
-  styleChanged: changed.includes(`${skill}/styles.css`),
-  baseVersion: parseDesignSystemVersion(gitShow(`origin/${base}`, `${skill}/design-system.php`)),
-  headVersion: parseDesignSystemVersion(readFileSync(`${skill}/design-system.php`, 'utf8')),
+  // A ref this script can't diff against is treated as if the stylesheet
+  // changed: it has no way to prove otherwise, and the whole point of this
+  // guard is to never pass silently just because it lost the ability to check.
+  styleChanged: baseRefExists ? changed.includes(`${skill}/styles.css`) : true,
+  baseRefExists,
+  baseRegistrarExisted,
+  baseRef: baseRefName,
+  baseVersion: baseRefExists ? parseDesignSystemVersion(gitShow(baseRefName, registrarPath)) : '',
+  headVersion,
 });
 
 console.log(result.message);
