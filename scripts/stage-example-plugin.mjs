@@ -38,6 +38,7 @@ export function stage() {
     { kind: 'file', src: join(designSystem, 'styles.css'), dest: join(pluginDir, 'assets', 'blueworx-admin-design.css') },
     { kind: 'file', src: join(designSystem, 'assets', 'icons', 'lucide-icons.js'), dest: join(pluginDir, 'assets', 'blueworx-admin-icons.js') },
     { kind: 'dir', src: join(designSystem, 'fonts'), dest: join(pluginDir, 'assets', 'fonts') },
+    { kind: 'file', src: join(designSystem, 'design-system.php'), dest: join(pluginDir, 'assets', 'blueworx-admin-design.php') },
   ];
 
   // Every source is confirmed present before anything is touched. Checking
