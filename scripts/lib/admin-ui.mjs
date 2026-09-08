@@ -157,6 +157,38 @@ const WP_CORE_CLASSES = {
 // preceding characters, so that specific shape is still excluded by name.
 const HEX_COLOUR = /(?<!href\s*=\s*["'])(?<=^|[\s:(,'"])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/;
 const FUNCTION_COLOUR = /\b(?:rgba?|hsla?)\s*\(/;
+
+// Which lines are nothing but a comment. Tracked across the file rather than
+// matched line by line, because the giveaway for the middle of a block comment
+// is a leading `*` — and `*{box-sizing:border-box}` is a CSS rule that starts
+// the same way. Knowing a `/*` is still open tells the two apart; a pattern
+// cannot. A comment that closes with code after it on the same line is not a
+// comment line: the code is still judged.
+//
+// `//` and `/* … */` only. PHP's `#` form is left judged, since a CSS id
+// selector opens identically and losing `#panel{color:#fff}` to a false
+// negative is worse than the rare `# note` being read as one.
+function commentOnlyLines(lines) {
+  const out = new Array(lines.length).fill(false);
+  let open = false;
+
+  lines.forEach((line, i) => {
+    const start = open ? 0 : line.indexOf('/*');
+
+    if (!open && line.trim().startsWith('//')) {
+      out[i] = true;
+      return;
+    }
+
+    if (!open && (start === -1 || line.slice(0, start).trim() !== '')) return;
+
+    const close = line.indexOf('*/', open ? 0 : start + 2);
+    open = close === -1;
+    out[i] = open || line.slice(close + 2).trim() === '';
+  });
+
+  return out;
+}
 const RAW_PX = /\b\d+px\b/;
 const VAR_REF = /var\(\s*(--[a-zA-Z0-9-]+)/g;
 
@@ -174,6 +206,7 @@ export function findViolations({ path, kind, content, vocab, whole = true }) {
   const p = normalisePath(path);
   const problems = [];
   const lines = content.split(/\r?\n/);
+  const isComment = commentOnlyLines(lines);
   const add = (index, rule, severity, message) =>
     problems.push({ path: p, line: index + 1, rule, severity, message });
 
@@ -192,7 +225,14 @@ export function findViolations({ path, kind, content, vocab, whole = true }) {
     // prose into its own fragment. A real declaration is `property: value`, so
     // a fragment with no colon is never examined: displaying a value in text
     // is not the same as using it as a style.
-    for (const decl of line.split(';')) {
+    //
+    // A comment line is skipped for the same reason, one step earlier: nothing
+    // in it styles anything. Prose reaches these rules looking like a value
+    // more often than you would think — an issue reference such as `(#127)`
+    // beside a colon is a three-digit hex colour by every test below, and a
+    // sentence explaining why a screen avoids a colour is not the screen
+    // using one.
+    for (const decl of isComment[i] ? [] : line.split(';')) {
       if (!decl.includes(':')) continue;
       const escaped = usesRealToken(decl, vocab);
       if (HEX_COLOUR.test(decl) || (FUNCTION_COLOUR.test(decl) && !escaped)) {
@@ -205,7 +245,7 @@ export function findViolations({ path, kind, content, vocab, whole = true }) {
         add(i, 'raw-shadow', 'error', 'You have written a shadow by hand — use a design system shadow token.');
       }
     }
-    if (/font-family\s*:/.test(line) && !/var\(\s*--bw-font/.test(line)) {
+    if (!isComment[i] && /font-family\s*:/.test(line) && !/var\(\s*--bw-font/.test(line)) {
       add(i, 'raw-font', 'error', 'You have set a font by hand — the system provides Sora and Inter through var(--bw-font-…).');
     }
     const styleAttr = line.match(/\bstyle\s*=\s*["']/);

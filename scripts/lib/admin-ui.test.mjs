@@ -226,6 +226,31 @@ test('findViolations: a colour shown as text is not a colour being used', () => 
   assert.equal(rules(scan('<span>#4F46E5</span>')).includes('raw-color'), false);
 });
 
+test('findViolations: an issue reference in a comment is not a colour', () => {
+  assert.equal(
+    rules(scan('// paragraph (#126): every client screen says whose workspace this is')).includes('raw-color'),
+    false,
+  );
+  assert.equal(
+    rules(
+      scan('/**\n * What a client sees first: who to talk to, and what happens (#127).\n */'),
+    ).includes('raw-color'),
+    false,
+  );
+  assert.equal(rules(scan('/* Wired up in #173: the queue tops itself up. */', 'css')).includes('raw-color'), false);
+});
+
+test('findViolations: a comment does not hide the code beside it, or a selector that looks like one', () => {
+  // The middle of a block comment starts with `*`, and so does the universal
+  // selector. Only the one inside an open `/*` is prose.
+  assert.equal(rules(scan('*{ color: #4F46E5; }', 'css')).includes('raw-color'), true);
+  assert.equal(rules(scan('#panel{ color: #4F46E5; }', 'css')).includes('raw-color'), true);
+  assert.equal(
+    rules(scan('/* why */ .bw-x{ color: #4F46E5; }', 'css')).includes('raw-color'),
+    true,
+  );
+});
+
 test('findViolations: a URL fragment in a declaration-shaped line is not a colour', () => {
   assert.equal(rules(scan('<a class="bw-btn" href="https://example.com/#abc">Docs</a>')).includes('raw-color'), false);
 });
