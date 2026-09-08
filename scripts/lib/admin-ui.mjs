@@ -248,9 +248,23 @@ export function findViolations({ path, kind, content, vocab, whole = true }) {
     if (!isComment[i] && /font-family\s*:/.test(line) && !/var\(\s*--bw-font/.test(line)) {
       add(i, 'raw-font', 'error', 'You have set a font by hand — the system provides Sora and Inter through var(--bw-font-…).');
     }
-    const styleAttr = line.match(/\bstyle\s*=\s*["']/);
+    // React's style object has always been judged on what is in it rather than
+    // on its existence, because a position worked out as the page renders is
+    // not a design decision somebody made. The same is true written as an
+    // attribute — a bar's width, a marker's offset — and a PHP screen has no
+    // other way to say it: a class cannot carry a number nobody knows yet.
+    // So the attribute is held to the same test as the object, and an
+    // attribute that is entirely placeholder is left alone. One hand-written
+    // value anywhere in it, or no placeholder at all, and it fails as before.
+    const styleAttr = line.match(/\bstyle\s*=\s*(["'])([\s\S]*?)\1/);
     const styleObj = line.match(/\bstyle\s*=\s*\{\{([\s\S]*?)\}\}/);
-    if (styleAttr || (styleObj && hasHardcodedStyleValue(styleObj[1]))) {
+    const attrIsComputed =
+      styleAttr && STYLE_PLACEHOLDER.test(styleAttr[2]) && !attrHasHardcodedValue(styleAttr[2]);
+    if (
+      (styleAttr && !attrIsComputed) ||
+      (!styleAttr && /\bstyle\s*=\s*["']/.test(line)) ||
+      (styleObj && hasHardcodedStyleValue(styleObj[1]))
+    ) {
       add(i, 'inline-style', 'error', 'You have put an inline style on this element — move the styling onto a design system class.');
     }
     if (/<svg\b/i.test(line)) {
@@ -354,6 +368,25 @@ function hasHardcodedStyleValue(objectText) {
     STYLE_COLOUR_LITERAL.test(objectText) ||
     STYLE_QUOTED_LENGTH.test(objectText) ||
     STYLE_BARE_NUMBER_VALUE.test(objectText)
+  );
+}
+
+// The same question asked of a style *attribute*, where CSS is written out
+// rather than built as an object: lengths are unquoted, and a value the server
+// fills in appears as a printf placeholder, a PHP tag or an interpolation.
+//
+// `%s%%` is a percentage nobody knows until the page renders, and carries no
+// digits of its own — which is exactly what makes it safe to allow and a
+// hand-written `width:240px` still a failure.
+const STYLE_PLACEHOLDER = /%\d*\$?[sdfu]|<\?(?:php|=)|\{\{|\{\$|\$\{/;
+const STYLE_ATTR_LENGTH = /-?\d+(?:\.\d+)?\s*(?:px|em|rem|%|vh|vw|vmin|vmax|pt|ch|ex|cm|mm|in|pc)\b/;
+const STYLE_ATTR_BARE_NUMBER = /:\s*-?\d+(?:\.\d+)?\s*(?:;|$)/;
+
+function attrHasHardcodedValue(text) {
+  return (
+    STYLE_COLOUR_LITERAL.test(text) ||
+    STYLE_ATTR_LENGTH.test(text) ||
+    STYLE_ATTR_BARE_NUMBER.test(text)
   );
 }
 

@@ -145,6 +145,39 @@ test('findViolations: a JSX style object holding only computed values does not f
   assert.equal(rules(scan("<div style={{ color: 'var(--bw-brand)' }} />", 'jsx')).includes('inline-style'), false);
 });
 
+test('findViolations: a style attribute holding only a value the server fills in does not fail', () => {
+  assert.equal(
+    rules(scan('<div class="bw-progress__bar" style="width:%s%%"></div>')).includes('inline-style'),
+    false,
+  );
+  assert.equal(
+    rules(scan('<span class="bw-gantt__bar" style="left:%1$s%%;width:%2$s%%"></span>')).includes('inline-style'),
+    false,
+  );
+  assert.equal(
+    rules(scan('<div class="bw-progress__bar" style="width:<?php echo $pct; ?>%"></div>')).includes('inline-style'),
+    false,
+  );
+});
+
+test('findViolations: a style attribute mixing a placeholder with a hand-written value still fails', () => {
+  assert.equal(
+    rules(scan('<div style="width:%s%%;margin-top:8px"></div>')).includes('inline-style'),
+    true,
+  );
+  assert.equal(
+    rules(scan('<i style="color:#F04438;left:%s%%"></i>')).includes('inline-style'),
+    true,
+  );
+});
+
+test('findViolations: a style attribute with no placeholder fails even when it uses a token', () => {
+  assert.equal(
+    rules(scan('<i class="bw-icon" style="color:var(--bw-brand)"></i>')).includes('inline-style'),
+    true,
+  );
+});
+
 test('findViolations: a JSX style object with a hard-coded literal still fails', () => {
   assert.equal(rules(scan("<div style={{ width: '10px' }} />", 'jsx')).includes('inline-style'), true);
   assert.equal(rules(scan("<div style={{ color: '#333' }} />", 'jsx')).includes('inline-style'), true);
