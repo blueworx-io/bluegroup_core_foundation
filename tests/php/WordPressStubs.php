@@ -33,6 +33,9 @@ function bwpe_stub_reset(): void {
 		'fail_writes'    => false,
 		'fail_key'       => null,
 	];
+	$GLOBALS['bwpe_stub_styles']        = [];
+	$GLOBALS['bwpe_stub_scripts']       = [];
+	$GLOBALS['bwpe_stub_inline_styles'] = [];
 }
 
 if ( ! class_exists( 'WP_Error' ) ) {
@@ -322,5 +325,41 @@ if ( ! function_exists( 'get_post_thumbnail_id' ) ) {
 		// the 0 case. That is deliberately safe, not a claim about what
 		// WordPress itself returns.
 		return $GLOBALS['bwpe_stub']['thumbnails'][ $id ] ?? false;
+	}
+}
+
+// Enqueue recording. The design system registrar is the only thing under test
+// that enqueues, and what matters is which copy won — so these record rather
+// than emulate WordPress's dependency resolution.
+if ( ! function_exists( 'wp_enqueue_style' ) ) {
+	function wp_enqueue_style( $handle, $src = '', $deps = [], $ver = false, $media = 'all' ) {
+		$GLOBALS['bwpe_stub_styles'][] = [ 'handle' => $handle, 'src' => $src, 'ver' => $ver ];
+	}
+}
+
+if ( ! function_exists( 'wp_enqueue_script' ) ) {
+	function wp_enqueue_script( $handle, $src = '', $deps = [], $ver = false, $in_footer = false ) {
+		$GLOBALS['bwpe_stub_scripts'][] = [ 'handle' => $handle, 'src' => $src, 'ver' => $ver ];
+	}
+}
+
+if ( ! function_exists( 'wp_add_inline_style' ) ) {
+	function wp_add_inline_style( $handle, $css ) {
+		$GLOBALS['bwpe_stub_inline_styles'][] = [ 'handle' => $handle, 'css' => $css ];
+		return true;
+	}
+}
+
+if ( ! function_exists( 'add_filter' ) ) {
+	function add_filter( $hook, $callback, $priority = 10, $args = 1 ) {
+		return true;
+	}
+}
+
+// plugin_dir_url() maps a file path to the URL of the directory holding it.
+// The stub keeps the path so a test can assert which plugin's copy won.
+if ( ! function_exists( 'plugin_dir_url' ) ) {
+	function plugin_dir_url( $file ) {
+		return 'https://example.test' . rtrim( str_replace( '\\', '/', dirname( $file ) ), '/' ) . '/';
 	}
 }

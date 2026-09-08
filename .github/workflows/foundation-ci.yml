@@ -31,8 +31,13 @@ jobs:
         # current. Move both forward together when that default moves.
         node: ['20', '26']
     steps:
+      # fetch-depth: 0 so origin/<base> is actually present — the version-drift
+      # check below diffs and reads files against it, and a shallow checkout
+      # would make that comparison silently see nothing and pass everything.
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -49,6 +54,11 @@ jobs:
       - name: Run unit tests
         run: node --test scripts/lib/*.test.mjs .claude/hooks/*.test.mjs
 
+      - name: Design system version moves with its stylesheet
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/check-design-system-version.mjs
+
   php:
     runs-on: ubuntu-latest
     steps:
@@ -64,8 +74,8 @@ jobs:
       - name: Install PHP dependencies
         run: composer install --no-interaction --no-progress
 
-      - name: Syntax-check the library
-        run: find .claude/skills/blueworx-admin-design/editor/php -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Syntax-check the design system
+        run: find .claude/skills/blueworx-admin-design -name '*.php' -print0 | xargs -0 -n1 php -l
 
       - name: PHPUnit
         run: vendor/bin/phpunit

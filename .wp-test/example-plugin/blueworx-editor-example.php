@@ -30,6 +30,11 @@
 
 defined( 'ABSPATH' ) || exit;
 
+// Must run before the library require below: the registrar decides which
+// copy of the design system wins, and that has to be settled before
+// anything can enqueue against it. See assets/blueworx-admin-design.php's
+// own docblock for why a late registration can lose to an earlier enqueue.
+require_once __DIR__ . '/assets/blueworx-admin-design.php';
 require_once __DIR__ . '/blueworx-page-editor/blueworx-page-editor.php';
 
 add_action( 'init', function () {
