@@ -26,7 +26,7 @@ const WP_ZIP = 'https://wordpress.org/latest.zip';
 const SQLITE_ZIP = 'https://downloads.wordpress.org/plugin/sqlite-database-integration.zip';
 
 const ADMIN_USER = 'admin';
-const ADMIN_PASS = 'wptest-admin-pw';
+const ADMIN_PASS = 'admin';
 const ADMIN_EMAIL = 'admin@example.com';
 // Local-only throwaway. Never reuse this anywhere real.
 const JWT_SECRET = 'wptest-local-jwt-secret-not-a-real-secret';
@@ -267,6 +267,15 @@ if ( ! file_exists( WP_PLUGIN_DIR . '/' . $main ) ) {
       break;
     }
   }
+}
+// The login is whatever this script says it is, on an old instance as well as
+// a new one. An instance installed under an earlier password is reused rather
+// than rebuilt, and without this the banner below would promise a login the
+// site did not have.
+$admin = get_user_by( 'login', '${ADMIN_USER}' );
+if ( $admin && ! wp_check_password( '${ADMIN_PASS}', $admin->user_pass, $admin->ID ) ) {
+  wp_set_password( '${ADMIN_PASS}', $admin->ID );
+  echo "ADMIN_PASSWORD: reset\\n";
 }
 $res = activate_plugin( $main, '', false, false );
 echo is_wp_error( $res ) ? 'ACTIVATION_ERROR: ' . $res->get_error_message() : 'PLUGIN_ACTIVE: ' . $main;

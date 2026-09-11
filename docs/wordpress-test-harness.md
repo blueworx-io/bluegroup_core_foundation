@@ -14,7 +14,7 @@ already have. Then:
 
 ```bash
 PLAYWRIGHT_BASE_URL=http://127.0.0.1:8881 \
-WP_ADMIN_USER=admin WP_ADMIN_PASS=wptest-admin-pw \
+WP_ADMIN_USER=admin WP_ADMIN_PASS=admin \
   npx playwright test --workers=1
 ```
 
@@ -92,7 +92,7 @@ node scripts/stage-example-plugin.mjs
 node scripts/wp-test-env.mjs up --plugin .wp-test/example-plugin
 NODE_PATH="$(pwd)/.wp-test/.pw/node_modules" \
   PLAYWRIGHT_BASE_URL=http://127.0.0.1:8881 \
-  WP_ADMIN_USER=admin WP_ADMIN_PASS=wptest-admin-pw \
+  WP_ADMIN_USER=admin WP_ADMIN_PASS=admin \
   .wp-test/.pw/node_modules/.bin/playwright test --workers=1
 node scripts/wp-test-env.mjs down
 ```
@@ -110,7 +110,7 @@ node scripts/wp-test-env.mjs up --plugin .wp-test/example-plugin
 $env:NODE_PATH = "$PWD\.wp-test\.pw\node_modules"
 $env:PLAYWRIGHT_BASE_URL = "http://127.0.0.1:8881"
 $env:WP_ADMIN_USER = "admin"
-$env:WP_ADMIN_PASS = "wptest-admin-pw"
+$env:WP_ADMIN_PASS = "admin"
 .\.wp-test\.pw\node_modules\.bin\playwright.cmd test --workers=1
 node scripts/wp-test-env.mjs down
 ```
