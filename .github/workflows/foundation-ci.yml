@@ -134,7 +134,7 @@ jobs:
           NODE_PATH: ${{ github.workspace }}/.wp-test/.pw/node_modules
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:8881
           WP_ADMIN_USER: admin
-          WP_ADMIN_PASS: wptest-admin-pw
+          WP_ADMIN_PASS: admin
           PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-report.json
         run: |
           .wp-test/.pw/node_modules/.bin/playwright test \

@@ -153,7 +153,7 @@ Locally:
 
 ```bash
 node ../bluegroup_core_foundation/scripts/wp-test-env.mjs up --plugin .
-PLAYWRIGHT_BASE_URL=http://127.0.0.1:8881 WP_ADMIN_USER=admin WP_ADMIN_PASS=wptest-admin-pw \
+PLAYWRIGHT_BASE_URL=http://127.0.0.1:8881 WP_ADMIN_USER=admin WP_ADMIN_PASS=admin \
   npx playwright test --workers=1
 ```
 

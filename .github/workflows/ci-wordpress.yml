@@ -460,7 +460,7 @@ jobs:
           PLAYWRIGHT_BASE_URL: ${{ env.TEST_BASE_URL }}
           BASE_URL: ${{ env.TEST_BASE_URL }}
           WP_ADMIN_USER: ${{ inputs.use_local_wordpress && 'admin' || secrets.WP_ADMIN_USER }}
-          WP_ADMIN_PASS: ${{ inputs.use_local_wordpress && 'wptest-admin-pw' || secrets.WP_ADMIN_PASS }}
+          WP_ADMIN_PASS: ${{ inputs.use_local_wordpress && 'admin' || secrets.WP_ADMIN_PASS }}
           WP_LOGIN_PATH: ${{ inputs.wp_login_path }}
           PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-report.json
           SHARD_INDEX: ${{ matrix.shard }}

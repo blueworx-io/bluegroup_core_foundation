@@ -28,7 +28,7 @@
 //   node scripts/wp-test-env.mjs up --plugin .wp-test/example-plugin
 //   NODE_PATH="$(pwd)/.wp-test/.pw/node_modules" \
 //     PLAYWRIGHT_BASE_URL=http://127.0.0.1:8881 \
-//     WP_ADMIN_USER=admin WP_ADMIN_PASS=wptest-admin-pw \
+//     WP_ADMIN_USER=admin WP_ADMIN_PASS=admin \
 //     .wp-test/.pw/node_modules/.bin/playwright test --workers=1
 //   node scripts/wp-test-env.mjs down
 //
