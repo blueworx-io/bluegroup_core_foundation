@@ -119,6 +119,34 @@ test('a valid save writes and the screen goes clean', async ({ page }) => {
   await expect(page.locator('#post_title')).toHaveValue('Rugby');
 });
 
+// The notice is the design system's: it sits inset with the cards rather than
+// running edge to edge, and its Dismiss is an icon button on the far right,
+// centred on the text — not a text button trailing the sentence.
+test('the saved notice is laid out like every other notice', async ({ page }) => {
+  await page.fill('#post_title', 'Rugby');
+  await page.click('.bw-savebar .bw-btn--primary');
+
+  const notice = page.locator('.bw-notice--success');
+  await expect(notice).toBeVisible();
+  await expect(notice.locator('.bw-notice__icon')).toHaveCount(1);
+  await expect(notice.locator('.bw-notice__text')).toContainText('Saved.');
+
+  const dismiss = notice.getByRole('button', { name: 'Dismiss' });
+  await expect(dismiss).toHaveClass(/bw-iconbtn/);
+
+  const noticeBox = await notice.boundingBox();
+  const cardBox = await page.locator('.bw-card').first().boundingBox();
+  const textBox = await notice.locator('.bw-notice__text').boundingBox();
+  const dismissBox = await dismiss.boundingBox();
+  expect(Math.abs(noticeBox.x - cardBox.x)).toBeLessThan(1);
+  expect(Math.abs(noticeBox.width - cardBox.width)).toBeLessThan(1);
+  expect(Math.abs(noticeBox.x + noticeBox.width - (dismissBox.x + dismissBox.width))).toBeLessThan(16);
+  expect(Math.abs((textBox.y + textBox.height / 2) - (dismissBox.y + dismissBox.height / 2))).toBeLessThan(2);
+
+  await dismiss.click();
+  await expect(notice).toHaveCount(0);
+});
+
 // The example screen's dependent field: a "Banner text" field that only
 // exists while "Announcement bar" is on (see Task 19's schema and
 // Schema::checkDependencies()). This replaced the brief's original version,
