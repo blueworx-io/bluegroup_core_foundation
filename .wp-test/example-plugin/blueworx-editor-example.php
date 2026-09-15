@@ -136,6 +136,10 @@ add_action( 'plugins_loaded', function () {
 									[ 'value' => '/about/', 'label' => 'About' ],
 									[ 'value' => '/membership/', 'label' => 'Membership' ],
 								] ],
+							// A line that goes somewhere else: no heading, no
+							// value, opens in a new tab so the screen's unsaved
+							// changes stay put.
+							[ 'id' => 'guide', 'kind' => 'link', 'label' => 'How sport pages work', 'url' => 'https://example.test/guide/' ],
 						],
 					],
 				],

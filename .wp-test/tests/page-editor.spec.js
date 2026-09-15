@@ -155,6 +155,18 @@ test('the saved notice is laid out like every other notice', async ({ page }) =>
 // (Schema::PANEL_SWITCH_SUFFIX), not a depends_on field, so it never actually
 // exercised this path. With a real dependent field now on the example
 // screen, this tests the real thing.
+// A link field is a line of text that goes somewhere: its label is the link
+// itself, there is no heading above it, and it opens elsewhere so unsaved
+// changes on this screen are not lost to a click.
+test('a link field is a link, with no heading of its own', async ({ page }) => {
+  const link = page.getByRole('link', { name: 'How sport pages work' });
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute('href', 'https://example.test/guide/');
+  await expect(link).toHaveAttribute('target', '_blank');
+  await expect(link).toHaveAttribute('rel', /noopener/);
+  await expect(page.locator('.bw-field', { has: link }).locator('label, .bw-field__label')).toHaveCount(0);
+});
+
 test('a dependent field appears only while its condition holds', async ({ page }) => {
   await expect(page.locator('#announcement_text')).toHaveCount(0);
 

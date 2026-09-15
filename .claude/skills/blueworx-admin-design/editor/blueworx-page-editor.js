@@ -496,7 +496,8 @@
     const isGroup = field.kind === 'radio' || field.kind === 'checkboxes' || field.kind === 'scrolllist';
 
     return h('div', { className: wrap },
-      field.kind === 'title' ? null
+      // A title draws its own heading; a link IS its label, so neither gets one.
+      field.kind === 'title' || field.kind === 'link' ? null
         : h(isGroup ? 'span' : 'label', {
             className: 'bw-field__label',
             htmlFor: isGroup ? undefined : field.id,
@@ -1245,6 +1246,12 @@
 
       case 'preview':
         return h(Preview, { field: field });
+
+      // Always a new tab: this screen may hold unsaved changes, and a link
+      // that carried somebody off it would take those with it.
+      case 'link':
+        return h('p', { className: 'bw-field__help bw-link' },
+          h('a', { id: field.id, href: field.url, target: '_blank', rel: 'noreferrer noopener' }, field.label));
 
       case 'facts':
         return h('dl', { className: 'bw-dl' }, (field.rows || []).map(function (row) {
