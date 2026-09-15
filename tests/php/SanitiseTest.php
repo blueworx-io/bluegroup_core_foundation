@@ -130,4 +130,9 @@ final class SanitiseTest extends TestCase {
 		$this->assertSame( 1, $out[0]['start'] );
 		$this->assertSame( 1, $out[0]['end'] );
 	}
+
+	public function test_a_link_is_display_only_and_never_writable(): void {
+		$this->assertNull( Sanitise::field( [ 'kind' => 'link' ], 'https://elsewhere.test/' ) );
+		$this->assertContains( 'link', Sanitise::DISPLAY_ONLY_KINDS );
+	}
 }

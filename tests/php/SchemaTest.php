@@ -859,4 +859,23 @@ final class SchemaTest extends TestCase {
 			[ 'id' => 'estimate', 'label' => 'Project estimate', 'sum' => 'items.hours', 'where' => 'items.title' ],
 		] ) );
 	}
+
+	/**
+	 * A link is a line of text that goes somewhere — a demo site, a help
+	 * page — drawn among the fields. Its label is the link's text, so it has
+	 * no separate heading, and the address is the one thing it must carry.
+	 */
+	public function test_a_link_field_keeps_its_address(): void {
+		$screen = Schema::validate( $this->screen( [ 'id' => 'demo', 'kind' => 'link', 'label' => 'See each look on the demo site', 'url' => 'https://demo.example.test/' ] ) );
+		$field  = $screen['tabs'][0]['panels'][0]['fields'][0];
+
+		$this->assertSame( 'https://demo.example.test/', $field['url'] );
+		$this->assertFalse( $field['wide'], 'a line of text does not need the whole row' );
+	}
+
+	public function test_a_link_field_with_no_address_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'needs a url' );
+		Schema::validate( $this->screen( [ 'id' => 'demo', 'kind' => 'link', 'label' => 'See the demo' ] ) );
+	}
 }
