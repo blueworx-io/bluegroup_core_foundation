@@ -124,6 +124,7 @@ const DRAWS = {
   title: ['input', 'bw-titleinput'],
   slug: ['div', 'bw-permalink'],
   preview: ['div', 'bw-preview'],
+  link: ['p', 'bw-link'],
 };
 
 // The minimum a field of each kind needs to be drawable at all.
@@ -135,6 +136,7 @@ function fieldFor(kind) {
   if (kind === 'repeater') field.fields = [{ id: 'cell', kind: 'text', label: 'Cell' }];
   if (kind === 'facts') field.rows = [{ label: 'Members', value: '318' }];
   if (kind === 'preview') field.url = 'https://example.test/deck/abc';
+  if (kind === 'link') field.url = 'https://example.test/guide/';
   if (kind === 'table') {
     field.columns = ['Day'];
     field.rows = [['Monday']];
