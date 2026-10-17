@@ -1,0 +1,6 @@
+{
+  "projectId": "75753ef2-9fb7-4c3a-ba0e-a7a0b967565d",
+  "shape": "prebuilt",
+  "srcDir": ".claude/skills/blueworx-admin-design",
+  "exclude": ["editor/**", "design-system.php", ".thumbnail", "**/.thumbnail"]
+}
