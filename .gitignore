@@ -34,3 +34,6 @@
 # used to eyeball the screen by hand while building it.
 /test-results/
 /.playwright-mcp/
+
+# The design system site, built by scripts/build-design-site.mjs for Netlify.
+/design-site/
