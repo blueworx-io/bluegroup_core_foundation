@@ -1,0 +1,6 @@
+{
+  "framework": null,
+  "buildCommand": "node scripts/build-design-site.mjs",
+  "outputDirectory": "design-site",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- .claude/skills/blueworx-admin-design scripts/build-design-site.mjs vercel.json"
+}

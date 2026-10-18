@@ -1,9 +1,0 @@
-# The design system's browsable site. See scripts/build-design-site.mjs.
-[build]
-  command = "node scripts/build-design-site.mjs"
-  publish = "design-site"
-  # Skip the build when nothing the site is made from has changed.
-  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- .claude/skills/blueworx-admin-design scripts/build-design-site.mjs netlify.toml"
-
-[build.environment]
-  NODE_VERSION = "20"

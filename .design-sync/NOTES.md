@@ -19,7 +19,7 @@
 
 - **Excluded from the push:** `editor/**` and `design-system.php` (server-side PHP
   the design tool cannot use), and `.thumbnail` files (app-generated). This matches
-  what `scripts/build-design-site.mjs` leaves out of the Netlify site.
+  what `scripts/build-design-site.mjs` leaves out of the Vercel site.
 
 - **No `conventions.md`, and none should be authored.** The README is not generated
   here — `.claude/skills/blueworx-admin-design/readme.md` is the hand-written
@@ -28,7 +28,7 @@
 
 - **Cards are verified by the browsable site, not by a capture loop.** Every preview
   is a real HTML card carrying a first-line `<!-- @dsCard … -->` marker and loading
-  `styles.css` by relative path; they are published via Netlify from `design-site/`,
+  `styles.css` by relative path; they are published via Vercel from `design-site/`,
   so preview fidelity is already checked in CI rather than at sync time.
 
 ## 2026-10-17
@@ -37,4 +37,4 @@
   settings-functions layout card). No deletions — local is a strict superset.
 - `github.md`'s "## Last sync" block still reads 2026-08-19. It is hand-maintained
   and lives inside the synced folder, so updating it means another push plus a
-  Netlify rebuild; left alone deliberately.
+  Vercel rebuild; left alone deliberately.

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Builds the design system's browsable site into design-site/ for Netlify.
+// Builds the design system's browsable site into design-site/ for Vercel.
 //
 // The skill folder already works as a static site: every card, the component
 // inventory and the two UI kits load styles.css, the fonts and _ds_bundle.js by

@@ -35,5 +35,5 @@
 /test-results/
 /.playwright-mcp/
 
-# The design system site, built by scripts/build-design-site.mjs for Netlify.
+# The design system site, built by scripts/build-design-site.mjs for Vercel.
 /design-site/
