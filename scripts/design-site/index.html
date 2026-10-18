@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BlueWorx Admin Design System</title>
+<link rel="icon" href="assets/img/logo.png">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body class="bw-admin">
+<div class="ds">
+  <header class="ds-top">
+    <a href="#home" class="ds-top__logo"><img src="assets/img/logo.png" alt="BlueWorx"></a>
+    <button type="button" class="ds-top__menu" id="menu" aria-expanded="false" aria-controls="side">Menu</button>
+  </header>
+
+  <aside class="ds-side" id="side">
+    <a href="#home" class="ds-side__logo"><img src="assets/img/logo.png" alt="BlueWorx"><span>Admin design system</span></a>
+    <label class="ds-search">
+      <span class="ds-visually-hidden">Search</span>
+      <input type="search" id="search" placeholder="Search components" autocomplete="off">
+      <kbd>/</kbd>
+    </label>
+    <nav id="nav" aria-label="Design system"></nav>
+  </aside>
+
+  <main class="ds-main" id="main" tabindex="-1">
+    <div id="view-top"></div>
+    <section class="ds-example" id="example" hidden>
+      <div class="ds-example__bar"><span>Live example</span><span class="ds-example__hint">Try it: these are the real components</span></div>
+      <iframe id="inventory" src="components/index.html" title="Live example"></iframe>
+    </section>
+    <div id="view-bottom"></div>
+    <footer class="ds-foot" id="foot"></footer>
+  </main>
+</div>
+<script src="data.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
