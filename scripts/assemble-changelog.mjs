@@ -11,7 +11,7 @@
 // Env:
 //   CHANGELOG_DIR    fragment directory (default changelog.d)
 //   CHANGELOG_PATH   changelog file (default CHANGELOG.md)
-//   VERSION_SOURCE   package (default) | plugin-header — same contract as
+//   VERSION_SOURCE   package (default) | plugin-header | theme-header — same contract as
 //                    check-version-bump.mjs, so a project names its version
 //                    source once and both agree
 //   PKG_PATH         package.json path when VERSION_SOURCE=package
@@ -19,7 +19,7 @@
 
 import { readdirSync, readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJson, findPluginMainFile, parsePhpHeaderVersion } from './lib/io.mjs';
+import { readJson, findPluginMainFile, findThemeStylesheet, parsePhpHeaderVersion } from './lib/io.mjs';
 import { assemble } from './lib/changelog.mjs';
 
 const fragmentDir = process.env.CHANGELOG_DIR || 'changelog.d';
@@ -74,6 +74,11 @@ function currentVersion() {
     const main = findPluginMainFile('.');
     if (!main) return null;
     return parsePhpHeaderVersion(readFileSync(main, 'utf8'));
+  }
+  if (source === 'theme-header') {
+    const stylesheet = findThemeStylesheet('.');
+    if (!stylesheet) return null;
+    return parsePhpHeaderVersion(readFileSync(stylesheet, 'utf8'));
   }
   return readJson(pkgPath)?.version ?? null;
 }

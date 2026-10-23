@@ -5,12 +5,13 @@
 // the real artifact at release time. Same input shape, same verdict.
 //
 // PLUGIN_SLUG overrides the slug; otherwise it's inferred from the plugin file.
+// THEME_SLUG, when set, is a theme's slug and wins over both.
 
 import { basename } from 'node:path';
 import { findPluginMainFile } from './lib/io.mjs';
 import { pluginZipContent } from './lib/checks.mjs';
 
-let slug = process.env.PLUGIN_SLUG;
+let slug = process.env.THEME_SLUG || process.env.PLUGIN_SLUG;
 if (!slug) {
   const main = findPluginMainFile('.');
   slug = main ? basename(main).replace(/\.php$/i, '') : basename(process.cwd());

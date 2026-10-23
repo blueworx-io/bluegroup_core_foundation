@@ -115,6 +115,29 @@ test('pluginVersionSync: null package version passes; else must match', () => {
   assert.equal(pluginVersionSync({ headerVersion: '2.0.0', pkgVersion: '1.9.0' }).ok, false);
 });
 
+test('pluginVersionSync: messages name the plugin header by default', () => {
+  assert.equal(
+    pluginVersionSync({ headerVersion: '2.0.0', pkgVersion: '1.9.0' }).message,
+    'Version mismatch: plugin header 2.0.0 vs package.json 1.9.0.',
+  );
+  assert.equal(
+    pluginVersionSync({ headerVersion: '2.0.0', pkgVersion: '2.0.0' }).message,
+    'Plugin header and package.json agree (2.0.0).',
+  );
+});
+
+test('pluginVersionSync: a theme names style.css instead', () => {
+  const header = 'style.css Version';
+  assert.equal(pluginVersionSync({ headerVersion: '2.0.0', pkgVersion: '2.0.0', header }).ok, true);
+  const bad = pluginVersionSync({ headerVersion: '2.0.0', pkgVersion: '1.9.0', header });
+  assert.equal(bad.ok, false);
+  assert.equal(bad.message, 'Version mismatch: style.css Version 2.0.0 vs package.json 1.9.0.');
+  assert.equal(
+    pluginVersionSync({ headerVersion: '2.0.0', pkgVersion: '2.0.0', header }).message,
+    'Style.css Version and package.json agree (2.0.0).',
+  );
+});
+
 test('pluginZip: passes for 0 or 1 matching zip, fails for more', () => {
   assert.equal(pluginZip({ zipFiles: [], slug: 'my-plugin' }).ok, true);
   assert.equal(pluginZip({ zipFiles: ['my-plugin.zip'], slug: 'my-plugin' }).ok, true);
@@ -328,6 +351,29 @@ test('releaseTag: fails when the tag and header disagree', () => {
   assert.equal(result.ok, false);
   assert.match(result.message, /1\.2\.0/);
   assert.match(result.message, /1\.1\.0/);
+});
+
+test('releaseTag: plugin messages are unchanged by default', () => {
+  assert.equal(
+    releaseTag({ tag: 'v1.2.0', headerVersion: '1.2.0', pluginFile: 'my-plugin.php' }).message,
+    'Release tag v1.2.0 matches the plugin header version in my-plugin.php.',
+  );
+  assert.match(releaseTag({ tag: 'v1.2.0', headerVersion: '1.2.0', pluginFile: null }).message, /Plugin Name:/);
+});
+
+test('releaseTag: a theme is checked against style.css and says so', () => {
+  const theme = { headerVersion: '2.0.0', pluginFile: 'style.css', kind: 'theme' };
+  const ok = releaseTag({ ...theme, tag: 'v2.0.0' });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.message, 'Release tag v2.0.0 matches the theme version in style.css.');
+
+  const bad = releaseTag({ ...theme, tag: 'v2.0.1' });
+  assert.equal(bad.ok, false);
+  assert.match(bad.message, /does not match the theme version 2\.0\.0 in style\.css/);
+
+  const missing = releaseTag({ tag: 'v2.0.0', headerVersion: null, pluginFile: null, kind: 'theme' });
+  assert.equal(missing.ok, false);
+  assert.match(missing.message, /style\.css with "Theme Name:"/);
 });
 
 test('releaseTag: fails when the plugin file or Version header is missing', () => {

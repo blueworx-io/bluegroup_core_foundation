@@ -1,7 +1,7 @@
 name: CI Guardrails (WordPress)
 
-# Reusable guardrail workflow for WordPress plugin projects. Provisions a
-# disposable WordPress on the runner (preferred) or points Playwright at a
+# Reusable guardrail workflow for WordPress plugin and theme projects. Provisions
+# a disposable WordPress on the runner (preferred) or points Playwright at a
 # staging/preview URL.
 #
 #   jobs:
@@ -9,7 +9,7 @@ name: CI Guardrails (WordPress)
 #       uses: blueworx-io/bluegroup_core_foundation/.github/workflows/ci-wordpress.yml@v1
 #       with:
 #         use_local_wordpress: true
-#         plugin_slug: my-plugin
+#         plugin_slug: my-plugin      # or, for a theme: theme_slug: my-theme
 #         foundation_ref: v1
 #       secrets: inherit
 #
@@ -64,6 +64,14 @@ on:
         default: 1
       plugin_slug:
         description: Plugin slug (used for the single-zip check). Inferred from the main plugin file if empty.
+        type: string
+        default: ''
+      theme_slug:
+        description: >-
+          Set this instead of plugin_slug when the repo is a theme. It is the
+          theme's folder name: the test site switches to it, the version is read
+          from the Version: line of style.css, and it is the folder inside the
+          zip. Setting both plugin_slug and theme_slug fails the run.
         type: string
         default: ''
       node_version:
@@ -157,6 +165,24 @@ jobs:
     outputs:
       shards: ${{ steps.plan.outputs.shards }}
     steps:
+      # plugin_slug and theme_slug pick what this repo is. Neither means a plugin
+      # whose slug comes from its main file, as before. Both is a mistake.
+      - name: Check plugin_slug and theme_slug
+        env:
+          PLUGIN_SLUG: ${{ inputs.plugin_slug }}
+          THEME_SLUG: ${{ inputs.theme_slug }}
+        run: |
+          if [ -n "$PLUGIN_SLUG" ] && [ -n "$THEME_SLUG" ]; then
+            echo "::error title=plugin_slug and theme_slug both set::Set plugin_slug for a plugin or theme_slug for a theme, not both."
+            exit 1
+          fi
+          case "$THEME_SLUG" in
+            *[!A-Za-z0-9._-]*|.*)
+              echo "::error title=Invalid theme_slug::theme_slug must be a plain folder name (letters, numbers, - _ .); got '$THEME_SLUG'."
+              exit 1 ;;
+          esac
+          if [ -n "$THEME_SLUG" ]; then echo "Theme: $THEME_SLUG"; else echo "Plugin: ${PLUGIN_SLUG:-inferred from the main plugin file}"; fi
+
       - name: Plan the shards
         id: plan
         env:
@@ -273,10 +299,10 @@ jobs:
             echo "No phpunit config (phpunit.xml / .dist) — skipping PHPUnit."
           fi
 
-      - name: Version bump check (plugin header)
+      - name: Version bump check (plugin header, or style.css for a theme)
         env:
           BASE_REF: ${{ github.base_ref }}
-          VERSION_SOURCE: plugin-header
+          VERSION_SOURCE: ${{ inputs.theme_slug != '' && 'theme-header' || 'plugin-header' }}
         run: node "$RUNNER_TEMP/foundation/scripts/check-version-bump.mjs"
 
       - name: Changelog check
@@ -289,6 +315,8 @@ jobs:
         run: node "$RUNNER_TEMP/foundation/scripts/check-approved-deps.mjs"
 
       - name: Plugin version sync (header vs package.json)
+        env:
+          THEME_SLUG: ${{ inputs.theme_slug }}
         run: node "$RUNNER_TEMP/foundation/scripts/check-plugin-version-sync.mjs"
 
       # Both copies of the shared admin design system — the skill folder Claude
@@ -316,6 +344,7 @@ jobs:
       - name: Plugin zip check (only one <slug> zip)
         env:
           PLUGIN_SLUG: ${{ inputs.plugin_slug }}
+          THEME_SLUG: ${{ inputs.theme_slug }}
         run: node "$RUNNER_TEMP/foundation/scripts/check-plugin-zip.mjs"
 
       # Stages the tree the release workflow would zip and fails if anything
@@ -326,10 +355,11 @@ jobs:
       - name: Plugin zip content check (what would ship)
         env:
           PLUGIN_SLUG: ${{ inputs.plugin_slug }}
+          THEME_SLUG: ${{ inputs.theme_slug }}
           EXTRA_EXCLUDES: ${{ inputs.exclude_paths }}
         run: |
           set -euo pipefail
-          slug="${PLUGIN_SLUG:-$(node "$RUNNER_TEMP/foundation/scripts/plugin-info.mjs" | sed -n 's/^slug=//p')}"
+          slug="${THEME_SLUG:-${PLUGIN_SLUG:-$(node "$RUNNER_TEMP/foundation/scripts/plugin-info.mjs" | sed -n 's/^slug=//p')}}"
           bash "$RUNNER_TEMP/foundation/scripts/stage-plugin-tree.sh" "$slug" "$RUNNER_TEMP/stage" \
             | node "$RUNNER_TEMP/foundation/scripts/check-plugin-zip-content.mjs"
 
@@ -444,14 +474,21 @@ jobs:
 
       # Every shard is its own runner, so every shard gets its own WordPress on
       # the same default port. Nothing to keep apart — the isolation is free.
+      # A theme repo is switched on as the site's theme, with no plugin.
       - name: Start local WordPress
         if: inputs.use_local_wordpress
         env:
           PLUGIN_SLUG: ${{ inputs.plugin_slug }}
+          THEME_SLUG: ${{ inputs.theme_slug }}
         run: |
-          SLUG="${PLUGIN_SLUG:-$(basename "$PWD")}"
-          node "$RUNNER_TEMP/foundation/scripts/wp-test-env.mjs" up \
-            --plugin . --slug "$SLUG" --dir .wp-test --port 8881
+          if [ -n "$THEME_SLUG" ]; then
+            node "$RUNNER_TEMP/foundation/scripts/wp-test-env.mjs" up \
+              --theme . --theme-slug "$THEME_SLUG" --dir .wp-test --port 8881
+          else
+            SLUG="${PLUGIN_SLUG:-$(basename "$PWD")}"
+            node "$RUNNER_TEMP/foundation/scripts/wp-test-env.mjs" up \
+              --plugin . --slug "$SLUG" --dir .wp-test --port 8881
+          fi
 
       # The local harness ships its own admin account; a preview URL relies on
       # the caller's secrets. Either way the suite reads the same variables.

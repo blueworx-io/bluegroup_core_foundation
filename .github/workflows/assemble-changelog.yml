@@ -44,7 +44,8 @@ on:
       version_source:
         description: >-
           Where the version heading comes from — `package` reads package.json,
-          `plugin-header` reads the WordPress plugin header. Match whatever the
+          `plugin-header` reads the WordPress plugin header, `theme-header`
+          reads a theme's style.css. Match whatever the
           project's version bump check uses, or the two disagree about what
           version the entry belongs to.
         type: string

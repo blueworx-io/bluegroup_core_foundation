@@ -4,9 +4,27 @@
 //
 //   plugin_file=my-plugin.php
 //   slug=my-plugin
+//
+// With THEME_SLUG set it is a theme: the header file is style.css (which must
+// declare "Theme Name:") and the slug is THEME_SLUG. The key stays plugin_file
+// so the release workflow reads one output either way.
+//
+//   plugin_file=style.css
+//   slug=blueworx
 
 import { basename } from 'node:path';
-import { findPluginMainFile } from './lib/io.mjs';
+import { findPluginMainFile, findThemeStylesheet } from './lib/io.mjs';
+
+if (process.env.THEME_SLUG) {
+  const stylesheet = findThemeStylesheet('.');
+  if (!stylesheet) {
+    console.error('No style.css with "Theme Name:" found at the repo root.');
+    process.exit(1);
+  }
+  console.log(`plugin_file=${stylesheet}`);
+  console.log(`slug=${process.env.THEME_SLUG}`);
+  process.exit(0);
+}
 
 const pluginFile = process.env.PLUGIN_FILE || findPluginMainFile('.');
 
