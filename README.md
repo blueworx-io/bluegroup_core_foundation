@@ -136,7 +136,7 @@ jobs:
 All inputs have sensible defaults (`node_version`, `lint_command`, `build_command`,
 `test_command`, `foundation_ref`; WordPress adds `php_version`, `preview_url`,
 `plugin_slug`, `wp_login_path`, `changelog_dir`). Override only what a project
-needs.
+needs. A WordPress theme sets `theme_slug` instead of `plugin_slug`.
 
 > **Set `foundation_ref` to match the `@ref` you called with.** The `@ref` picks the
 > workflow; `foundation_ref` picks the check scripts the workflow fetches. They

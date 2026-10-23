@@ -25,6 +25,17 @@ bind one port and requests then route to whichever answers first) is cleaned up
 rather than left holding the port. Only `php` processes on that port are ever
 killed.
 
+## Testing a theme
+
+```bash
+node ../bluegroup_core_foundation/scripts/wp-test-env.mjs up --theme . --theme-slug my-theme
+```
+
+That links the folder into `wp-content/themes/my-theme` and switches the site to
+it. No plugin is set up unless you also pass `--plugin <dir>`, which puts that
+plugin on top of the theme. `--theme-slug` defaults to the folder's name. In CI,
+set `theme_slug` instead of `plugin_slug` on both WordPress workflows.
+
 ## Browsing the site without signing in
 
 The admin password above is what the test suite needs. For simply looking at a
