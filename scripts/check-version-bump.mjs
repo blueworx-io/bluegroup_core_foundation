@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // Fails if the version was not bumped above the base branch.
 // VERSION_SOURCE=package (default) reads package.json; VERSION_SOURCE=plugin-header
-// reads the WordPress plugin header. Missing BASE_REF or base file ⇒ pass.
+// reads the WordPress plugin header; VERSION_SOURCE=theme-header reads a theme's
+// style.css. Missing BASE_REF or base file ⇒ pass.
 
 import { readFileSync } from 'node:fs';
-import { readJson, gitShowFile, findPluginMainFile, parsePhpHeaderVersion } from './lib/io.mjs';
+import { readJson, gitShowFile, findPluginMainFile, findThemeStylesheet, parsePhpHeaderVersion } from './lib/io.mjs';
 import { versionBumped } from './lib/checks.mjs';
 
 const baseRef = process.env.BASE_REF;
@@ -27,6 +28,15 @@ if (source === 'plugin-header') {
   }
   current = parsePhpHeaderVersion(readFileSync(main, 'utf8'));
   const baseContent = gitShowFile(`origin/${baseRef}`, main);
+  base = baseContent ? parsePhpHeaderVersion(baseContent) : null;
+} else if (source === 'theme-header') {
+  const stylesheet = findThemeStylesheet('.');
+  if (!stylesheet) {
+    console.error('Version bump check: no style.css with "Theme Name:" found at the repo root.');
+    process.exit(1);
+  }
+  current = parsePhpHeaderVersion(readFileSync(stylesheet, 'utf8'));
+  const baseContent = gitShowFile(`origin/${baseRef}`, stylesheet);
   base = baseContent ? parsePhpHeaderVersion(baseContent) : null;
 } else {
   current = readJson(pkgPath)?.version ?? null;

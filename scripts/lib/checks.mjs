@@ -70,14 +70,17 @@ export function approvedDeps({ pkg, approved }) {
   };
 }
 
-export function pluginVersionSync({ headerVersion, pkgVersion }) {
+// `header` names where headerVersion came from, so a theme's messages point at
+// style.css rather than at a plugin header it does not have.
+export function pluginVersionSync({ headerVersion, pkgVersion, header = 'plugin header' }) {
+  const Header = header.charAt(0).toUpperCase() + header.slice(1);
   if (pkgVersion === null || pkgVersion === undefined) {
-    return { ok: true, message: `No package.json version to sync (plugin header is ${headerVersion}).` };
+    return { ok: true, message: `No package.json version to sync (${header} is ${headerVersion}).` };
   }
   if (headerVersion === pkgVersion) {
-    return { ok: true, message: `Plugin header and package.json agree (${headerVersion}).` };
+    return { ok: true, message: `${Header} and package.json agree (${headerVersion}).` };
   }
-  return { ok: false, message: `Version mismatch: plugin header ${headerVersion} vs package.json ${pkgVersion}.` };
+  return { ok: false, message: `Version mismatch: ${header} ${headerVersion} vs package.json ${pkgVersion}.` };
 }
 
 export function pluginZip({ zipFiles, slug }) {
@@ -177,9 +180,19 @@ function globMatches(pattern, value) {
 // header from the plugin's main file at the tagged ref, compares it to what's
 // installed, sees no difference, and reports "up to date" forever. Fail loudly
 // here instead.
-export function releaseTag({ tag, headerVersion, pluginFile }) {
+//
+// kind 'theme' means pluginFile is the theme's style.css; only the wording
+// changes, so a plugin's messages are exactly what they always were.
+export function releaseTag({ tag, headerVersion, pluginFile, kind = 'plugin' }) {
+  const theme = kind === 'theme';
+  const what = theme ? 'theme version' : 'plugin header version';
   if (!pluginFile) {
-    return { ok: false, message: 'No plugin main file (with "Plugin Name:") found — cannot verify the release tag.' };
+    return {
+      ok: false,
+      message: theme
+        ? 'No style.css with "Theme Name:" found — cannot verify the release tag.'
+        : 'No plugin main file (with "Plugin Name:") found — cannot verify the release tag.',
+    };
   }
   if (!tag) {
     return { ok: false, message: 'No release tag supplied (RELEASE_TAG is empty).' };
@@ -200,12 +213,12 @@ export function releaseTag({ tag, headerVersion, pluginFile }) {
     return {
       ok: false,
       message:
-        `Release tag ${tag} does not match the plugin header version ${headerVersion} in ${pluginFile}.\n` +
+        `Release tag ${tag} does not match the ${what} ${headerVersion} in ${pluginFile}.\n` +
         '  Sites compare the header at the released tag against what they have installed, so a\n' +
         '  mismatch publishes a Release that is never offered as an update. Fix one and re-tag.',
     };
   }
-  return { ok: true, message: `Release tag ${tag} matches the plugin header version in ${pluginFile}.` };
+  return { ok: true, message: `Release tag ${tag} matches the ${what} in ${pluginFile}.` };
 }
 
 // Headless projects deploy every PR to a Netlify preview, and that preview is a

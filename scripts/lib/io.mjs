@@ -57,6 +57,20 @@ export function findPluginMainFile(cwd = '.', maxDepth = 2) {
   return null;
 }
 
+// A theme's header lives in style.css at the theme root, never deeper.
+// Returns 'style.css' (relative to cwd) when that file declares "Theme Name:",
+// otherwise null. Its Version: line reads with parsePhpHeaderVersion().
+export function findThemeStylesheet(cwd = '.') {
+  try {
+    if (/^\s*\*?\s*Theme Name:/im.test(readFileSync(join(cwd, 'style.css'), 'utf8'))) {
+      return 'style.css';
+    }
+  } catch {
+    /* absent or unreadable */
+  }
+  return null;
+}
+
 export function parsePhpHeaderVersion(content) {
   const m = content.match(/^\s*\*?\s*Version:\s*(.+)$/im);
   return m ? m[1].trim() : null;

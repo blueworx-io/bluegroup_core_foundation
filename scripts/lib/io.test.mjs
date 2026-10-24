@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { hashFile, hashTree, readTextFiles } from './io.mjs';
+import { hashFile, hashTree, readTextFiles, findThemeStylesheet, parsePhpHeaderVersion } from './io.mjs';
 
 const scratch = () => mkdtempSync(join(tmpdir(), 'io-test-'));
 
@@ -61,4 +61,36 @@ test('readTextFiles: returns repo-relative paths and skips vendored trees', () =
   const files = readTextFiles(dir, ['.php']);
   assert.deepEqual(files.map((f) => f.path), ['includes/admin.php']);
   assert.match(files[0].content, /admin/);
+});
+
+test('findThemeStylesheet: finds a root style.css that declares "Theme Name:"', () => {
+  const dir = scratch();
+  writeFileSync(join(dir, 'style.css'), '/*\nTheme Name: BlueWorx\nVersion: 2.0.0\n*/\n');
+  assert.equal(findThemeStylesheet(dir), 'style.css');
+});
+
+test('findThemeStylesheet: null without a style.css, or one with no theme header', () => {
+  assert.equal(findThemeStylesheet(scratch()), null);
+  const dir = scratch();
+  writeFileSync(join(dir, 'style.css'), 'body { color: red }');
+  assert.equal(findThemeStylesheet(dir), null);
+});
+
+test('findThemeStylesheet: ignores a style.css nested below the root', () => {
+  const dir = scratch();
+  mkdirSync(join(dir, 'assets'));
+  writeFileSync(join(dir, 'assets', 'style.css'), '/*\nTheme Name: Nested\n*/');
+  assert.equal(findThemeStylesheet(dir), null);
+});
+
+test('parsePhpHeaderVersion: reads the Version line of a theme style.css', () => {
+  const css = [
+    '/*',
+    'Theme Name: BlueWorx',
+    'Requires PHP: 8.0',
+    'Version: 2.0.0',
+    'Text Domain: blueworx-labs-wordpress',
+    '*/',
+  ].join('\r\n');
+  assert.equal(parsePhpHeaderVersion(css), '2.0.0');
 });

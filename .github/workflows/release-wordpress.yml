@@ -1,8 +1,9 @@
 name: Release (WordPress)
 
-# Reusable release workflow for WordPress plugin projects. Pushing a version tag
-# builds a clean plugin zip and publishes it as a GitHub Release asset, which is
-# what the plugin's update checker installs from.
+# Reusable release workflow for WordPress plugin and theme projects. Pushing a
+# version tag builds a clean zip and publishes it as a GitHub Release asset,
+# which is what the update checker installs from. A theme sets theme_slug
+# instead of plugin_slug; its version comes from style.css.
 #
 #   # .github/workflows/release.yml
 #   name: Release
@@ -13,7 +14,7 @@ name: Release (WordPress)
 #     release:
 #       uses: blueworx-io/bluegroup_core_foundation/.github/workflows/release-wordpress.yml@v1
 #       with:
-#         plugin_slug: my-plugin
+#         plugin_slug: my-plugin      # or, for a theme: theme_slug: my-theme
 #         foundation_ref: v1
 #       permissions:
 #         contents: write
@@ -26,6 +27,14 @@ on:
     inputs:
       plugin_slug:
         description: Plugin slug — the folder name inside the zip. Inferred from the main plugin file if empty.
+        type: string
+        default: ''
+      theme_slug:
+        description: >-
+          Set this instead of plugin_slug when the repo is a theme. It is the
+          theme's folder name: the test site switches to it, the version is read
+          from the Version: line of style.css, and it is the folder inside the
+          zip. Setting both plugin_slug and theme_slug fails the run.
         type: string
         default: ''
       node_version:
@@ -53,6 +62,24 @@ jobs:
     permissions:
       contents: write
     steps:
+      # plugin_slug and theme_slug pick what this repo is. Neither means a plugin
+      # whose slug comes from its main file, as before. Both is a mistake.
+      - name: Check plugin_slug and theme_slug
+        env:
+          PLUGIN_SLUG: ${{ inputs.plugin_slug }}
+          THEME_SLUG: ${{ inputs.theme_slug }}
+        run: |
+          if [ -n "$PLUGIN_SLUG" ] && [ -n "$THEME_SLUG" ]; then
+            echo "::error title=plugin_slug and theme_slug both set::Set plugin_slug for a plugin or theme_slug for a theme, not both."
+            exit 1
+          fi
+          case "$THEME_SLUG" in
+            *[!A-Za-z0-9._-]*|.*)
+              echo "::error title=Invalid theme_slug::theme_slug must be a plain folder name (letters, numbers, - _ .); got '$THEME_SLUG'."
+              exit 1 ;;
+          esac
+          if [ -n "$THEME_SLUG" ]; then echo "Theme: $THEME_SLUG"; else echo "Plugin: ${PLUGIN_SLUG:-inferred from the main plugin file}"; fi
+
       - name: Checkout tagged commit
         uses: actions/checkout@v4
 
@@ -74,10 +101,12 @@ jobs:
           git fetch -q --depth 1 origin "$FOUNDATION_REF"
           git checkout -q FETCH_HEAD
 
+      # For a theme, plugin_file is style.css and slug is theme_slug.
       - name: Resolve plugin file and slug
         id: info
         env:
           PLUGIN_SLUG: ${{ inputs.plugin_slug }}
+          THEME_SLUG: ${{ inputs.theme_slug }}
         run: node "$RUNNER_TEMP/foundation/scripts/plugin-info.mjs" >> "$GITHUB_OUTPUT"
 
       # The guardrail that matters most: a tag that disagrees with the header
@@ -86,6 +115,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
           PLUGIN_FILE: ${{ steps.info.outputs.plugin_file }}
+          THEME_SLUG: ${{ inputs.theme_slug }}
         run: node "$RUNNER_TEMP/foundation/scripts/check-release-tag.mjs"
 
       # The asset filename carries the version so a downloaded zip says which
@@ -154,6 +184,7 @@ jobs:
           SLUG: ${{ steps.info.outputs.slug }}
           ZIP_NAME: ${{ steps.zip.outputs.name }}
           PLUGIN_FILE: ${{ steps.info.outputs.plugin_file }}
+          THEME_SLUG: ${{ inputs.theme_slug }}
         run: |
           set -euo pipefail
           unzip -l "$ZIP_NAME"
@@ -167,6 +198,13 @@ jobs:
           main_entry="$SLUG/$(basename "$PLUGIN_FILE")"
           if ! printf '%s\n' "$entries" | grep -qFx "$main_entry"; then
             echo "::error title=Malformed plugin zip::Main plugin file $main_entry is missing from the archive."
+            exit 1
+          fi
+          # WordPress lists a theme without a template as broken.
+          if [ -n "$THEME_SLUG" ] \
+            && ! printf '%s\n' "$entries" | grep -qFx "$SLUG/index.php" \
+            && ! printf '%s\n' "$entries" | grep -qFx "$SLUG/templates/index.html"; then
+            echo "::error title=Malformed theme zip::Neither $SLUG/index.php nor $SLUG/templates/index.html is in the archive — WordPress would list the theme as broken."
             exit 1
           fi
           if ! printf '%s\n' "$entries" | grep -qFx "$SLUG/plugin-update-checker/plugin-update-checker.php"; then

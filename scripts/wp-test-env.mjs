@@ -1,10 +1,15 @@
 #!/usr/bin/env node
-// Provisions a disposable local WordPress for testing a plugin, and serves it
-// with PHP's built-in server. No Docker, no MySQL, no hosting — it uses the
-// SQLite drop-in and whatever PHP is already on PATH.
+// Provisions a disposable local WordPress for testing a plugin or a theme, and
+// serves it with PHP's built-in server. No Docker, no MySQL, no hosting — it
+// uses the SQLite drop-in and whatever PHP is already on PATH.
 //
-//   node wp-test-env.mjs up   --plugin .   [--port 8881] [--dir .wp-test] [--open]
-//   node wp-test-env.mjs down                          [--dir .wp-test]
+//   node wp-test-env.mjs up   --plugin . [--slug <slug>]         [--port 8881] [--dir .wp-test] [--open]
+//   node wp-test-env.mjs up   --theme .  [--theme-slug <slug>]   [--port 8881] [--dir .wp-test] [--open]
+//   node wp-test-env.mjs up   --theme <dir> --plugin <dir>       (a plugin on top of a theme)
+//   node wp-test-env.mjs down                                    [--dir .wp-test]
+//
+// Slugs default to the directory's name. With no --theme, --plugin defaults to
+// the current directory. With --theme alone, no plugin is set up.
 //
 // `up` is idempotent: it reuses an existing install and only re-runs the parts
 // that are missing. It prints the base URL and the credentials the Playwright
@@ -18,9 +23,10 @@ import { execFileSync, spawn } from 'node:child_process';
 import {
   existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, cpSync, renameSync, openSync,
 } from 'node:fs';
-import { join, resolve, basename } from 'node:path';
+import { join, resolve } from 'node:path';
 import { platform } from 'node:os';
 import { parseListeningPids } from './lib/port.mjs';
+import { resolveTargets, bootstrapScript } from './lib/wp-test-env.mjs';
 
 const WP_ZIP = 'https://wordpress.org/latest.zip';
 const SQLITE_ZIP = 'https://downloads.wordpress.org/plugin/sqlite-database-integration.zip';
@@ -55,9 +61,15 @@ await up();
 async function up() {
   requirePhp();
 
-  const pluginDir = resolve(args.plugin ?? '.');
-  const pluginSlug = args.slug ?? basename(pluginDir);
-  if (!existsSync(pluginDir)) fail(`Plugin directory not found: ${pluginDir}`);
+  let targets;
+  try {
+    targets = resolveTargets(args);
+  } catch (err) {
+    fail(err.message);
+  }
+  const { plugin, theme } = targets;
+  if (plugin && !existsSync(plugin.dir)) fail(`Plugin directory not found: ${plugin.dir}`);
+  if (theme && !existsSync(theme.dir)) fail(`Theme directory not found: ${theme.dir}`);
 
   mkdirSync(dir, { recursive: true });
 
@@ -79,7 +91,8 @@ async function up() {
 
   writeDbDropin(sqliteDir);
   writeWpConfig();
-  linkPlugin(pluginDir, pluginSlug);
+  if (plugin) linkInto(plugin.dir, join(wpDir, 'wp-content', 'plugins', plugin.slug), 'plugin');
+  if (theme) linkInto(theme.dir, join(wpDir, 'wp-content', 'themes', theme.slug), 'theme');
   writeOpenAccess(openAccess);
 
   stopServer({ quiet: true });
@@ -87,13 +100,14 @@ async function up() {
   await waitForServer();
 
   await installWordPress();
-  runPhp(bootstrapScript(pluginSlug));
+  runPhp(bootstrapScript({ plugin, theme, admin: { user: ADMIN_USER, pass: ADMIN_PASS } }));
 
   log('');
   log(`  WordPress   ${baseUrl}`);
   log(`  Admin       ${baseUrl}/wp-admin/`);
   log(`  User / pass ${ADMIN_USER} / ${ADMIN_PASS}`);
-  log(`  Plugin      ${pluginSlug} (linked to ${pluginDir} — edits are live)`);
+  if (theme) log(`  Theme       ${theme.slug} (linked to ${theme.dir} — edits are live)`);
+  if (plugin) log(`  Plugin      ${plugin.slug} (linked to ${plugin.dir} — edits are live)`);
   if (openAccess) {
     log('  Open access ON — every request is the admin, no sign-in. Re-run `up` without --open to turn it off.');
   }
@@ -157,19 +171,19 @@ require_once ABSPATH . 'wp-settings.php';
 }
 
 // Link rather than copy so edits in the repo take effect immediately. Windows
-// junctions need no admin rights; elsewhere a symlink does the job.
-function linkPlugin(pluginDir, slug) {
-  const dest = join(wpDir, 'wp-content', 'plugins', slug);
+// junctions need no admin rights; elsewhere a symlink does the job. Plugins go
+// under wp-content/plugins, themes under wp-content/themes.
+function linkInto(srcDir, dest, kind) {
   if (existsSync(dest)) return;
   try {
     if (platform() === 'win32') {
-      execFileSync('cmd', ['/c', 'mklink', '/J', dest, pluginDir], { stdio: 'ignore' });
+      execFileSync('cmd', ['/c', 'mklink', '/J', dest, srcDir], { stdio: 'ignore' });
     } else {
-      execFileSync('ln', ['-s', pluginDir, dest], { stdio: 'ignore' });
+      execFileSync('ln', ['-s', srcDir, dest], { stdio: 'ignore' });
     }
   } catch {
-    log('Link failed — copying the plugin instead (edits will NOT be live).');
-    cpSync(pluginDir, dest, { recursive: true });
+    log(`Link failed — copying the ${kind} instead (edits will NOT be live).`);
+    cpSync(srcDir, dest, { recursive: true });
   }
 }
 
@@ -245,42 +259,6 @@ async function installWordPress() {
     fail('WordPress install did not report success. Check the server log.');
   }
   log('WordPress installed.');
-}
-
-// Pretty permalinks are required or /wp-json/ returns HTML and every REST spec
-// fails on "Unexpected token '<'".
-function bootstrapScript(slug) {
-  return `<?php
-require_once __DIR__ . '/wp-load.php';
-require_once ABSPATH . 'wp-admin/includes/plugin.php';
-require_once ABSPATH . 'wp-includes/rewrite.php';
-global $wp_rewrite;
-if ( get_option( 'permalink_structure' ) !== '/%postname%/' ) {
-  $wp_rewrite->set_permalink_structure( '/%postname%/' );
-  $wp_rewrite->flush_rules( true );
-}
-$main = '${slug}/${slug}.php';
-if ( ! file_exists( WP_PLUGIN_DIR . '/' . $main ) ) {
-  foreach ( glob( WP_PLUGIN_DIR . '/${slug}/*.php' ) as $candidate ) {
-    if ( preg_match( '/^\\s*\\*?\\s*Plugin Name:/im', file_get_contents( $candidate ) ) ) {
-      $main = '${slug}/' . basename( $candidate );
-      break;
-    }
-  }
-}
-// The login is whatever this script says it is, on an old instance as well as
-// a new one. An instance installed under an earlier password is reused rather
-// than rebuilt, and without this the banner below would promise a login the
-// site did not have.
-$admin = get_user_by( 'login', '${ADMIN_USER}' );
-if ( $admin && ! wp_check_password( '${ADMIN_PASS}', $admin->user_pass, $admin->ID ) ) {
-  wp_set_password( '${ADMIN_PASS}', $admin->ID );
-  echo "ADMIN_PASSWORD: reset\\n";
-}
-$res = activate_plugin( $main, '', false, false );
-echo is_wp_error( $res ) ? 'ACTIVATION_ERROR: ' . $res->get_error_message() : 'PLUGIN_ACTIVE: ' . $main;
-echo "\\n" . 'PERMALINKS: ' . get_option( 'permalink_structure' ) . "\\n";
-`;
 }
 
 function runPhp(source) {
