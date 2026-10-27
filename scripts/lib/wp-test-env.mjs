@@ -44,6 +44,24 @@ export function resolveTargets(args) {
   return { plugin, theme };
 }
 
+// How many requests the site answers side by side (#92). `php -S` alone answers
+// one at a time, so a screen asking for eight things waits for each in turn.
+// PHP_CLI_SERVER_WORKERS fixes that everywhere but Windows, where PHP ignores
+// it, so Windows stays on one. The SQLite drop-in runs in WAL mode with a busy
+// timeout, which is what lets the workers share the database file.
+export const DEFAULT_SERVER_WORKERS = 4;
+
+export function serverWorkers(value, os) {
+  let n = DEFAULT_SERVER_WORKERS;
+  if (value !== undefined) {
+    n = typeof value === 'boolean' ? NaN : Number(value);
+    if (!Number.isInteger(n) || n < 1) {
+      throw new Error(`--server-workers needs a whole number, 1 or more; got "${value}".`);
+    }
+  }
+  return os === 'win32' ? 1 : n;
+}
+
 // Pretty permalinks are required or /wp-json/ returns HTML and every REST spec
 // fails on "Unexpected token '<'".
 //

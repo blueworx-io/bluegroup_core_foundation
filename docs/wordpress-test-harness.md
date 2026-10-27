@@ -25,6 +25,12 @@ bind one port and requests then route to whichever answers first) is cleaned up
 rather than left holding the port. Only `php` processes on that port are ever
 killed.
 
+The site answers **four requests at once** (#92), so a screen that loads a dozen
+scripts and REST calls is not waiting for each in turn. Change it with
+`--server-workers <n>`; `1` is the old one-at-a-time server. Windows always runs
+one, because PHP cannot do more there. This is not the same as Playwright's
+`workers`, which run several tests at once against one site — leave that at 1.
+
 ## Testing a theme
 
 ```bash

@@ -8,6 +8,9 @@
 //   node wp-test-env.mjs up   --theme <dir> --plugin <dir>       (a plugin on top of a theme)
 //   node wp-test-env.mjs down                                    [--dir .wp-test]
 //
+// `up` also takes --server-workers <n>: how many requests the site answers at
+// once. Four by default; always one on Windows, where PHP cannot do more.
+//
 // Slugs default to the directory's name. With no --theme, --plugin defaults to
 // the current directory. With --theme alone, no plugin is set up.
 //
@@ -26,7 +29,7 @@ import {
 import { join, resolve } from 'node:path';
 import { platform } from 'node:os';
 import { parseListeningPids } from './lib/port.mjs';
-import { resolveTargets, bootstrapScript } from './lib/wp-test-env.mjs';
+import { resolveTargets, bootstrapScript, serverWorkers } from './lib/wp-test-env.mjs';
 
 const WP_ZIP = 'https://wordpress.org/latest.zip';
 const SQLITE_ZIP = 'https://downloads.wordpress.org/plugin/sqlite-database-integration.zip';
@@ -276,15 +279,26 @@ function runPhp(source) {
 // --- server -----------------------------------------------------------------
 
 function startServer() {
+  let workers;
+  try {
+    workers = serverWorkers(args['server-workers'], platform());
+  } catch (err) {
+    fail(err.message);
+  }
   const logPath = join(dir, 'php-server.log');
+  const env = { ...process.env };
+  if (workers > 1) env.PHP_CLI_SERVER_WORKERS = String(workers);
+  else delete env.PHP_CLI_SERVER_WORKERS;
   const child = spawn('php', ['-S', `127.0.0.1:${port}`, '-t', wpDir], {
     cwd: wpDir,
     detached: true,
+    env,
     stdio: ['ignore', openLog(logPath), openLog(logPath)],
   });
   child.unref();
   writeFileSync(pidFile, String(child.pid));
-  log(`PHP server started on ${baseUrl} (pid ${child.pid}, log: ${logPath})`);
+  const answers = workers > 1 ? `${workers} requests at once` : 'one request at a time';
+  log(`PHP server started on ${baseUrl} (pid ${child.pid}, ${answers}, log: ${logPath})`);
 }
 
 function openLog(path) {
@@ -344,7 +358,14 @@ function stopServer({ quiet = false } = {}) {
       if (platform() === 'win32') {
         execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
       } else {
-        process.kill(pid, 'SIGTERM');
+        // The server is started as its own process group, and with several
+        // workers its children are in it too. Ending the group ends them all;
+        // a pid that leads no group (a worker found on the port) is ended alone.
+        try {
+          process.kill(-pid, 'SIGTERM');
+        } catch {
+          process.kill(pid, 'SIGTERM');
+        }
       }
       killed.push(pid);
     } catch {
