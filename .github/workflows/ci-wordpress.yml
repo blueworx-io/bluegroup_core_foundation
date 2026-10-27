@@ -466,8 +466,31 @@ jobs:
         run: |
           if [ -f package.json ]; then ${{ inputs.build_command }}; else echo "No package.json — skipping build."; fi
 
+      # The browsers are kept between runs, keyed on the project's Playwright
+      # version, so a warm run skips the download (#91). Six shards share one
+      # entry; whichever finishes first saves it and the rest log that it exists.
+      - name: Find the Playwright version
+        id: playwright
+        run: echo "version=$(npx --no-install playwright --version 2>/dev/null | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Playwright browsers
+        if: steps.playwright.outputs.version != ''
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      # Normally under a minute. One stuck download once held a Forge PR for 48
+      # minutes, so each attempt gets five and a stuck one is retried once —
+      # a fresh connection usually goes straight through. With a warm cache this
+      # only installs the system packages the browsers need.
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps
+        run: |
+          for attempt in 1 2; do
+            if timeout --kill-after=30s 5m npx playwright install --with-deps; then exit 0; fi
+            echo "::warning title=Playwright install attempt $attempt failed::Install failed or ran past five minutes."
+          done
+          exit 1
 
       # The secrets context is not usable in an `if:` expression, so read them
       # through env and test the values in the shell instead.

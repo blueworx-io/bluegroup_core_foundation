@@ -220,6 +220,17 @@ more shards than spec files one shard can legitimately get an empty slice, but
 every shard asserting nothing still fails the build. Each shard uploads its JSON
 report and the `guardrails` job adds them up.
 
+### The test browser is kept between runs
+
+Each runner keeps the downloaded browser in the repo's Actions cache, keyed on
+the project's Playwright version (#91), so a warm run skips the download. The
+download gets five minutes and is retried once if it fails or runs over, so a
+stuck one costs minutes, not the 48 it once cost a Forge PR.
+
+The cache is warm for later pushes to the same PR. A new PR only starts warm if
+the workflow also runs on pushes to `main`, since a PR can read its base
+branch's cache but not another PR's. Bumping Playwright starts a fresh entry.
+
 ## Requirements
 
 - **PHP on PATH with `pdo_sqlite`.** The script checks and fails with a clear
