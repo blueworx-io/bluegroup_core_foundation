@@ -92,6 +92,14 @@ on:
         description: Command to build assets (skipped if no package.json).
         type: string
         default: npm run build
+      playwright_browsers:
+        description: >-
+          Browsers to install for the Playwright suite, space-separated. Every
+          project tests in Chromium, so that is all that is installed: Firefox
+          and WebKit bring about 100 MB of Linux packages from a mirror that can
+          crawl. A project that adds them to its config lists them here.
+        type: string
+        default: chromium
       test_command:
         description: >-
           Command to run Playwright tests. Keep the json reporter — the
@@ -482,13 +490,22 @@ jobs:
           path: |
             ~/.cache/ms-playwright
             ~/.cache/playwright-apt
-          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-with-packages
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ inputs.playwright_browsers }}-with-packages
 
-      # Normally under a minute. One stuck download once held a Forge PR for 48
-      # minutes, so each attempt gets five and a stuck one is retried once. apt
-      # keeps what it downloads in the cached folder, and gives up on a stalled
-      # package after 20 seconds rather than waiting minutes.
+      # Normally well under a minute. One stuck download once held a Forge PR
+      # for 48 minutes, so each attempt gets five and a stuck one is retried
+      # once.
+      #
+      # The browser comes from Playwright's own fast CDN. The Linux packages
+      # come from an Ubuntu mirror that can crawl at 40 KB/s, and for Chromium
+      # the runner image already has every library it needs — what
+      # `--with-deps` adds is extra fonts and upgrades to libraries already
+      # there. So packages are only fetched when the browser is actually
+      # missing a library, or for Firefox and WebKit, which do need them. apt
+      # then keeps what it downloads in the cached folder.
       - name: Install Playwright browsers
+        env:
+          BROWSERS: ${{ inputs.playwright_browsers }}
         run: |
           debs="$HOME/.cache/playwright-apt"
           mkdir -p "$debs"
@@ -499,9 +516,29 @@ jobs:
             'Acquire::http::Timeout "20";' \
             'Acquire::https::Timeout "20";' \
             | sudo tee /etc/apt/apt.conf.d/80-ci-playwright >/dev/null
+          # True when a Chromium binary lacks a library — or when none can be
+          # found to check, which is treated as lacking rather than guessed at.
+          missing_libraries() {
+            bins=$(find "$HOME/.cache/ms-playwright" -type f -perm -u+x \
+              \( -name chrome -o -name chrome-headless-shell -o -name headless_shell \))
+            [ -n "$bins" ] || return 0
+            for bin in $bins; do
+              ldd "$bin" | grep 'not found' && return 0
+            done
+            return 1
+          }
+          install_once() {
+            npx playwright install $BROWSERS || return 1
+            if [ "$BROWSERS" = chromium ] && ! missing_libraries; then
+              echo "Chromium has every library it needs; no packages to install."
+              return 0
+            fi
+            npx playwright install-deps $BROWSERS
+          }
+          export -f install_once missing_libraries
           installed=false
           for attempt in 1 2; do
-            if timeout --kill-after=30s 5m npx playwright install --with-deps; then installed=true; break; fi
+            if timeout --kill-after=30s 5m bash -c install_once; then installed=true; break; fi
             echo "::warning title=Playwright install attempt $attempt failed::Install failed or ran past five minutes."
             # The time limit ends npx but not the apt-get it started as root,
             # which keeps the package lock and fails the retry on the spot.
