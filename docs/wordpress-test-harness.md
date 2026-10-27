@@ -231,13 +231,15 @@ report and the `guardrails` job adds them up.
 Each runner keeps the downloaded browser in the repo's Actions cache, keyed on
 the project's Playwright version (#91), so a warm run skips the download. The
 install gets five minutes and is retried once if it fails or runs over, so a
-stuck one costs minutes, not the 48 it once cost a Forge PR. The Linux packages
-the browser needs are kept in the same cache, because they are what usually
-stalls: they come from an Ubuntu mirror that can slow to a crawl.
+stuck one costs minutes, not the 48 it once cost a Forge PR.
 
-Only Chromium is installed, since that is what every project tests in; Firefox
-and WebKit would add about 100 MB of those packages. A project that tests in
-them too sets `playwright_browsers: chromium firefox webkit`.
+Only Chromium is installed, since that is what every project tests in. The
+runner already has every Linux library it needs, so no packages are fetched
+unless one turns out to be missing. That matters because those packages come
+from an Ubuntu mirror that can slow to a crawl, and a new PR cannot use another
+PR's cache. A project that also tests in Firefox or WebKit sets
+`playwright_browsers: chromium firefox webkit`, which does fetch their packages
+(about 100 MB) and keeps them in the cache.
 
 The cache is warm for later pushes to the same PR. A new PR only starts warm if
 the workflow also runs on pushes to `main`, since a PR can read its base
