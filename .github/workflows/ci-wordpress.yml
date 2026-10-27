@@ -32,8 +32,9 @@ name: CI Guardrails (WordPress)
 #   tests   -> Playwright, one runner per shard (matrix)
 #   guardrails -> asserts the above passed AND that the shards actually ran tests
 #
-# `static` and `tests` run concurrently, so the default single-shard setup is no
-# slower than the old single job, and usually a little faster.
+# `static` and `tests` run concurrently. Unless a project sets `shards`, `prep`
+# sizes the split from the suite (#89): a small suite stays on one runner, a big
+# one is spread across up to six so it stops being the reason a PR takes an hour.
 #
 on:
   workflow_call:
@@ -54,14 +55,15 @@ on:
         default: false
       shards:
         description: >-
-          How many runners to split the Playwright suite across. Default 1, which
-          behaves exactly as an unsharded run. Each shard is a separate runner
-          with its own WordPress, so specs that mutate site-wide state stay
-          isolated — that isolation is why the suites pin `workers: 1` and why
-          raising THAT instead of this would corrupt runs. Only worth raising for
-          a suite long enough to notice; the per-shard setup cost is real.
+          How many runners to split the Playwright suite across. Default 0 sizes
+          it from the suite (#89): one runner per 150 tests, up to six, and only
+          with use_local_wordpress. Set a number to fix it; 1 is an unsharded
+          run. Each shard is a separate runner with its own WordPress, so specs
+          that mutate site-wide state stay isolated — that isolation is why the
+          suites pin `workers: 1` and why raising THAT instead of this would
+          corrupt runs.
         type: number
-        default: 1
+        default: 0
       plugin_slug:
         description: Plugin slug (used for the single-zip check). Inferred from the main plugin file if empty.
         type: string
@@ -93,8 +95,8 @@ on:
       test_command:
         description: >-
           Command to run Playwright tests. Keep the json reporter — the
-          zero-tests check reads its output. When shards > 1 a `--shard=i/n`
-          argument is appended to whatever this is set to.
+          zero-tests check reads its output. When the suite runs on more than one
+          shard a `--shard=i/n` argument is appended to whatever this is set to.
         type: string
         default: npx playwright test --reporter=list,json
       allow_zero_tests:
@@ -156,7 +158,8 @@ on:
         required: false
 
 jobs:
-  # Turns the `shards` number into the JSON array the matrix needs. GitHub
+  # Decides how many shards to run — the project's number, or one sized from its
+  # suite (#89) — and turns it into the JSON array the matrix needs. GitHub
   # expressions have no range function, so this cannot be done inline.
   prep:
     runs-on: ubuntu-latest
@@ -164,6 +167,7 @@ jobs:
       contents: read
     outputs:
       shards: ${{ steps.plan.outputs.shards }}
+      count: ${{ steps.plan.outputs.count }}
     steps:
       # plugin_slug and theme_slug pick what this repo is. Neither means a plugin
       # whose slug comes from its main file, as before. Both is a mistake.
@@ -183,21 +187,30 @@ jobs:
           esac
           if [ -n "$THEME_SLUG" ]; then echo "Theme: $THEME_SLUG"; else echo "Plugin: ${PLUGIN_SLUG:-inferred from the main plugin file}"; fi
 
+      # The project's specs are what an automatic split is sized from.
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+
+      # Fetched into the runner's temp dir, as in the other jobs, so nothing of
+      # the foundation's lands in the project's tree.
+      - name: Fetch foundation (shared check scripts)
+        env:
+          FOUNDATION_REF: ${{ inputs.foundation_ref }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/foundation"
+          cd "$RUNNER_TEMP/foundation"
+          git init -q .
+          git remote add origin https://github.com/blueworx-io/bluegroup_core_foundation.git
+          git fetch -q --depth 1 origin "$FOUNDATION_REF"
+          git checkout -q FETCH_HEAD
+
       - name: Plan the shards
         id: plan
         env:
           SHARDS: ${{ inputs.shards }}
-        run: |
-          n="${SHARDS:-1}"
-          case "$n" in
-            ''|*[!0-9]*) echo "shards must be a positive whole number; got '$n'." >&2; exit 1 ;;
-          esac
-          if [ "$n" -lt 1 ]; then
-            echo "shards must be at least 1; got '$n'." >&2
-            exit 1
-          fi
-          echo "shards=[$(seq -s, 1 "$n")]" >> "$GITHUB_OUTPUT"
-          echo "Running the Playwright suite across $n shard(s)."
+          LOCAL_WORDPRESS: ${{ inputs.use_local_wordpress }}
+        run: node "$RUNNER_TEMP/foundation/scripts/plan-shards.mjs"
 
   static:
     runs-on: ubuntu-latest
@@ -501,7 +514,7 @@ jobs:
           WP_LOGIN_PATH: ${{ inputs.wp_login_path }}
           PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-report.json
           SHARD_INDEX: ${{ matrix.shard }}
-          SHARD_TOTAL: ${{ inputs.shards }}
+          SHARD_TOTAL: ${{ needs.prep.outputs.count }}
         run: |
           # Unsharded runs get no --shard argument at all, so a single-shard run
           # is byte-for-byte the command projects ran before this existed.

@@ -181,8 +181,12 @@ and WordPress debug logs as an artifact if the run fails. You no longer need
 
 ### Sharding a slow suite
 
-Once a suite is long enough to be the reason PRs are slow, split it across
-runners with `shards`:
+**A big suite is split for you.** Unless a project sets `shards`, the workflow
+counts the tests in its spec files and runs one runner per 150 tests, up to six
+(#89). A small suite stays on one runner; Forge's 800-odd tests run on six. The
+`prep` job's log says how many it chose and why.
+
+To fix the number instead, set it:
 
 ```yaml
     with:
@@ -203,12 +207,13 @@ and wall clock lands near the slowest shard rather than `total / shards`.
 
 Two things to know:
 
-- **`shards: 1` is the default and changes nothing.** The test command is run
-  without a `--shard` argument at all, exactly as before this existed.
-- **Sharding requires `use_local_wordpress: true`.** The workflow refuses to
-  shard against a `preview_url`, because that is one shared site and the shards
-  would corrupt each other. This fails the run rather than producing quiet
-  nonsense.
+- **One shard changes nothing.** The test command is run without a `--shard`
+  argument at all, exactly as before this existed. `shards: 1` keeps a suite
+  on one runner whatever its size.
+- **Sharding requires `use_local_wordpress: true`.** Against a `preview_url`
+  the automatic split always picks one runner, and a number set above one
+  fails the run, because that is one shared site and the shards would corrupt
+  each other.
 
 The zero-tests gate is applied to the **sum** across shards, not per shard: with
 more shards than spec files one shard can legitimately get an empty slice, but
