@@ -185,6 +185,11 @@ These skills load automatically from the shared `bluegroup_core_foundation` sett
 - Quick, mechanical, high-volume work: Claude Haiku
 - Claude Design: the same tiers, picked per project in-app
 
+## Running several sessions at once
+
+- Use **Agent view**: run `claude agents` for one screen showing every running session, with the ones waiting on you flagged
+- It is built into Claude Code, not a plugin, so nothing goes in the repo. It is a Research Preview and each person turns it on for themselves
+
 ## Naming Conventions
 
 - Repos: `blueworx_project_projectname` or `blueworx_client_clientname`
