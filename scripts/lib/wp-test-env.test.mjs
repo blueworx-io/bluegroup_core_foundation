@@ -1,9 +1,30 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { basename, resolve } from 'node:path';
-import { resolveTargets, bootstrapScript } from './wp-test-env.mjs';
+import {
+  resolveTargets, bootstrapScript, serverWorkers, DEFAULT_SERVER_WORKERS,
+} from './wp-test-env.mjs';
 
 const ADMIN = { user: 'admin', pass: 'admin' };
+
+test('serverWorkers: several by default off Windows, a set number kept', () => {
+  assert.equal(serverWorkers(undefined, 'linux'), DEFAULT_SERVER_WORKERS);
+  assert.ok(DEFAULT_SERVER_WORKERS > 1);
+  assert.equal(serverWorkers('1', 'linux'), 1);
+  assert.equal(serverWorkers('8', 'darwin'), 8);
+});
+
+test('serverWorkers: Windows always runs one, since PHP ignores workers there', () => {
+  assert.equal(serverWorkers(undefined, 'win32'), 1);
+  assert.equal(serverWorkers('8', 'win32'), 1);
+});
+
+test('serverWorkers: refuses anything but a whole number of one or more', () => {
+  for (const bad of ['0', '-2', '2.5', 'many', true]) {
+    assert.throws(() => serverWorkers(bad, 'linux'), /--server-workers/);
+    assert.throws(() => serverWorkers(bad, 'win32'), /--server-workers/);
+  }
+});
 
 test('resolveTargets: no flags sets up the current directory as a plugin, as before', () => {
   const { plugin, theme } = resolveTargets({ _: ['up'] });

@@ -573,6 +573,19 @@ jobs:
             ${{ inputs.test_command }}
           fi
 
+      # The test site answers several requests at once and they share one SQLite
+      # file (#92). If two ever trip over each other, say so on the run rather
+      # than leave it to surface later as a flaky test.
+      - name: Check the test database never locked up
+        if: always() && inputs.use_local_wordpress
+        run: |
+          log=.wp-test/wp/wp-content/debug.log
+          if [ -f "$log" ] && grep -qi 'database is locked' "$log"; then
+            echo "::warning title=Test database locked::$(grep -ci 'database is locked' "$log") 'database is locked' errors in the WordPress debug log. Requests to the test site collided; see the debug log."
+          else
+            echo "No 'database is locked' errors."
+          fi
+
       - name: Stop local WordPress
         if: always() && inputs.use_local_wordpress
         run: |
