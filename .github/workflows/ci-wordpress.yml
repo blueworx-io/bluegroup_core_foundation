@@ -466,32 +466,42 @@ jobs:
         run: |
           if [ -f package.json ]; then ${{ inputs.build_command }}; else echo "No package.json — skipping build."; fi
 
-      # The browsers are kept between runs, keyed on the project's Playwright
-      # version, so a warm run skips the download (#91). Six shards share one
-      # entry; whichever finishes first saves it and the rest log that it exists.
+      # The browsers, and the Linux packages they need, are kept between runs,
+      # keyed on the project's Playwright version, so a warm run downloads
+      # neither (#91). The packages matter most: they come from an Ubuntu mirror
+      # that can crawl, where the browser comes from a fast CDN. Six shards
+      # share one entry; whichever finishes first saves it.
       - name: Find the Playwright version
         id: playwright
         run: echo "version=$(npx --no-install playwright --version 2>/dev/null | awk '{print $2}')" >> "$GITHUB_OUTPUT"
 
-      - name: Restore Playwright browsers
+      - name: Restore Playwright browsers and packages
         if: steps.playwright.outputs.version != ''
         uses: actions/cache@v4
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/playwright-apt
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-with-packages
 
       # Normally under a minute. One stuck download once held a Forge PR for 48
-      # minutes, so each attempt gets five and a stuck one is retried once.
-      # With a warm cache this only installs the system packages the browsers
-      # need — and those are what stall: a slow Ubuntu mirror can sit on one
-      # package for minutes, so apt is told to give up on it in seconds and
-      # try again instead.
+      # minutes, so each attempt gets five and a stuck one is retried once. apt
+      # keeps what it downloads in the cached folder, and gives up on a stalled
+      # package after 20 seconds rather than waiting minutes.
       - name: Install Playwright browsers
         run: |
-          echo 'Acquire::Retries "3"; Acquire::http::Timeout "20"; Acquire::https::Timeout "20";' \
-            | sudo tee /etc/apt/apt.conf.d/80-ci-timeouts >/dev/null
+          debs="$HOME/.cache/playwright-apt"
+          mkdir -p "$debs"
+          printf '%s\n' \
+            "Dir::Cache::Archives \"$debs\";" \
+            'APT::Keep-Downloaded-Packages "true";' \
+            'Acquire::Retries "3";' \
+            'Acquire::http::Timeout "20";' \
+            'Acquire::https::Timeout "20";' \
+            | sudo tee /etc/apt/apt.conf.d/80-ci-playwright >/dev/null
+          installed=false
           for attempt in 1 2; do
-            if timeout --kill-after=30s 5m npx playwright install --with-deps; then exit 0; fi
+            if timeout --kill-after=30s 5m npx playwright install --with-deps; then installed=true; break; fi
             echo "::warning title=Playwright install attempt $attempt failed::Install failed or ran past five minutes."
             # The time limit ends npx but not the apt-get it started as root,
             # which keeps the package lock and fails the retry on the spot.
@@ -502,7 +512,10 @@ jobs:
             done
             sudo dpkg --configure -a || true
           done
-          exit 1
+          # apt wrote the folder as root; the cache is saved as the runner.
+          sudo rm -rf "$debs/partial" "$debs/lock"
+          sudo chown -R "$(id -u):$(id -g)" "$debs"
+          $installed
 
       # The secrets context is not usable in an `if:` expression, so read them
       # through env and test the values in the shell instead.
