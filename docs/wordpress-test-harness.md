@@ -226,8 +226,8 @@ Each runner keeps the downloaded browser in the repo's Actions cache, keyed on
 the project's Playwright version (#91), so a warm run skips the download. The
 install gets five minutes and is retried once if it fails or runs over, so a
 stuck one costs minutes, not the 48 it once cost a Forge PR. The Linux packages
-the browser needs are still installed every run, and a slow mirror is the usual
-culprit, so each package download gives up after 20 seconds and tries again.
+the browser needs are kept in the same cache, because they are what usually
+stalls: they come from an Ubuntu mirror that can slow to a crawl.
 
 The cache is warm for later pushes to the same PR. A new PR only starts warm if
 the workflow also runs on pushes to `main`, since a PR can read its base
