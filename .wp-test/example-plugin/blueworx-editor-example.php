@@ -45,6 +45,11 @@ add_action( 'init', function () {
 		'supports'     => [ 'title', 'excerpt', 'revisions' ],
 		'show_in_rest' => true,
 	] );
+
+	// The worked section block: see blocks/section-hero/ and the design
+	// system readme's "Section blocks". Registered from its folder, so
+	// block.json decides everything about it.
+	register_block_type( __DIR__ . '/blocks/section-hero' );
 } );
 
 add_action( 'plugins_loaded', function () {

@@ -1,0 +1,37 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "bwx/section-hero",
+	"title": "Hero section",
+	"category": "design",
+	"icon": "cover-image",
+	"description": "A heading, a line of text and a button. The words are yours; the layout is the plugin's.",
+	"keywords": [ "hero", "banner", "section" ],
+	"textdomain": "bwx",
+	"attributes": {
+		"eyebrow": { "type": "string", "default": "" },
+		"heading": { "type": "string", "default": "" },
+		"text": { "type": "string", "default": "" },
+		"buttonLabel": { "type": "string", "default": "" },
+		"buttonUrl": { "type": "string", "default": "" }
+	},
+	"supports": {
+		"html": false,
+		"align": [ "wide", "full" ],
+		"color": false,
+		"typography": false,
+		"spacing": false
+	},
+	"example": {
+		"attributes": {
+			"eyebrow": "Welcome",
+			"heading": "A section the plugin draws",
+			"text": "Change these words; the layout stays the plugin's.",
+			"buttonLabel": "Find out more",
+			"buttonUrl": "#"
+		}
+	},
+	"editorScript": "file:./edit.js",
+	"style": "file:./style.css",
+	"render": "file:./render.php"
+}
