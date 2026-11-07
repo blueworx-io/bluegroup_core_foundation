@@ -13,6 +13,9 @@ const path = require('node:path');
 // alone throughout, so a manual poke at it never leaks into this run either.
 const USER = process.env.WP_ADMIN_USER || 'admin';
 const PASS = process.env.WP_ADMIN_PASS || 'wptest-admin-pw';
+// Under the BlueWorx theme the sign-in page lives at /admin_login, so the
+// path comes from the environment, as it does in every plugin's own suite.
+const LOGIN_PATH = '/' + (process.env.WP_LOGIN_PATH || 'wp-login.php').replace(/^\/+/, '');
 
 // Anchored to this file's own location, not process.cwd() — a bare relative
 // string here reads and writes the wrong file the moment the suite is run
@@ -27,7 +30,7 @@ test.beforeAll(async ({ browser }) => {
   const context = await browser.newContext({ storageState: undefined });
   const page = await context.newPage();
 
-  await page.goto('/wp-login.php');
+  await page.goto(LOGIN_PATH);
   await page.fill('#user_login', USER);
   await page.fill('#user_pass', PASS);
   await page.click('#wp-submit');

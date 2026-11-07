@@ -106,10 +106,10 @@ npm install --no-save --prefix .wp-test/.pw @playwright/test
 
 # Every run:
 node scripts/stage-example-plugin.mjs
-node scripts/wp-test-env.mjs up --plugin .wp-test/example-plugin
+node scripts/wp-test-env.mjs up --theme ../blueworx_labs_wordpress_theme --theme-slug blueworx-labs-wordpress-theme --plugin .wp-test/example-plugin
 NODE_PATH="$(pwd)/.wp-test/.pw/node_modules" \
   PLAYWRIGHT_BASE_URL=http://127.0.0.1:8881 \
-  WP_ADMIN_USER=admin WP_ADMIN_PASS=admin \
+  WP_ADMIN_USER=admin WP_ADMIN_PASS=admin WP_LOGIN_PATH=admin_login \
   .wp-test/.pw/node_modules/.bin/playwright test --workers=1
 node scripts/wp-test-env.mjs down
 ```
@@ -123,7 +123,7 @@ npm install --no-save --prefix .wp-test/.pw @playwright/test
 
 # Every run:
 node scripts/stage-example-plugin.mjs
-node scripts/wp-test-env.mjs up --plugin .wp-test/example-plugin
+node scripts/wp-test-env.mjs up --theme ../blueworx_labs_wordpress_theme --theme-slug blueworx-labs-wordpress-theme --plugin .wp-test/example-plugin
 $env:NODE_PATH = "$PWD\.wp-test\.pw\node_modules"
 $env:PLAYWRIGHT_BASE_URL = "http://127.0.0.1:8881"
 $env:WP_ADMIN_USER = "admin"

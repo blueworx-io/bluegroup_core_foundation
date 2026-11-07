@@ -10,6 +10,8 @@ The reference docs it points at are for depth, not for completeness.
 > **The standing rule this prompt exists to carry:** no page builders. A
 > WordPress site of ours is built **as a plugin, in code** — never straight into
 > WordPress core, never as a loose theme, never in Elementor or its equivalents.
+> Page content is edited in WordPress's block editor; the plugin's own screens are
+> for settings and records.
 
 ---
 
@@ -98,7 +100,8 @@ hold regardless of whose machine opens it. Do not edit it to suit this project.
   `bw-` class the system doesn't define. If a pattern is missing, add it to
   the design system rather than inventing a one-off here. This governs
   wp-admin only — the plugin's front-end design stays its own.
-- **Any screen where somebody edits content is a page editor screen.** Copy the design system's
+- **Page content is edited in WordPress's block editor.** An ordinary page is built from WordPress's standard blocks and edited in its block editor, never on a screen of ours; the theme gives that editor the site's colours and fonts, so what the client sees while editing is what the page shows. Block editor code — a block registration, an `enqueue_block_editor_assets` enqueue, anything under `blocks/` or `build/` — is WordPress's own UI and is not judged by the admin screen check. The BlueWorx page editor below is for plugin settings and records, not pages.
+- **Any screen where somebody edits a record or settings is a page editor screen.** Copy the design system's
   `editor/php/` to `blueworx-page-editor/` and `editor/blueworx-page-editor.js` to
   `assets/blueworx-page-editor.js`, require the loader
   (`blueworx-page-editor/blueworx-page-editor.php`) from the main plugin file, and register the

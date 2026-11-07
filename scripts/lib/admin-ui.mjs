@@ -9,6 +9,14 @@ const ADMIN_MARKUP = /class\s*=\s*["'][^"']*\b(?:wrap|bw-admin|bw-page)\b/;
 const DS_IMPORT = /from\s+["'][^"']*blueworx-admin-design[^"']*["']/;
 const BW_CLASS = /\bbw-[a-z]/;
 
+// The block editor is WordPress's own UI, not one of ours: a block's edit
+// script draws with WordPress's components inside WordPress's editor, and the
+// design system has nothing to say about it. A file is block editor code when
+// it lives in a blocks folder or its build output, or when the only
+// admin-shaped thing it does is register a block or enqueue editor assets.
+const BLOCK_EDITOR_CALL = /\bregister_block_type(?:_from_metadata)?\s*\(|\benqueue_block_editor_assets\b/;
+const BLOCK_DIR = /(?:^|\/)(?:blocks|build)\//;
+
 const SKILL_DIR = '.claude/skills/blueworx-admin-design/';
 const SHIPPED_CSS = 'assets/blueworx-admin-design.css';
 const EDITOR_LIB_DIR = 'blueworx-page-editor/';
@@ -116,8 +124,16 @@ export function classifyAdminFile({ path, content, adminAssets = new Set() }) {
   // reaching these files has the same problem.
   if (p.includes(EDITOR_LIB_DIR) || p === SHIPPED_EDITOR_JS) return null;
 
+  // Block editor code is WordPress's UI, not an admin screen of ours (see
+  // BLOCK_DIR). A PHP file that registers a block AND adds a menu page is
+  // still an admin screen, so the PHP exemption only applies when nothing
+  // else in the file is admin-shaped.
+  if (BLOCK_DIR.test(p)) return null;
+
   if (p.endsWith('.php')) {
-    if (ADMIN_PAGE_CALL.test(content) || ADMIN_HOOK.test(content) || ADMIN_MARKUP.test(content)) return 'php';
+    if (ADMIN_PAGE_CALL.test(content) || ADMIN_MARKUP.test(content)) return 'php';
+    if (BLOCK_EDITOR_CALL.test(content)) return null;
+    if (ADMIN_HOOK.test(content)) return 'php';
     return null;
   }
   if (/\.(?:jsx|tsx)$/.test(p)) {

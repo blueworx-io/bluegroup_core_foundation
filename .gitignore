@@ -26,6 +26,7 @@
 !/.wp-test/tests/
 /.wp-test/tests/*
 !/.wp-test/tests/page-editor.spec.js
+!/.wp-test/tests/basic-page.spec.js
 
 .wp-test-client/
 .wp-test-client-plugin/

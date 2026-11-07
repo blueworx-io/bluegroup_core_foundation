@@ -123,18 +123,30 @@ jobs:
       - name: Stage the example plugin
         run: node scripts/stage-example-plugin.mjs
 
+      # Every site these plugins run on has the BlueWorx theme, so the suite
+      # runs under it here too: the editor example and the block editor both
+      # have to work with the theme's admin restyling and its moved sign-in
+      # page. The theme repo is public, so the default token can read it.
+      - name: Check out the BlueWorx theme
+        uses: actions/checkout@v4
+        with:
+          repository: blueworx-io/blueworx_labs_wordpress_theme
+          path: .wp-test/theme
+
       - name: Start local WordPress
-        run: node scripts/wp-test-env.mjs up --plugin .wp-test/example-plugin
+        run: node scripts/wp-test-env.mjs up --theme .wp-test/theme --theme-slug blueworx-labs-wordpress-theme --plugin .wp-test/example-plugin
 
       # NODE_PATH has to point at the very install the CLI came from — two
       # physical copies of @playwright/test and it refuses to run at all. See
       # the note at the top of playwright.config.js.
-      - name: Run the page editor suite
+      - name: Run the page editor and basic page suites
         env:
           NODE_PATH: ${{ github.workspace }}/.wp-test/.pw/node_modules
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:8881
           WP_ADMIN_USER: admin
           WP_ADMIN_PASS: admin
+          # The theme moves the sign-in page here.
+          WP_LOGIN_PATH: admin_login
           PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-report.json
         run: |
           .wp-test/.pw/node_modules/.bin/playwright test \
