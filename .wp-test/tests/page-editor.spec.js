@@ -38,6 +38,25 @@ test.beforeAll(async ({ browser }) => {
 
 test.use({ storageState: AUTH_STATE });
 
+// A React warning or an uncaught error in the editor only ever reaches the
+// browser console, which no assertion below reads. React 19 turns several
+// React 18 habits into exactly that kind of warning, so every test in this
+// file fails if the page logged an error while it ran.
+let consoleErrors = [];
+test.beforeEach(async ({ page }) => {
+  consoleErrors = [];
+  page.on('pageerror', (err) => consoleErrors.push('pageerror: ' + err.message));
+  page.on('console', (msg) => {
+    // The browser logs every non-2xx response as "Failed to load resource".
+    // Tests below deliberately save invalid data and expect the 422 back, so
+    // that line is the test working, not the editor failing.
+    if (msg.type() === 'error' && !/^Failed to load resource/.test(msg.text())) consoleErrors.push('console: ' + msg.text());
+  });
+});
+test.afterEach(async () => {
+  expect(consoleErrors, 'the editor logged errors to the browser console').toEqual([]);
+});
+
 // Creates one fresh "bwx_sport" post and returns the editor URL for it. Any
 // load of the editor's own admin screen enqueues the bootstrap payload (see
 // Screen::assets()) regardless of whether the id in the URL resolves, so

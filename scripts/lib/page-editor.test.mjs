@@ -88,3 +88,17 @@ test('firstErrorTab: finds the tab holding the first bad field', () => {
 test('firstErrorTab: returns null when nothing is wrong', () => {
   assert.equal(pe.firstErrorTab(schema, {}), null);
 });
+
+test('every React mount uses createRoot only, with no render() fallback', () => {
+  const fs = require('node:fs');
+  const files = [
+    '.claude/skills/blueworx-admin-design/editor/blueworx-page-editor.js',
+    '.claude/skills/blueworx-admin-design/templates/plugin-settings-screen/support.js',
+    '.claude/skills/blueworx-admin-design/templates/plugin-dashboard/support.js',
+  ];
+  for (const f of files) {
+    const src = fs.readFileSync(f, 'utf8');
+    assert.match(src, /\bcreateRoot\(/, `${f} mounts with createRoot`);
+    assert.doesNotMatch(src, /\bel\.render\(|ReactDOM\.render\(/, `${f} keeps no React 18 render() fallback`);
+  }
+});
