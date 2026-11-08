@@ -361,3 +361,9 @@ and the release checklist — is in
   starter, headless framework starter)
 
 _The Team Guidelines doc (the other reference) lives in ClickUp._
+
+## Approved plugins
+
+[`approved-plugins.json`](approved-plugins.json) is the list of WordPress plugins allowed on BlueWorx theme sites. Each site's Plugin check screen fetches it once a day (from the `v1` tag) and flags any installed plugin that is not on it. Nothing is ever deactivated automatically.
+
+To approve a plugin, add it under `plugins` using its folder name as the key (a single-file plugin uses its file name without `.php`), with a `name` and a short `note`, and update `updated`. Sites pick the change up after the `v1` tag moves.
