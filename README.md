@@ -10,7 +10,8 @@ design, with one exception: **WordPress plugin admin screens**, which all come f
 shared `blueworx-admin-design` system committed here at
 [`.claude/skills/blueworx-admin-design/`](.claude/skills/blueworx-admin-design/).
 That system also carries the **page editor** — the shared shell and behaviour for any screen where a
-site owner edits content, so every plugin's editing experience is the same one.
+site owner edits a record or plugin settings, so every plugin's editing experience is the same one.
+Page content is edited in WordPress's block editor, not on a screen of ours.
 
 ## Starter Prompt
 

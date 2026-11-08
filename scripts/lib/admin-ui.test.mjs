@@ -515,3 +515,27 @@ test('findViolations: no icon list to check against means no icon failures', () 
 
   assert.equal(problems.map((p) => p.rule).includes('unknown-icon'), false);
 });
+
+test('classifyAdminFile: a block registration with an editor-assets enqueue is the block editor, not an admin screen', () => {
+  const content = [
+    "add_action( 'init', function () { register_block_type( __DIR__ . '/build/blocks/hero' ); } );",
+    "add_action( 'enqueue_block_editor_assets', 'my_editor_assets' );",
+  ].join('\n');
+  assert.equal(classifyAdminFile({ path: 'includes/blocks.php', content }), null);
+});
+
+test("classifyAdminFile: a block's own files are not judged, whatever classes they use", () => {
+  const content = 'export default function Edit() { return <button className="button-primary bw-card">Go</button>; }';
+  assert.equal(classifyAdminFile({ path: 'blocks/hero/edit.jsx', content }), null);
+  assert.equal(classifyAdminFile({ path: 'src/blocks/hero/edit.jsx', content }), null);
+  const css = 'build/blocks/hero/index.css';
+  assert.equal(classifyAdminFile({ path: css, content: '.x{color:#fff}', adminAssets: new Set([css]) }), null);
+});
+
+test('classifyAdminFile: a file that registers a block and an admin page is still an admin screen', () => {
+  const content = [
+    "register_block_type( __DIR__ . '/build/blocks/hero' );",
+    "add_menu_page( 'Hero', 'Hero', 'manage_options', 'hero', 'hero_screen' );",
+  ].join('\n');
+  assert.equal(classifyAdminFile({ path: 'includes/blocks.php', content }), 'php');
+});
