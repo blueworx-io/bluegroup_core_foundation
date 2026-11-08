@@ -224,6 +224,8 @@ WordPress's list tables are fixed-layout, so a column that names no width gets o
 the others leave; the design system gives every `column-bw-…` column 10em. Its cell is a
 `.bw-admin` wrapper holding `.bw-table__primary` and `.bw-table__sub` lines.
 
+**Writing a component.** Mount with `createRoot` only. No `defaultProps`, `propTypes`, string refs or `findDOMNode` on any component: React 19 ignores the first two and removed the rest, and WordPress ships React 19 after 7.2.
+
 ### Which control for which job
 
 | Job | Use |
@@ -347,6 +349,8 @@ window, one per screen).
 - Tab and panel counts come from the data. An empty group reads "empty", never "0".
 - Records are WordPress post types. The library refuses to run a record editor whose post type
   nobody registered.
+- The browser half mounts with `createRoot` and uses no `defaultProps` or `propTypes`, so it runs
+  the same on React 18 and React 19.
 
 **Editor controls**
 
