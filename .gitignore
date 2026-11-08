@@ -23,6 +23,7 @@
 /.wp-test/example-plugin/*
 !/.wp-test/example-plugin/blueworx-editor-example.php
 !/.wp-test/example-plugin/dev-fixture.php
+!/.wp-test/example-plugin/blocks/
 !/.wp-test/tests/
 /.wp-test/tests/*
 !/.wp-test/tests/page-editor.spec.js

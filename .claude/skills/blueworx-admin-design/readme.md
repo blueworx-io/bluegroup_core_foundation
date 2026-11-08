@@ -429,3 +429,25 @@ post, which is what "records are post types" means.
 Use it when the truth already lives somewhere and an option would be a second
 copy of it — a switch that is really a page's post status, say, where storing it
 twice means the two can disagree with no way to tell which is right.
+
+## Section blocks
+
+Page content is edited in WordPress's block editor. A reusable part of a page — a hero, a team
+list, an FAQ, a sponsor strip — is a **section block** the plugin ships. One shape, every plugin:
+
+- A folder per block, `blocks/<name>/`, registered with `register_block_type( __DIR__ . '/blocks/<name>' )`.
+- `block.json`: `"name": "<plugin>/<section>"`, `"apiVersion": 3`, `"render": "file:./render.php"`,
+  `"editorScript": "file:./edit.js"`, `"style": "file:./style.css"`. `supports` turns off `color`,
+  `typography` and `spacing` and sets `"html": false`; `align` may offer `wide` and `full`.
+- **Attributes are content, never layout.** Words, images, links, a count. The saved page holds
+  only the block comment with those attributes; there is no `save()` markup. That is what lets a fix
+  to `render.php` reach every page already built.
+- `render.php` draws the section from `$attributes`, escapes everything, and wraps it in
+  `get_block_wrapper_attributes()`. Styling in `style.css` uses the theme's named styles
+  (`var(--color-primary)`, `var(--space-6)`, `var(--font-heading)`), never a hard-coded value.
+- `edit.js` is plain JavaScript on `wp.element` — `RichText` for the words, `InspectorControls` for
+  the rest — with a hand-written `edit.asset.php` beside it naming its dependencies, so no build step.
+  A plugin that prefers JSX uses `@wordpress/scripts`; it is on the shared approved-deps list.
+- Block editor code is WordPress's own UI: the admin screen check does not judge it.
+
+The worked example is `.wp-test/example-plugin/blocks/section-hero/` in the foundation.

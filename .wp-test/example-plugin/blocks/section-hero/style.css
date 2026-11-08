@@ -1,0 +1,39 @@
+/*
+ * The hero section's look. Every value is one of the theme's named styles, so
+ * the section follows the site's design and never carries a colour of its own.
+ */
+
+.bwx-hero {
+	padding: var(--space-16, 64px) var(--gutter, 24px);
+	background: var(--color-surface, #f4f6fa);
+	color: var(--color-text, #16181d);
+}
+
+.bwx-hero__inner {
+	max-width: var(--width-reading, 720px);
+	margin: 0 auto;
+	text-align: center;
+}
+
+.bwx-hero__eyebrow {
+	margin: 0 0 var(--space-3, 12px);
+	color: var(--color-link, #2f5bea);
+	font-size: var(--text-small, 14px);
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.bwx-hero__heading {
+	margin: 0 0 var(--space-4, 16px);
+	font-family: var(--font-heading, inherit);
+	font-size: var(--text-display, 64px);
+	line-height: 1.05;
+}
+
+.bwx-hero__text {
+	margin: 0 auto var(--space-8, 32px);
+	color: var(--color-text-muted, #5b6472);
+	font-size: var(--text-lead, 19px);
+	line-height: 1.6;
+}
