@@ -1,0 +1,10 @@
+{
+  "updated": "2026-11-08",
+  "plugins": {
+    "surecart": { "name": "SureCart", "note": "Shop and checkout." },
+    "surecookie": { "name": "SureCookie", "note": "Cookie consent." },
+    "breeze": { "name": "Breeze", "note": "Page cache." },
+    "latepoint": { "name": "LatePoint", "note": "Bookings." },
+    "blueworx-clubhouse-v2": { "name": "Clubhouse V2", "note": "Built for the BlueWorx theme. Clubhouse V1 (blueworx-labs-clubhouse) is deliberately not listed, so a V1 install on a theme site is flagged." }
+  }
+}
