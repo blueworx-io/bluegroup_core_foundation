@@ -367,3 +367,14 @@ _The Team Guidelines doc (the other reference) lives in ClickUp._
 [`approved-plugins.json`](approved-plugins.json) is the list of WordPress plugins allowed on BlueWorx theme sites. Each site's Plugin check screen fetches it once a day (from the `v1` tag) and flags any installed plugin that is not on it. Nothing is ever deactivated automatically.
 
 To approve a plugin, add it under `plugins` using its folder name as the key (a single-file plugin uses its file name without `.php`), with a `name` and a short `note`, and update `updated`. Sites pick the change up after the `v1` tag moves.
+
+**Merging the list is not enough.** Sites read the file from the `v1` tag, not from
+`main`, so a merged change is invisible until the tag is moved onto it — and on a
+fresh theme site that has never fetched the file, the Plugin check screen keeps saying
+the list could not be fetched. Move `v1` in the same sitting as the merge (see
+[Merging is half the job](#merging-is-half-the-job--move-v1)):
+
+```bash
+git tag -f -a v1 -m "v1 -> approved plugins" <merge commit>
+git push -f origin v1
+```
