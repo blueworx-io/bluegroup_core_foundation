@@ -192,6 +192,15 @@ These skills load automatically from the shared `bluegroup_core_foundation` sett
 - Use **Agent view**: run `claude agents` for one screen showing every running session, with the ones waiting on you flagged
 - It is built into Claude Code, not a plugin, so nothing goes in the repo. It is a Research Preview and each person turns it on for themselves
 
+## Recording Time
+
+Time recorded against a task is real working time only. A client never pays for waiting or talking.
+
+- Count: hands-on work, such as building, testing, checking and fixing
+- Never count: waiting on checks, builds, releases or deploys; waiting for someone to reply; chat and discussion
+- When working time out from timestamps, take that time off, and say how much was taken off and why
+- This applies to every time figure: Forge hours, estimates, timesheets and anything a client is billed from
+
 ## Naming Conventions
 
 - Repos: `blueworx_project_projectname` or `blueworx_client_clientname`
