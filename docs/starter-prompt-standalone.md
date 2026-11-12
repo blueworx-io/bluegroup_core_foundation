@@ -50,6 +50,7 @@ it or every Write and Edit prints a harmless but noisy error:
 ```bash
 mkdir -p .claude/hooks
 curl -o .claude/hooks/admin-ui-adherence.mjs https://raw.githubusercontent.com/blueworx-io/bluegroup_core_foundation/main/.claude/hooks/admin-ui-adherence.mjs
+curl -o .claude/hooks/reply-length.mjs https://raw.githubusercontent.com/blueworx-io/bluegroup_core_foundation/main/.claude/hooks/reply-length.mjs
 ```
 
 It self-disables on a standalone project, which has no design system for it to check.

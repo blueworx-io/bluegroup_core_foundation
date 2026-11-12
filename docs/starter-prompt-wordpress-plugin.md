@@ -40,6 +40,7 @@ system, and it goes quiet on a machine with no foundation checkout beside the pr
 ```bash
 mkdir -p .claude/hooks
 curl -o .claude/hooks/admin-ui-adherence.mjs https://raw.githubusercontent.com/blueworx-io/bluegroup_core_foundation/main/.claude/hooks/admin-ui-adherence.mjs
+curl -o .claude/hooks/reply-length.mjs https://raw.githubusercontent.com/blueworx-io/bluegroup_core_foundation/main/.claude/hooks/reply-length.mjs
 ```
 
 Then pull in the shared admin design system, which is a Claude Code skill folder rather

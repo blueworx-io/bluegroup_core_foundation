@@ -332,6 +332,10 @@ and the release checklist — is in
   Write/Edit hook `.claude/settings.json` wires up. It self-disables on a repo with no
   design system, so it is harmless to carry into every project, but without this file
   present `.claude/settings.json` alone makes it fail on every Write and Edit.
+- [`.claude/hooks/reply-length.mjs`](.claude/hooks/reply-length.mjs) — the Stop hook
+  `.claude/settings.json` wires up. It sends a chat reply over about 80 words back to be
+  shortened. Copy it alongside the settings file: without it, every reply ends with a
+  "hook failed" notice.
 - WordPress plugins only:
   [`templates/plugin-update-checker-bootstrap.php`](templates/plugin-update-checker-bootstrap.php)
   → pasted into the plugin's main file (see
