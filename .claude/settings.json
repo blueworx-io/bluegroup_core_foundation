@@ -50,7 +50,21 @@
       {
         "matcher": "Write|Edit",
         "hooks": [
-          { "type": "command", "command": "node .claude/hooks/admin-ui-adherence.mjs" }
+          {
+            "type": "command",
+            "command": "node .claude/hooks/admin-ui-adherence.mjs"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/reply-length.mjs",
+            "timeout": 10
+          }
         ]
       }
     ]

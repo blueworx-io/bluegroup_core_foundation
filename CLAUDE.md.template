@@ -192,6 +192,31 @@ These skills load automatically from the shared `bluegroup_core_foundation` sett
 - Use **Agent view**: run `claude agents` for one screen showing every running session, with the ones waiting on you flagged
 - It is built into Claude Code, not a plugin, so nothing goes in the repo. It is a Research Preview and each person turns it on for themselves
 
+## Communication
+
+Short and plain, in everything written: chat replies, commit messages, pull request descriptions, issues and changelog entries.
+
+- Aim for under 80 words. The first line is the answer: what happened, or what the reader needs to do
+- Plain words, in terms of what it means for the reader. No jargon, file paths or code names unless they have to act on them
+- A simple short list is right for a status update, or for things someone has to do. No headings, tables or bold lead-ins in chat
+- Longer only when someone asks for detail, steps or a draft. Otherwise offer the detail in one line
+- **Enforced in chat:** a Stop hook (`.claude/hooks/reply-length.mjs`, wired up by the shared `.claude/settings.json`) sends a reply over about 80 words back to be rewritten. Quoted drafts and code blocks are not counted. The long reply is still shown first, followed by the short one
+
+## Changing a Live Site
+
+For any change made on a live site rather than through a release: an import, a setting, a bulk edit.
+
+- Take a snapshot of what will change before changing it, and keep it until the change is confirmed good
+- Run it as a test first wherever the tool has a test or dry-run mode
+- Before the real run, check how the live site reads what is being changed: which setting, template or screen uses it. Data that saves correctly can still show wrongly
+- Afterwards compare against the snapshot, look at the pages customers actually see, and put back any setting that was switched for the run
+- If it goes wrong, put the snapshot back first and work out why second
+
+## Reporting Work
+
+- Say what was not tested, every time, in one line. "Checked the data, not the page on screen" is a complete answer
+- Work done through someone else's login is recorded under their name. Say so when it happens, and do not read a site's change log as proof of who did something
+
 ## Recording Time
 
 Time recorded against a task is real working time only. A client never pays for waiting or talking.
