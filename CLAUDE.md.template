@@ -105,6 +105,20 @@ Every plugin's admin UI — settings pages, tabs, tables, notices, forms, button
 - **Custom editor screens come from the page editor library, and records are post types.** Any screen where a site owner edits a record or plugin settings is declared as a field schema and rendered by the library in `editor/` inside the design system skill — never hand-written. The plugin copies `editor/php/` to `blueworx-page-editor/` and `editor/blueworx-page-editor.js` to `assets/blueworx-page-editor.js`, and CI hash-checks both. The shell is fixed: page header, tabs, panels, one save bar, whatever the tab. The control list is closed; a control the design system does not have is added to the design system first. Anything record-like is a registered WordPress post type, so it gets revisions, capabilities and REST for free — the library refuses to open a record editor whose post type nobody registered. Only genuine site settings or plugin configuration store to options.
 - **A record editor edits a record that already exists.** It opens at `admin.php?page=<slug>&id=123`, and with no id — or the wrong one — it says the record could not be found rather than showing a blank editor. Making records is the post type's job, not the library's: register the post type with `show_ui` so WordPress's own list table and "Add New" do it, and link from that list to the editor. A plugin that wants its own list screen builds one; either way, the plugin has to provide the way in.
 
+## Client Figma files
+
+Every client's front-end design lives in one Figma file, started by copying the BlueWorx starter file. The pages are always these, in this order:
+
+1. **Design system** — colours, fonts, sizes, spacing and corners as Figma variables, named exactly as the theme's named styles and nothing else: `color/primary` in Figma is `--color-primary` in code, `space/4` is `--space-4`. A value the theme has no name for is added to the theme first, then to Figma.
+2. **Components** — one component per section block, named exactly as the block's title ("Hero section", "Steps section"), with one property per field a client can edit. Repeating items are a list inside the component, as they are in the block.
+3. **Globals** — header, footer, menus, buttons, forms, cookie banner and 404.
+4. **Layouts** — the whole-page layouts clients start new pages from. Each one becomes a page layout in the plugin.
+5. **Pages** — the real site pages, built only from component instances. A page is marked "Ready for dev" when it is signed off; nothing else is built from.
+6. **Live site** — updated from code after each release, so Figma always shows what is live. Never edited by hand.
+7. **Archive** — old ideas and explorations. Never built from.
+
+Every page and component is designed at three sizes: desktop 1440, tablet 768 and mobile 375. Claude builds only from Components, Globals, Layouts and Pages marked Ready for dev; anything detached from its component is treated as a mistake to raise, not a design to copy.
+
 ## Claude Design ↔ code sync rules
 
 Mandatory, every session, every repo, no exceptions.
