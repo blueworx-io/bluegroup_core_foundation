@@ -11,7 +11,7 @@ shared `blueworx-admin-design` system committed here at
 [`.claude/skills/blueworx-admin-design/`](.claude/skills/blueworx-admin-design/).
 That system also carries the **page editor** — the shared shell and behaviour for any screen where a
 site owner edits a record or plugin settings, so every plugin's editing experience is the same one.
-Page content is edited in WordPress's block editor, not on a screen of ours.
+Pages are built from the plugin's own section blocks in WordPress's block editor, locked so clients change content only, not on a screen of ours.
 
 ## Starter Prompt
 
