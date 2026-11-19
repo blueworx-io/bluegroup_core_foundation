@@ -53,6 +53,12 @@ of the initial setup.
 > Code *when and how* to fire each skill automatically, so nobody has to remember to
 > invoke them.
 
+## Running several jobs at once
+
+Run `claude agents` to see every Claude Code session you have running on one screen, with
+the ones waiting for you flagged. It is a preview feature that each person switches on for
+themselves, so there is nothing to add to a project.
+
 ## Using the CI guardrails
 
 Instead of repeating the rules per repo, a project adds one small caller workflow
