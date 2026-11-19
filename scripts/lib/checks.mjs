@@ -610,3 +610,38 @@ export function adminUiAdherence({ files, vocab, adminAssets = new Set(), promot
 
   return { ok: errors.length === 0, problems, message: lines.join('\n') };
 }
+
+// The shared page lock. The theme, and the old BlueWorx plugin on sites not on
+// the theme, each carry a copy of the foundation's page-lock/ folder as
+// blueworx-page-lock/. A repo without the folder has not adopted it and
+// passes; one with it must match the foundation file for file, because a lock
+// that differs on one site is a lock nobody has tested.
+export function pageLockSync({ foundationFiles, copyFiles, copyPath = 'blueworx-page-lock', foundationRef = 'main' }) {
+  if (foundationFiles === null) {
+    return { ok: true, problems: [], message: 'Page lock sync: the foundation has no page-lock/ at this ref — nothing to compare.' };
+  }
+  if (copyFiles === null) {
+    return { ok: true, problems: [], message: `Page lock sync: no ${copyPath}/ here — the shared page lock is not carried, skipping.` };
+  }
+  const problems = [];
+  const names = new Set([...foundationFiles.keys(), ...copyFiles.keys()]);
+  for (const name of [...names].sort()) {
+    const want = foundationFiles.get(name);
+    const got = copyFiles.get(name);
+    if (got === undefined) problems.push(`${copyPath}/${name} — missing`);
+    else if (want === undefined) problems.push(`${copyPath}/${name} — not part of the shared page lock; delete it`);
+    else if (want !== got) problems.push(`${copyPath}/${name} — differs from the foundation's copy`);
+  }
+  if (problems.length === 0) {
+    return { ok: true, problems, message: `Page lock sync: ${copyPath}/ matches the foundation.` };
+  }
+  const message = [
+    `Page lock sync: ${copyPath}/ has drifted from the foundation's page-lock/ (${foundationRef}).`,
+    ...problems.map((p) => `  - ${p}`),
+    '',
+    'Never edit the page lock in a theme or plugin. Copy it again from the foundation:',
+    `  rm -rf ${copyPath} && cp -r <foundation>/page-lock ${copyPath}`,
+    'A change the lock needs goes into the foundation first.',
+  ].join('\n');
+  return { ok: false, problems, message };
+}

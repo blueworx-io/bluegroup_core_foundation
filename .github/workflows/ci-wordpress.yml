@@ -144,6 +144,14 @@ on:
           shipping a different admin UI from every other plugin.
         type: string
         default: error
+      page_lock_sync:
+        description: >-
+          Whether a theme or plugin whose copy of the shared page lock
+          (blueworx-page-lock/) differs from the foundation's fails the run.
+          `error` (default) fails, `warn` prints the report and passes, `off`
+          skips it. A repo without the folder passes either way.
+        type: string
+        default: error
       admin_ui_adherence:
         description: >-
           Whether an admin screen this PR touches that is not built from the
@@ -352,6 +360,15 @@ jobs:
           FOUNDATION_DIR: ${{ runner.temp }}/foundation
           FOUNDATION_REF: ${{ inputs.foundation_ref }}
         run: node "$RUNNER_TEMP/foundation/scripts/check-design-system-sync.mjs"
+
+      # The shared page lock: every copy must match the foundation's, so the
+      # lock behaves the same on every site. A repo without one passes.
+      - name: Page lock sync (shared page lock)
+        env:
+          PAGE_LOCK_SYNC: ${{ inputs.page_lock_sync }}
+          FOUNDATION_DIR: ${{ runner.temp }}/foundation
+          FOUNDATION_REF: ${{ inputs.foundation_ref }}
+        run: node "$RUNNER_TEMP/foundation/scripts/check-page-lock-sync.mjs"
 
       # The sync check above proves the plugin carries the design system. This
       # one proves the screens are built from it. Only files in the diff are
