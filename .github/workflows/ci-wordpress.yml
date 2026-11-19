@@ -144,6 +144,14 @@ on:
           shipping a different admin UI from every other plugin.
         type: string
         default: error
+      phpcs:
+        description: >-
+          Whether PHPCS problems fail the run. `error` (default) fails, `warn`
+          shows every problem on the pull request but passes. `warn` is for an
+          older project with lint problems it has not cleared yet; new code
+          should still be clean.
+        type: string
+        default: error
       page_lock_sync:
         description: >-
           Whether a theme or plugin whose copy of the shared page lock
@@ -294,14 +302,20 @@ jobs:
             -o -name '*.php' -print0 | xargs -0 -r -n1 -P4 php -l
 
       - name: PHPCS (if a phpcs config exists)
+        env:
+          PHPCS_MODE: ${{ inputs.phpcs }}
         run: |
           set -o pipefail
           if [ -f phpcs.xml ] || [ -f phpcs.xml.dist ] || [ -f .phpcs.xml ]; then
             if [ -f composer.json ]; then composer install --no-interaction --no-progress || true; fi
-            if [ -f vendor/bin/phpcs ]; then
-              vendor/bin/phpcs -q --report=checkstyle | cs2pr
+            PHPCS=phpcs
+            if [ -f vendor/bin/phpcs ]; then PHPCS=vendor/bin/phpcs; fi
+            if [ "$PHPCS_MODE" = warn ]; then
+              # Every problem still shows on the pull request, as a warning.
+              "$PHPCS" -q --report=checkstyle | cs2pr --errors-as-warnings || true
+              echo "PHPCS: phpcs=warn — problems are reported above but do not fail the run."
             else
-              phpcs -q --report=checkstyle | cs2pr
+              "$PHPCS" -q --report=checkstyle | cs2pr
             fi
           else
             echo "No phpcs config (phpcs.xml / .dist / .phpcs.xml) — skipping PHPCS."
