@@ -29,6 +29,7 @@
 !/.wp-test/tests/page-editor.spec.js
 !/.wp-test/tests/basic-page.spec.js
 !/.wp-test/tests/block-editing.spec.js
+!/.wp-test/tests/page-lock.spec.js
 
 .wp-test-client/
 .wp-test-client-plugin/

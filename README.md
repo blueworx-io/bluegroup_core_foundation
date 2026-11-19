@@ -336,6 +336,10 @@ and the release checklist — is in
   `.claude/settings.json` wires up. It sends a chat reply over about 80 words back to be
   shortened. Copy it alongside the settings file: without it, every reply ends with a
   "hook failed" notice.
+- The BlueWorx theme, and the old BlueWorx plugin on sites not on the theme:
+  [`page-lock/`](page-lock/) → `blueworx-page-lock/`, loaded with one `require_once` of
+  `blueworx-page-lock/blueworx-page-lock.php`. Copy the whole folder and never edit it;
+  CI fails if it differs from the foundation's.
 - WordPress plugins only:
   [`templates/plugin-update-checker-bootstrap.php`](templates/plugin-update-checker-bootstrap.php)
   → pasted into the plugin's main file (see
@@ -349,11 +353,13 @@ and the release checklist — is in
   `foundation-ci.yml` (runs the check-script tests on every PR, across an older and a
   current Node; required by branch protection)
 - `scripts/` — the generic check scripts the workflows call (version bump, changelog,
-  approved deps, plugin version-sync, design system sync, admin UI adherence, plugin zip,
+  approved deps, plugin version-sync, design system sync, page lock sync, admin UI adherence, plugin zip,
   plugin zip content, tests-actually-ran, release-tag match, Netlify preview) plus their
   tested cores in `scripts/lib/`, the
   `plugin-info` resolver, `stage-plugin-tree.sh` + `plugin-zip-excludes.txt` (what ships
   in a plugin zip, in one place), and `wp-test-env.mjs`, the local WordPress harness
+- `page-lock/` — the shared page lock every BlueWorx site uses (see the page rules in
+  `CLAUDE.md.template`)
 - `templates/` — `approved-deps.json` (the empty allow-list starter) and
   `plugin-update-checker-bootstrap.php` (paste-in auto-update wiring for plugins)
 - `.github/` PR + issue templates

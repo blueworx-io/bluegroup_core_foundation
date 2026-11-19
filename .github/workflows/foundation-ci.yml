@@ -47,7 +47,7 @@ jobs:
       - name: Syntax-check all scripts
         run: |
           for f in scripts/*.mjs scripts/lib/*.mjs .claude/hooks/*.mjs \
-                   .claude/skills/blueworx-admin-design/editor/*.js; do
+                   .claude/skills/blueworx-admin-design/editor/*.js page-lock/v1/*.js; do
             node --check "$f"
           done
 
@@ -76,6 +76,9 @@ jobs:
 
       - name: Syntax-check the design system
         run: find .claude/skills/blueworx-admin-design -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Syntax-check the page lock
+        run: find page-lock -name '*.php' -print0 | xargs -0 -n1 php -l
 
       - name: PHPUnit
         run: vendor/bin/phpunit

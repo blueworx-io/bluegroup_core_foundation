@@ -36,6 +36,8 @@ defined( 'ABSPATH' ) || exit;
 // own docblock for why a late registration can lose to an earlier enqueue.
 require_once __DIR__ . '/assets/blueworx-admin-design.php';
 require_once __DIR__ . '/blueworx-page-editor/blueworx-page-editor.php';
+// The shared page lock, as the theme or the old BlueWorx plugin carries it.
+require_once __DIR__ . '/blueworx-page-lock/blueworx-page-lock.php';
 
 add_action( 'init', function () {
 	register_post_type( 'bwx_sport', [

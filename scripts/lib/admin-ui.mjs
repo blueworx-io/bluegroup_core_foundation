@@ -21,6 +21,7 @@ const SKILL_DIR = '.claude/skills/blueworx-admin-design/';
 const SHIPPED_CSS = 'assets/blueworx-admin-design.css';
 const EDITOR_LIB_DIR = 'blueworx-page-editor/';
 const SHIPPED_EDITOR_JS = 'assets/blueworx-page-editor.js';
+const PAGE_LOCK_DIR = 'blueworx-page-lock/';
 
 // The only styling a plugin may keep of its own: the chrome overrides the
 // system's readme documents for a full-bleed screen. Anything else in an admin
@@ -123,6 +124,9 @@ export function classifyAdminFile({ path, content, adminAssets = new Set() }) {
   // exemption is here rather than only inside a single rule because any rule
   // reaching these files has the same problem.
   if (p.includes(EDITOR_LIB_DIR) || p === SHIPPED_EDITOR_JS) return null;
+
+  // The shared page lock likewise: carried verbatim and hash-checked.
+  if (p.includes(PAGE_LOCK_DIR)) return null;
 
   // Block editor code is WordPress's UI, not an admin screen of ours (see
   // BLOCK_DIR). A PHP file that registers a block AND adds a menu page is

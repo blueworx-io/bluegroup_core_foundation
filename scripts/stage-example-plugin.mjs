@@ -39,6 +39,8 @@ export function stage() {
     { kind: 'file', src: join(designSystem, 'assets', 'icons', 'lucide-icons.js'), dest: join(pluginDir, 'assets', 'blueworx-admin-icons.js') },
     { kind: 'dir', src: join(designSystem, 'fonts'), dest: join(pluginDir, 'assets', 'fonts') },
     { kind: 'file', src: join(designSystem, 'design-system.php'), dest: join(pluginDir, 'assets', 'blueworx-admin-design.php') },
+    // The shared page lock, copied exactly as a theme or plugin carries it.
+    { kind: 'dir', src: join(repoRoot, 'page-lock'), dest: join(pluginDir, 'blueworx-page-lock') },
   ];
 
   // Every source is confirmed present before anything is touched. Checking

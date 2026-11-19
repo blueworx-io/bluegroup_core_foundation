@@ -539,3 +539,10 @@ test('classifyAdminFile: a file that registers a block and an admin page is stil
   ].join('\n');
   assert.equal(classifyAdminFile({ path: 'includes/blocks.php', content }), 'php');
 });
+
+test('classifyAdminFile: the shared page lock is never judged as the plugin\'s own screen', () => {
+  assert.equal(
+    classifyAdminFile({ path: 'blueworx-page-lock/v1/Lock.php', content: "add_action( 'admin_init', 'x' ); add_options_page( 'x' );" }),
+    null,
+  );
+});
