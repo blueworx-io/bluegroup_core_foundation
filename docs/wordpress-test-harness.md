@@ -31,6 +31,22 @@ scripts and REST calls is not waiting for each in turn. Change it with
 one, because PHP cannot do more there. This is not the same as Playwright's
 `workers`, which run several tests at once against one site — leave that at 1.
 
+## Testing an upcoming WordPress release
+
+The site installs the current WordPress release unless told otherwise. To test a
+release before it reaches client sites, pass its version, and give it its own
+folder, since a test site keeps the version it was made with:
+
+```bash
+node ../bluegroup_core_foundation/scripts/wp-test-env.mjs up --plugin .   --wp-version 7.2-RC1 --dir .wp-test/7.2-RC1
+```
+
+`--wp-version` takes `latest` (the default), an exact version such as `7.1` or
+`7.2-RC1`, or `nightly`. Add `--gutenberg` to switch on the Gutenberg plugin as
+well: that is where the block editor's next changes, React 19 among them, are
+turned on first. In CI the same two settings are `wordpress_version: 7.2-RC1` and
+`gutenberg: true`; leave them out and nothing changes.
+
 ## Testing a theme
 
 ```bash

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { basename, resolve } from 'node:path';
 import {
-  resolveTargets, bootstrapScript, serverWorkers, DEFAULT_SERVER_WORKERS,
+  resolveTargets, bootstrapScript, serverWorkers, DEFAULT_SERVER_WORKERS, wordpressZipUrl,
 } from './wp-test-env.mjs';
 
 const ADMIN = { user: 'admin', pass: 'admin' };
@@ -120,4 +120,29 @@ test('bootstrapScript: every mode resets the admin password and sets permalinks'
 test('bootstrapScript: switching is skipped when the theme is already active, so re-runs stay quiet', () => {
   const php = bootstrapScript({ plugin: null, theme: { slug: 'blueworx' }, admin: ADMIN });
   assert.match(php, /get_stylesheet\(\) !== 'blueworx'/);
+});
+
+test('wordpressZipUrl: latest by default, the current release', () => {
+  assert.equal(wordpressZipUrl(), 'https://wordpress.org/latest.zip');
+  assert.equal(wordpressZipUrl('latest'), 'https://wordpress.org/latest.zip');
+});
+
+test('wordpressZipUrl: an exact version, a release candidate, or the nightly build', () => {
+  assert.equal(wordpressZipUrl('7.1'), 'https://wordpress.org/wordpress-7.1.zip');
+  assert.equal(wordpressZipUrl('7.2-RC1'), 'https://wordpress.org/wordpress-7.2-RC1.zip');
+  assert.equal(wordpressZipUrl('7.2-beta5'), 'https://wordpress.org/wordpress-7.2-beta5.zip');
+  assert.equal(wordpressZipUrl('nightly'), 'https://wordpress.org/nightly-builds/wordpress-latest.zip');
+});
+
+test('wordpressZipUrl: anything else is refused, not fetched', () => {
+  assert.throws(() => wordpressZipUrl('../evil'), /not a WordPress version/);
+  assert.throws(() => wordpressZipUrl('next'), /not a WordPress version/);
+});
+
+test('bootstrapScript: Gutenberg is activated before the plugin when asked for, and not otherwise', () => {
+  const args = { plugin: { slug: 'my-plugin' }, admin: { user: 'a', pass: 'b' } };
+  assert.ok(!bootstrapScript(args).includes('gutenberg'));
+  const php = bootstrapScript({ ...args, gutenberg: true });
+  assert.ok(php.includes("activate_plugin( 'gutenberg/gutenberg.php'"));
+  assert.ok(php.indexOf('gutenberg/gutenberg.php') < php.indexOf("activate_plugin( $main"));
 });
