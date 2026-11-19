@@ -8,6 +8,10 @@
 //   node wp-test-env.mjs up   --theme <dir> --plugin <dir>       (a plugin on top of a theme)
 //   node wp-test-env.mjs down                                    [--dir .wp-test]
 //
+// `up` also takes --wp-version <latest|7.2|7.2-RC1|nightly> to test against an
+// upcoming release, and --gutenberg to switch the Gutenberg plugin on too. A
+// test site keeps the version it was made with; use another --dir for another.
+//
 // `up` also takes --server-workers <n>: how many requests the site answers at
 // once. Four by default; always one on Windows, where PHP cannot do more.
 //
@@ -29,9 +33,10 @@ import {
 import { join, resolve } from 'node:path';
 import { platform } from 'node:os';
 import { parseListeningPids } from './lib/port.mjs';
-import { resolveTargets, bootstrapScript, serverWorkers } from './lib/wp-test-env.mjs';
+import {
+  resolveTargets, bootstrapScript, serverWorkers, wordpressZipUrl, GUTENBERG_ZIP,
+} from './lib/wp-test-env.mjs';
 
-const WP_ZIP = 'https://wordpress.org/latest.zip';
 const SQLITE_ZIP = 'https://downloads.wordpress.org/plugin/sqlite-database-integration.zip';
 
 const ADMIN_USER = 'admin';
@@ -49,6 +54,9 @@ const port = Number(args.port ?? 8881);
 const openAccess = args.open === true || args.open === 'true';
 const baseUrl = `http://127.0.0.1:${port}`;
 const wpDir = join(dir, 'wp');
+const wpVersion = String(args['wp-version'] && args['wp-version'] !== true ? args['wp-version'] : 'latest');
+const gutenberg = args.gutenberg === true || args.gutenberg === 'true';
+const versionFile = join(dir, 'wp-version.txt');
 const pidFile = join(dir, 'server.pid');
 
 if (command === 'down') {
@@ -76,13 +84,34 @@ async function up() {
 
   mkdirSync(dir, { recursive: true });
 
+  let zipUrl;
+  try {
+    zipUrl = wordpressZipUrl(wpVersion);
+  } catch (err) {
+    fail(err.message);
+  }
+
   if (!existsSync(join(wpDir, 'wp-settings.php'))) {
-    log('Downloading WordPress…');
-    await download(WP_ZIP, join(dir, 'wp.zip'));
+    log(`Downloading WordPress (${wpVersion})…`);
+    await download(zipUrl, join(dir, 'wp.zip'));
     unzip(join(dir, 'wp.zip'), dir);
-    renameSync(join(dir, 'wordpress'), wpDir);
+    moveInto(join(dir, 'wordpress'), wpDir);
+    writeFileSync(versionFile, wpVersion);
   } else {
+    // A site made before this option existed is the latest release.
+    const made = existsSync(versionFile) ? readFileSync(versionFile, 'utf8').trim() : 'latest';
+    if (made !== wpVersion) {
+      // Never wiped here: the plugin and theme are linked into this folder, and
+      // deleting through a link can delete the repo it points at.
+      fail(`This test site was made with WordPress "${made}", not "${wpVersion}". Use another folder for it, e.g. --dir .wp-test/${wpVersion.replace(/[^A-Za-z0-9.-]/g, '')}`);
+    }
     log('WordPress already present — reusing.');
+  }
+
+  if (gutenberg && !existsSync(join(wpDir, 'wp-content', 'plugins', 'gutenberg'))) {
+    log('Downloading the Gutenberg plugin…');
+    await download(GUTENBERG_ZIP, join(dir, 'gutenberg.zip'));
+    unzip(join(dir, 'gutenberg.zip'), join(wpDir, 'wp-content', 'plugins'));
   }
 
   const sqliteDir = join(wpDir, 'wp-content', 'plugins', 'sqlite-database-integration');
@@ -103,10 +132,10 @@ async function up() {
   await waitForServer();
 
   await installWordPress();
-  runPhp(bootstrapScript({ plugin, theme, admin: { user: ADMIN_USER, pass: ADMIN_PASS } }));
+  runPhp(bootstrapScript({ plugin, theme, gutenberg, admin: { user: ADMIN_USER, pass: ADMIN_PASS } }));
 
   log('');
-  log(`  WordPress   ${baseUrl}`);
+  log(`  WordPress   ${baseUrl} (${installedVersion()}${gutenberg ? ', with Gutenberg' : ''})`);
   log(`  Admin       ${baseUrl}/wp-admin/`);
   log(`  User / pass ${ADMIN_USER} / ${ADMIN_PASS}`);
   if (theme) log(`  Theme       ${theme.slug} (linked to ${theme.dir} — edits are live)`);
@@ -176,6 +205,26 @@ require_once ABSPATH . 'wp-settings.php';
 // Link rather than copy so edits in the repo take effect immediately. Windows
 // junctions need no admin rights; elsewhere a symlink does the job. Plugins go
 // under wp-content/plugins, themes under wp-content/themes.
+// Windows can hold a just-extracted folder open for a moment (indexing or virus
+// scanning), and a rename then fails with EPERM. Try again briefly, then copy.
+function moveInto(src, dest) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      renameSync(src, dest);
+      return;
+    } catch {
+      execFileSync(process.execPath, ['-e', 'setTimeout(()=>{},1000)']);
+    }
+  }
+  cpSync(src, dest, { recursive: true });
+  rmSync(src, { recursive: true, force: true });
+}
+
+function installedVersion() {
+  const m = readFileSync(join(wpDir, 'wp-includes', 'version.php'), 'utf8').match(/\$wp_version\s*=\s*'([^']+)'/);
+  return m ? `WordPress ${m[1]}` : 'WordPress';
+}
+
 function linkInto(srcDir, dest, kind) {
   if (existsSync(dest)) return;
   try {

@@ -144,6 +144,19 @@ on:
           shipping a different admin UI from every other plugin.
         type: string
         default: error
+      wordpress_version:
+        description: >-
+          Which WordPress the local test site installs. `latest` (default) is the
+          current release. Set an exact version, such as `7.2-RC1`, to test an
+          upcoming release before it reaches client sites, or `nightly`.
+        type: string
+        default: latest
+      gutenberg:
+        description: >-
+          Also switch on the Gutenberg plugin on the local test site, where the
+          block editor's next changes (React 19 among them) are turned on first.
+        type: boolean
+        default: false
       phpcs:
         description: >-
           Whether PHPCS problems fail the run. `error` (default) fails, `warn`
@@ -609,14 +622,18 @@ jobs:
         env:
           PLUGIN_SLUG: ${{ inputs.plugin_slug }}
           THEME_SLUG: ${{ inputs.theme_slug }}
+          WP_VERSION: ${{ inputs.wordpress_version }}
+          GUTENBERG: ${{ inputs.gutenberg }}
         run: |
+          EXTRA=(--wp-version "${WP_VERSION:-latest}")
+          if [ "$GUTENBERG" = "true" ]; then EXTRA+=(--gutenberg); fi
           if [ -n "$THEME_SLUG" ]; then
             node "$RUNNER_TEMP/foundation/scripts/wp-test-env.mjs" up \
-              --theme . --theme-slug "$THEME_SLUG" --dir .wp-test --port 8881
+              --theme . --theme-slug "$THEME_SLUG" --dir .wp-test --port 8881 "${EXTRA[@]}"
           else
             SLUG="${PLUGIN_SLUG:-$(basename "$PWD")}"
             node "$RUNNER_TEMP/foundation/scripts/wp-test-env.mjs" up \
-              --plugin . --slug "$SLUG" --dir .wp-test --port 8881
+              --plugin . --slug "$SLUG" --dir .wp-test --port 8881 "${EXTRA[@]}"
           fi
 
       # The local harness ships its own admin account; a preview URL relies on

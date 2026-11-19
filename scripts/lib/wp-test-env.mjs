@@ -67,7 +67,7 @@ export function serverWorkers(value, os) {
 //
 // With a plugin and no theme this is, byte for byte, the script the harness ran
 // before themes were supported.
-export function bootstrapScript({ plugin, theme, admin }) {
+export function bootstrapScript({ plugin, theme, admin, gutenberg = false }) {
   const head = `<?php
 require_once __DIR__ . '/wp-load.php';
 require_once ABSPATH . 'wp-admin/includes/plugin.php';
@@ -125,5 +125,30 @@ echo is_wp_error( $res ) ? 'ACTIVATION_ERROR: ' . $res->get_error_message() : 'P
   const permalinks = `echo ${plugin ? '"\\n" . ' : ''}'PERMALINKS: ' . get_option( 'permalink_structure' ) . "\\n";
 `;
 
-  return head + themePart + findMain + resetAdmin + activate + permalinks;
+  return head + themePart + (gutenberg ? gutenbergActivation() : '') + findMain + resetAdmin + activate + permalinks;
+}
+
+// Which WordPress the test site installs. "latest" (the default) is the current
+// release; an exact version, including a beta or release candidate such as
+// "7.2-RC1", tests an upcoming release before it reaches client sites;
+// "nightly" is the development build.
+const WP_VERSION = /^\d+\.\d+(?:\.\d+)?(?:-(?:alpha|beta|RC)\d*)?$/i;
+
+export function wordpressZipUrl(version = 'latest') {
+  const v = String(version || 'latest').trim();
+  if (v === 'latest') return 'https://wordpress.org/latest.zip';
+  if (v === 'nightly') return 'https://wordpress.org/nightly-builds/wordpress-latest.zip';
+  if (WP_VERSION.test(v)) return `https://wordpress.org/wordpress-${v}.zip`;
+  throw new Error(`--wp-version "${v}" is not a WordPress version. Use latest, nightly, or one such as 7.2 or 7.2-RC1.`);
+}
+
+// The Gutenberg plugin is where the block editor's next changes (React 19
+// among them) are switched on first. Activated before the plugin under test so
+// that plugin loads against it, as it would on a site that runs both.
+export const GUTENBERG_ZIP = 'https://downloads.wordpress.org/plugin/gutenberg.latest-stable.zip';
+
+export function gutenbergActivation() {
+  return `$gb = activate_plugin( 'gutenberg/gutenberg.php', '', false, false );
+echo is_wp_error( $gb ) ? 'ACTIVATION_ERROR: gutenberg: ' . $gb->get_error_message() . "\n" : 'GUTENBERG_ACTIVE: ' . ( defined( 'GUTENBERG_VERSION' ) ? GUTENBERG_VERSION : 'yes' ) . "\n";
+`;
 }

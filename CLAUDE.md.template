@@ -38,6 +38,19 @@ Every build or change starts from an approved GitHub Issue.
 - Prefer tests that create what they need over tests that assume ambient site state
 - Full guide, including why each setting exists: `docs/wordpress-test-harness.md` in the foundation
 
+## WordPress 7.2 (ships 8 December 2026)
+
+What to check in every plugin and theme before 7.2 reaches client sites:
+
+- Test against the release candidate: set `wordpress_version: 7.2-RC1` in CI, or run the test site with `--wp-version 7.2-RC1 --dir .wp-test/7.2-RC1`. Add `gutenberg: true` (`--gutenberg`) to test with the Gutenberg plugin too
+- Admin scripts and styles are no longer combined into one file, and `load-scripts.php` and `load-styles.php` now answer "410 Gone". Remove them from any firewall, CDN or security rule, and from code that links to them
+- WordPress itself stays on React 18; React 19 is switched on only in the Gutenberg plugin. Start apps with `createRoot` and use no `defaultProps` or `propTypes`, so they work on both
+- Build every database query with `$wpdb->prepare()`: WordPress now switches off a MySQL setting (`NO_BACKSLASH_ESCAPES`) that hand-built escaping sometimes relied on
+- Blocks: escape every value in `render.php`. A `theme.json` value of the wrong type is now ignored rather than causing an error, so keep its `$schema` line, which makes your code editor flag it
+- JavaScript tests: `@wordpress/scripts` 36+ runs Vitest for `test-unit-js`. To stay on Jest, switch to `test-unit-jest` and install Jest yourself
+- The Secrets API was pulled from 7.2 just before release, so keep storing API keys the way the plugin does today
+- Once tested, set "Tested up to: 7.2" in `readme.txt`
+
 ## Golden Rules
 
 - Always work on a branch, never main
