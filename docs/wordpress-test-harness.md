@@ -31,6 +31,27 @@ scripts and REST calls is not waiting for each in turn. Change it with
 one, because PHP cannot do more there. This is not the same as Playwright's
 `workers`, which run several tests at once against one site — leave that at 1.
 
+## Running several test sites at once
+
+Each site needs its own folder and its own port. Run each one from its own
+checkout or worktree, so each has its own `.wp-test/`, and give each a different
+port:
+
+```bash
+node ../bluegroup_core_foundation/scripts/wp-test-env.mjs up --plugin . --port 8891
+PLAYWRIGHT_BASE_URL=http://127.0.0.1:8891 \
+WP_ADMIN_USER=admin WP_ADMIN_PASS=admin \
+  npx playwright test --workers=1
+node ../bluegroup_core_foundation/scripts/wp-test-env.mjs down --port 8891
+```
+
+**Pass the same `--port` to `down`.** `down` stops whatever `php` is listening on
+its port, and without `--port` that port is 8881: it would stop somebody else's
+site and leave its own running.
+
+The Forge Runner gives each of its agents a port from 8891 up and leaves 8881
+for a person. See [`runner-mode.md`](runner-mode.md).
+
 ## Testing an upcoming WordPress release
 
 The site installs the current WordPress release unless told otherwise. To test a

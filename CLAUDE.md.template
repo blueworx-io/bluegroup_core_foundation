@@ -221,6 +221,17 @@ These skills load automatically from the shared `bluegroup_core_foundation` sett
 - Use **Agent view**: run `claude agents` for one screen showing every running session, with the ones waiting on you flagged
 - It is built into Claude Code, not a plugin, so nothing goes in the repo. It is a Research Preview and each person turns it on for themselves
 
+## Runner mode (Forge Runner agents only)
+
+When the Forge Runner started you to build a Forge card with nobody watching, you are in runner mode. A normal session is not, and follows this file as written. The full rules are in `docs/runner-mode.md` in `bluegroup_core_foundation`.
+
+- The Forge card is the approval. It replaces the GitHub Issue and the brainstorm, so never wait for a person
+- Lint once at the end, fix only what you wrote for this card, and list the rest
+- One version bump and one changelog entry for the pull request, not for each commit
+- Commit, but never push, merge, tag, deploy or sync a design. The runner pushes, and Luke approves every merge
+- If only Luke can decide something the card does not cover, stop and ask one plain question
+- Everything else in this file applies unchanged
+
 ## Communication
 
 Short and plain, in everything written: chat replies, commit messages, pull request descriptions, issues and changelog entries.

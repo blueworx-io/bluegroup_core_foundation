@@ -375,6 +375,8 @@ and the release checklist — is in
   we keep solving), the design spec, implementation plan, the local WordPress test
   harness guide, and the saved prompts (setup, standalone starter, WordPress plugin
   starter, headless framework starter)
+- `docs/runner-mode.md` — how these rules apply when the Forge Runner builds a Forge card
+  with nobody watching
 - `docs/research/` — the research behind standards we've set. `page-editing-standard/`
   is why every page is built from locked section blocks (report, plus the notes behind it)
 
