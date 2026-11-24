@@ -257,3 +257,55 @@ test('cli: a changed section with a non-ASCII name is still judged on a pull req
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// Review round 2.
+test('theme aliases must stay in the same family', () => {
+  bad('--color-primary', 'var(--wp--preset--color--contrast)');
+  bad('--color-primary', 'var(--text-body)');
+  good('--color-accent', 'var(--color-primary)');
+});
+
+test('named colours: whole words, any Sass variable, any gradient', () => {
+  good('--hero-animation', 'fade-to-black');
+  bad('--hero-colour', 'black');
+  bad('$accent', 'red');
+  bad('list-style-image', 'linear-gradient(red, blue)');
+  good('list-style-image', 'linear-gradient(var(--color-primary), var(--color-surface))');
+});
+
+test('a theme name does not hide a typed-in colour inside a relative colour', () => {
+  bad('color', 'rgb(from rgb(255 0 0) r g b)');
+  bad('color', 'rgb(from var(--color-primary) 255 g b / #fff)');
+  good('color', 'rgb(from var(--color-primary) r g b / 50%)');
+});
+
+test('scss: interpolation stays in the value, nested shorthand values are judged', () => {
+  const size = declarations('.a { font-size: #{$hero-size}px; }', { scss: true });
+  assert.deepEqual(size.map((d) => d.prop), ['font-size']);
+  assert.ok(judgeDeclaration(size[0].prop, size[0].value));
+
+  const nested = declarations('.a { font: 16px Arial {\n size: 24px;\n } }', { scss: true });
+  assert.deepEqual(nested.map((d) => d.prop), ['font', 'font-size']);
+  assert.ok(judgeDeclaration('font', nested[0].value));
+  assert.ok(judgeDeclaration('font-size', nested[1].value));
+
+  const selector = declarations('a:hover { color: red }', { scss: true });
+  assert.deepEqual(selector.map((d) => d.prop), ['color']);
+});
+
+test('scss: a // comment inside var() is skipped, a url(//cdn) is not a comment', () => {
+  const found = declarations('.a {\n  font-size: var(\n    // the size\n    --text-lead\n  );\n  background: url(//cdn.example.com/a.png);\n}', { scss: true });
+  assert.equal(judgeDeclaration(found[0].prop, found[0].value), null);
+  assert.equal(found[1].value.trim(), 'url(//cdn.example.com/a.png)');
+});
+
+test('phpStyles: commented-out styles are ignored', () => {
+  const php = `<!-- <div style="color: red"> -->\n<?php\n// $a = array( 'style' => 'color: red' );\n/* echo '<p style="color: red">'; */\n?>`;
+  assert.deepEqual(phpStyles(php), []);
+});
+
+test('phpStyles: svg text typography is judged like inline css', () => {
+  const found = phpStyles('<svg><text font-family="Arial" font-size="24">x</text></svg>').map((d) => `${d.prop}=${d.value}`);
+  assert.deepEqual(found.sort(), ['font-family=Arial', 'font-size=24']);
+  assert.ok(judgeDeclaration('font-size', '24'));
+});

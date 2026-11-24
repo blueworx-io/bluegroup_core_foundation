@@ -39,7 +39,7 @@ const NAMED_COLOURS = new Set(
 
 // Properties whose value can be a colour, so a bare colour word (red) in them
 // is a colour. Hex and colour functions are caught in every property.
-const COLOUR_PROPERTY = /^(?:--[\w-]+|color|background(?:-color|-image)?|border(?:-(?:top|right|bottom|left|block|inline)(?:-(?:start|end))?)?(?:-color)?|border-image(?:-source)?|outline(?:-color)?|fill|stroke|stop-color|flood-color|lighting-color|box-shadow|text-shadow|text-decoration(?:-color)?|text-emphasis(?:-color)?|caret-color|accent-color|column-rule(?:-color)?|scrollbar-color|filter|drop-shadow|-webkit-text-(?:fill|stroke)(?:-color)?|-webkit-tap-highlight-color)$/i;
+const COLOUR_PROPERTY = /^(?:--[\w-]+|[$@][\w-]+|color|background(?:-color|-image)?|border(?:-(?:top|right|bottom|left|block|inline)(?:-(?:start|end))?)?(?:-color)?|border-image(?:-source)?|outline(?:-color)?|fill|stroke|stop-color|flood-color|lighting-color|box-shadow|text-shadow|text-decoration(?:-color)?|text-emphasis(?:-color)?|caret-color|accent-color|column-rule(?:-color)?|scrollbar-color|filter|drop-shadow|-webkit-text-(?:fill|stroke)(?:-color)?|-webkit-tap-highlight-color)$/i;
 
 const COLOUR_FUNCTION = /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\s*\(/gi;
 const HEX = /#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{4}|[0-9a-f]{3})(?![0-9a-z_-])/i;
@@ -129,6 +129,35 @@ function colourCalls(text) {
   return out;
 }
 
+// A hard-coded colour function in `text`, as a plain-words problem, or null.
+// rgb(from var(--color-primary) r g b / 50%) reads a theme colour and passes,
+// but only the source: any colour written inside it is judged too.
+function colourFunctionProblem(text) {
+  for (const call of colourCalls(text)) {
+    if (/^\s*from\b/i.test(call.body) && call.body.includes(THEME_COLOUR)) {
+      const inner = colourFunctionProblem(call.body);
+      if (inner) return inner;
+      continue;
+    }
+    return `a typed-in colour (${call.name.trim()}…) — use a theme colour such as var(--color-primary)`;
+  }
+  return null;
+}
+
+// The bodies of gradient functions in `text`: colours in them are colours in
+// any property (list-style-image, mask-image), not only in the usual ones.
+function gradientBodies(text) {
+  const re = /\b(?:repeating-)?(?:linear|radial|conic)-gradient\s*\(/gi;
+  const out = [];
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const end = closeOf(text, re.lastIndex);
+    out.push(text.slice(re.lastIndex, end - 1));
+    re.lastIndex = end;
+  }
+  return out.join(' ');
+}
+
 // Judges one declaration, returning a plain-words problem or null.
 export function judgeDeclaration(prop, rawValue) {
   const property = prop.trim().toLowerCase();
@@ -137,23 +166,22 @@ export function judgeDeclaration(prop, rawValue) {
   const left = rest.replace(THEME_TOKENS, ' ').trim();
 
   // A theme name defined inside a section: only the theme (or the old
-  // plugin's one names file) defines those, and it is only ever another name.
-  if (THEME_NAME.test(property) && (names.length === 0 || left !== '')) {
+  // plugin's one names file) defines those, and a section only ever makes one
+  // another name in the same family (--color-x from --color-y).
+  const family = property.match(THEME_NAME)?.[0];
+  if (family && (names.length === 0 || left !== '' || names.some((n) => !n.startsWith(family)))) {
     return `defines ${property} itself — a section uses the theme's names and never defines them`;
   }
 
   // Colours.
   if (HEX.test(rest)) return `a typed-in colour (${rest.match(HEX)[0]}) — use a theme colour such as var(--color-primary)`;
-  for (const call of colourCalls(rest)) {
-    // rgb(from var(--color-primary) r g b / 50%) reads a theme colour.
-    if (/^\s*from\b/i.test(call.body) && call.body.includes(THEME_COLOUR)) continue;
-    return `a typed-in colour (${call.name.trim()}…) — use a theme colour such as var(--color-primary)`;
-  }
-  if (COLOUR_PROPERTY.test(property)) {
-    for (const word of rest.toLowerCase().match(/[a-z]+/g) ?? []) {
-      if (NAMED_COLOURS.has(word) && !COLOUR_WORD_OK.has(word)) {
-        return `a typed-in colour (${word}) — use a theme colour such as var(--color-primary)`;
-      }
+  const call = colourFunctionProblem(rest);
+  if (call) return call;
+  // Whole words only: fade-to-black is an animation name, not a colour.
+  const scanned = COLOUR_PROPERTY.test(property) ? rest : gradientBodies(rest);
+  for (const word of scanned.toLowerCase().match(/(?<![\w#$@.-])-?[a-z_][\w-]*/g) ?? []) {
+    if (NAMED_COLOURS.has(word) && !COLOUR_WORD_OK.has(word)) {
+      return `a typed-in colour (${word}) — use a theme colour such as var(--color-primary)`;
     }
   }
 
@@ -196,7 +224,7 @@ export function declarations(css, { lineOffset = 0, scss = false } = {}) {
   let text = '';
   let startLine = 0;
   let line = 1;
-  let depth = 0;
+  const stack = []; // names of the open ( ... ), so url(//cdn) is not a comment
   const newlines = (s) => (s.match(/\n/g) ?? []).length;
   const take = (chunk) => {
     if (startLine === 0 && /\S/.test(chunk)) startLine = line;
@@ -206,8 +234,15 @@ export function declarations(css, { lineOffset = 0, scss = false } = {}) {
   const flush = (closer) => {
     const stmt = text.trim();
     if (closer === '{') {
-      const nested = stmt.match(/^([\w-]+)\s*:$/);
-      prefixes.push(nested ? `${nested[1]}-` : '');
+      // SCSS nested properties: `font: {` and `font: 16px Arial {`. A selector
+      // such as a:hover has no space after its colon.
+      const nested = scss ? stmt.match(/^([\w-]+)\s*:(?:\s+(\S[\s\S]*))?$/) : null;
+      if (nested && (nested[2] !== undefined || stmt.endsWith(':'))) {
+        if (nested[2] !== undefined) out.push({ prop: prefixes.join('') + nested[1], value: nested[2], line: startLine + lineOffset });
+        prefixes.push(`${nested[1]}-`);
+      } else {
+        prefixes.push('');
+      }
     } else {
       const m = stmt.match(/^([$@]?[\w-]+)\s*:\s*([\s\S]+)$/);
       if (m) out.push({ prop: prefixes.join('') + m[1], value: m[2], line: startLine + lineOffset });
@@ -225,7 +260,7 @@ export function declarations(css, { lineOffset = 0, scss = false } = {}) {
       line += newlines(css.slice(i, stop));
       text += ' ';
       i = stop - 1;
-    } else if (scss && depth === 0 && c === '/' && css[i + 1] === '/') {
+    } else if (scss && c === '/' && css[i + 1] === '/' && !stack.includes('url')) {
       const end = css.indexOf('\n', i);
       i = (end === -1 ? css.length : end) - 1;
     } else if (c === '"' || c === "'") {
@@ -233,11 +268,17 @@ export function declarations(css, { lineOffset = 0, scss = false } = {}) {
       while (j < css.length && css[j] !== c) j += css[j] === '\\' ? 2 : 1;
       take(css.slice(i, j + 1));
       i = j;
-    } else if (depth === 0 && (c === ';' || c === '{' || c === '}')) {
+    } else if (scss && c === '#' && css[i + 1] === '{') {
+      // Sass interpolation, #{$size}px: part of the value, not a block.
+      const end = css.indexOf('}', i);
+      const stop = end === -1 ? css.length : end + 1;
+      take(css.slice(i, stop));
+      i = stop - 1;
+    } else if (stack.length === 0 && (c === ';' || c === '{' || c === '}')) {
       flush(c);
     } else {
-      if (c === '(') depth += 1;
-      else if (c === ')') depth = Math.max(0, depth - 1);
+      if (c === '(') stack.push((text.match(/([\w-]+)\s*$/)?.[1] ?? '').toLowerCase());
+      else if (c === ')') stack.pop();
       take(c);
     }
   }
@@ -246,13 +287,14 @@ export function declarations(css, { lineOffset = 0, scss = false } = {}) {
 }
 
 const blank = (s) => s.replace(/[^\n]/g, ' ');
+const html = (s) => s.replace(/<!--[\s\S]*?-->/g, blank);
 
 // A render.php with everything that is PHP code blanked out, except the text of
 // string literals — markup a render file prints (echo '<div style="…">') is as
 // much its styling as the HTML around the PHP. Variables inside a string, and
 // anything else that is only known at run time, are blanked too. Same length
 // as the input, so line numbers still match.
-function markupOf(php) {
+function markupOf(php, { keepCode = false } = {}) {
   let out = '';
   let last = 0;
   for (const tag of php.matchAll(/<\?(?:php|=)([\s\S]*?)(?:\?>|$)/g)) {
@@ -262,9 +304,11 @@ function markupOf(php) {
     let kept = '';
     let at = 0;
     for (const tok of code.matchAll(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|#[^\n]*|'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g)) {
-      kept += blank(code.slice(at, tok.index));
+      kept += keepCode ? code.slice(at, tok.index) : blank(code.slice(at, tok.index));
       const quote = tok[0][0];
-      if (quote === "'" || quote === '"') {
+      if (keepCode && (quote === "'" || quote === '"')) {
+        kept += tok[0];
+      } else if (quote === "'" || quote === '"') {
         let body = tok[0].slice(1, -1);
         if (quote === '"') body = body.replace(/\{\$[^}]*\}|\$\w+(?:->\w+|\[[^\]]*\])*/g, blank);
         kept += ` ${body.replace(/\\(["'])/g, ' $1')} `;
@@ -273,11 +317,11 @@ function markupOf(php) {
       }
       at = tok.index + tok[0].length;
     }
-    kept += blank(code.slice(at));
-    out += php.slice(last, tag.index) + blank(tag[0].slice(0, open)) + kept + blank(tag[0].slice(tag[0].length - close));
+    kept += keepCode ? code.slice(at) : blank(code.slice(at));
+    out += html(php.slice(last, tag.index)) + blank(tag[0].slice(0, open)) + kept + blank(tag[0].slice(tag[0].length - close));
     last = tag.index + tag[0].length;
   }
-  return out + php.slice(last);
+  return out + html(php.slice(last));
 }
 
 // CSS carried inside a render.php: <style> blocks, style="" attributes, a
@@ -292,10 +336,11 @@ export function phpStyles(php) {
   for (const m of src.matchAll(/(?<=\s)style\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) {
     out.push(...declarations(m[1] ?? m[2], { lineOffset: lineAt(src, m.index) }));
   }
-  for (const m of php.matchAll(/(['"])style\1\s*=>\s*(['"])((?:(?!\2)[^\\]|\\.)*)\2/g)) {
-    out.push(...declarations(m[3], { lineOffset: lineAt(php, m.index) }));
+  const code = markupOf(php, { keepCode: true });
+  for (const m of code.matchAll(/(['"])style\1\s*=>\s*(['"])((?:(?!\2)[^\\]|\\.)*)\2/g)) {
+    out.push(...declarations(m[3], { lineOffset: lineAt(code, m.index) }));
   }
-  for (const m of src.matchAll(/(?<=\s)(fill|stroke|stop-color|flood-color|lighting-color|bgcolor)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) {
+  for (const m of src.matchAll(/(?<=\s)(fill|stroke|stop-color|flood-color|lighting-color|bgcolor|font-family|font-size)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) {
     out.push({ prop: m[1].toLowerCase() === 'bgcolor' ? 'background-color' : m[1], value: m[2] ?? m[3], line: lineAt(src, m.index) + 1 });
   }
   return out;
