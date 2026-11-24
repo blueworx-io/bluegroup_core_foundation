@@ -1,0 +1,80 @@
+#!/usr/bin/env node
+// Stops strangers changing anything in the organisation's public repos, without
+// making them private: only people with access can open issues, open pull
+// requests or comment. Issues stay on, so Forge's GitHub sync keeps working,
+// and the repos stay public, so client sites keep fetching plugin updates.
+//
+//   node scripts/lock-public-repos.mjs            show what would change (changes nothing)
+//   node scripts/lock-public-repos.mjs --apply    lock them (also renews an old lock)
+//   node scripts/lock-public-repos.mjs --check    prove it, as a second account with no access
+//
+// Environment:
+//   GITHUB_TOKEN    an organisation owner's token (admin:org and repo scope). Needed for the
+//                   first two. Never put it in a file.
+//   STRANGER_TOKEN  a token from a second GitHub account that is NOT in the organisation.
+//                   Needed for --check only.
+//   LOCK_ORG        the organisation (default blueworx-io)
+//
+// Exits 0 when everything is as it should be, 1 when something needs doing or
+// a stranger got through, 2 when it could not talk to GitHub.
+
+import { applyLock, getLimit, githubRequest, listPublicRepos, planLock, probeAsStranger, probeFailures } from './lib/repo-lock.mjs';
+
+const org = process.env.LOCK_ORG || 'blueworx-io';
+const args = new Set(process.argv.slice(2));
+const apply = args.has('--apply');
+const check = args.has('--check');
+
+if (args.has('--help') || (apply && check)) {
+  console.log('Usage: lock-public-repos.mjs [--apply | --check]   (see the top of this file)');
+  process.exit(apply && check ? 2 : 0);
+}
+
+async function main() {
+  if (check) {
+    const token = process.env.STRANGER_TOKEN;
+    if (!token) throw new Error('--check needs STRANGER_TOKEN: a token from a second GitHub account with no access to the organisation.');
+    const request = githubRequest({ token });
+    const repos = await listPublicRepos(request, org);
+    if (repos.length === 0) throw new Error(`No public repos found under ${org}.`);
+    const results = await probeAsStranger(request, org, repos.filter((r) => !r.archived));
+    const failures = probeFailures(results);
+    console.log(`Tried ${results.length} things as a stranger across ${repos.length} public repos.`);
+    for (const line of failures) console.log(`PROBLEM  ${line}`);
+    if (failures.length === 0) console.log('Every attempt was blocked.');
+    return failures.length === 0 ? 0 : 1;
+  }
+
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) throw new Error('Set GITHUB_TOKEN to an organisation owner\'s token first.');
+  const request = githubRequest({ token });
+  const repos = await listPublicRepos(request, org);
+  if (repos.length === 0) throw new Error(`No public repos found under ${org}.`);
+  const plan = planLock({ repos, limit: await getLimit(request, org), now: new Date() });
+
+  console.log(`${repos.length} public repos under ${org}.`);
+  if (plan.limitProblem) console.log(`TO DO    ${plan.limitProblem}`);
+  else if (plan.daysLeft !== null) console.log(`OK       Limited to collaborators only; ${Math.floor(plan.daysLeft)} days left.`);
+  for (const fix of plan.repoFixes) console.log(`TO DO    ${fix.name}: switch off ${Object.keys(fix.changes).map((k) => k.replace('has_', '')).join(', ')}.`);
+  for (const w of plan.warnings) console.log(`WARNING  ${w}`);
+
+  if (plan.ok) {
+    console.log('Nothing to change.');
+    return 0;
+  }
+  if (!apply) {
+    console.log('\nThis was a dry run. Run again with --apply to make the changes.');
+    return 1;
+  }
+  for (const line of await applyLock(request, org, plan)) console.log(`DONE     ${line}`);
+  console.log('\nNow run it with --check and STRANGER_TOKEN to prove it. Renew within 5 months.');
+  return 0;
+}
+
+main().then(
+  (code) => process.exit(code),
+  (err) => {
+    console.error(err.message);
+    process.exit(2);
+  },
+);

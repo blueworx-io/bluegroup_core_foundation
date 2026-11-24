@@ -8,7 +8,9 @@ zip and attaches it to a GitHub Release. Each site runs the Plugin Update Checke
 (PUC), which watches the repo's releases and installs that asset like any
 wordpress.org update.
 
-Our plugin repos are private, so each site needs a read-only token to see them.
+Our plugin repos are public, so sites read their releases without a token. Public
+means anyone can read the code, so strangers are locked out of changing anything:
+see [`public-repo-lock.md`](public-repo-lock.md).
 
 ## One-time setup, per plugin
 
@@ -87,19 +89,21 @@ assets to a top-level `dist/` ships those assets like any other file in the repo
 
 ## One-time setup, per site
 
-Add the token to `wp-config.php`, above the `/* That's all, stop editing! */`
-line:
+Nothing. The repos are public, so the site sees the releases as it is.
+
+Only if a repo is ever made private again, add a read-only token to `wp-config.php`,
+above the `/* That's all, stop editing! */` line:
 
 ```php
 define( 'BLUEWORX_PLUGIN_UPDATE_TOKEN', 'github_pat_...' );
 ```
 
 Use a **fine-grained personal access token** with **read-only Contents** access,
-scoped to the plugin repos only. One token can serve every site.
+scoped to the plugin repos only. One token can serve every site. The bootstrap
+already uses it when it is defined, so no plugin code changes.
 
 Without it, a private repo's releases are invisible: the site reports the plugin
-as up to date and logs nothing obvious. This is the first thing to check when
-updates don't appear.
+as up to date and logs nothing obvious.
 
 Rotating the token means editing `wp-config.php` on each site — keep a list of
 where it's deployed.
@@ -139,8 +143,8 @@ What happens on its own, from the tag push:
 
 ## Troubleshooting
 
-**No update offered.** In order of likelihood: the site is missing
-`BLUEWORX_PLUGIN_UPDATE_TOKEN` (or it has expired); the `Version:` header wasn't
+**No update offered.** In order of likelihood: the repo is private and the site is
+missing `BLUEWORX_PLUGIN_UPDATE_TOKEN` (or it has expired); the `Version:` header wasn't
 bumped, so the released zip claims the version already installed; the Release has
 no zip asset attached; WordPress is serving a cached response — force a check
 from Dashboard → Updates.
