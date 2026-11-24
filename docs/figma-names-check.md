@@ -15,7 +15,8 @@ and corner names, before build starts. It lists every mismatch; a correct file p
 - A name that is not spelled exactly (a trailing space included) is misnamed, never trimmed.
 - `--collection` includes the variables an extended collection inherits.
 - `color/text/muted` and `color/text-muted` both mean `--color-text-muted`, so either passes.
-- It fails if the Figma file has no variables, or the theme has no names — never a quiet pass.
+- It fails if the Figma file has no variables, or the theme has no names — never a quiet pass — and still lists what is missing or extra.
+- Names registered with `@property` count as theme names. It fails (exit 2) if any theme file or folder, or any one of several Figma files, cannot be read or has no variables in it.
 
 ## Running it
 

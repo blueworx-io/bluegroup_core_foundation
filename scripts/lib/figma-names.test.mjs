@@ -288,3 +288,74 @@ test('script: a long report is written out in full when piped', () => {
   assert.equal(r.status, 1);
   assert.match(r.stdout, /shadow\/extra-2999/);
 });
+
+// Review round 2.
+test('figmaNames: a chosen collection keeps a shared-library variable it lists, not unrelated ones', () => {
+  const answer = {
+    meta: {
+      variableCollections: { ext: { name: 'Client', variableIds: ['lib1', 'own'] }, lib: { name: 'Library', variableIds: ['lib1', 'lib2'] } },
+      variables: {
+        lib1: { name: 'color/primary', variableCollectionId: 'lib', remote: true },
+        lib2: { name: 'color/other', variableCollectionId: 'lib', remote: true },
+        own: { name: 'color/accent', variableCollectionId: 'ext' },
+      },
+    },
+  };
+  assert.deepEqual(figmaNames(answer, { collection: 'Client' }), ['color/accent', 'color/primary']);
+});
+
+test('figmaNames: a saved error answer from Figma is not a variables file', () => {
+  assert.throws(() => figmaNames({ error: true, status: 403 }), /error answer from Figma \(403\)/);
+});
+
+test('script: one of several Figma files with no variables is named and fails', () => {
+  const r = run(['--figma', 'good.json', '--figma', 'err.json', '--theme', 'theme'], {
+    'theme/style.css': THEME_CSS,
+    'good.json': JSON.stringify(['color/primary', 'color/surface', 'font/heading', 'text/lead', 'space/4', 'radius/md']),
+    'err.json': JSON.stringify({ error: true, status: 403 }),
+  });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /err\.json/);
+});
+
+test('themeNames: a name registered with @property counts', () => {
+  const names = themeNames([
+    { path: 'a.css', content: '@property --space-4 { syntax: "<length>"; inherits: true; initial-value: 1rem; }\n/* @property --space-9 {} */' },
+    { path: 'b.scss', content: '// @property --space-8 {}\n@property --radius-md { syntax: "*"; inherits: false; }' },
+  ]);
+  assert.deepEqual(names, ['--radius-md', '--space-4']);
+});
+
+test('script: stylesheets deep in the theme are read', () => {
+  const deep = 'theme/a/b/c/d/e/f/g/h/tokens.css';
+  const r = run(['--figma', 'v.json', '--theme', 'theme'], { [deep]: ':root { --space-4: 1rem }', 'v.json': JSON.stringify(['space/4']) });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+});
+
+test('script: a theme path that is not there is an error', () => {
+  const r = run(['--figma', 'v.json', '--theme', 'nowhere.css'], { 'v.json': JSON.stringify(['space/4']) });
+  assert.equal(r.status, 2);
+});
+
+test('compareNames: a case-only typo takes its name before a looser one', () => {
+  const theme2 = ['--color-primary-dark', '--color-primary_dark'];
+  const r = compareNames({ figma: ['Color/Primary Dark', 'color/PRIMARY_DARK'], theme: theme2 });
+  assert.deepEqual(r.misnamed, [
+    { figma: 'Color/Primary Dark', shouldBe: 'color/primary-dark' },
+    { figma: 'color/PRIMARY_DARK', shouldBe: 'color/primary_dark' },
+  ]);
+});
+
+test('compareNames: with nothing on one side, it still fails and lists the rest', () => {
+  const noFigma = compareNames({ figma: [], theme: ['--color-primary', '--space-4'] });
+  assert.equal(noFigma.ok, false);
+  assert.deepEqual(noFigma.missing, ['color/primary', 'space/4']);
+  assert.match(noFigma.message, /no variables/i);
+  assert.match(noFigma.message, /space\/4/);
+  const noTheme = compareNames({ figma: ['color/primary'], theme: [] });
+  assert.equal(noTheme.ok, false);
+  assert.deepEqual(noTheme.extra, ['color/primary']);
+  assert.match(noTheme.message, /no names/i);
+  assert.match(noTheme.message, /color\/primary/);
+  assert.equal(compareNames({ figma: [], theme: [] }).ok, false);
+});

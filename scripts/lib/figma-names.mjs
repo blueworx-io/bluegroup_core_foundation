@@ -35,8 +35,16 @@ export function themeNames(files) {
   const names = new Set();
   for (const file of files) {
     if (!/\.(?:css|scss|pcss)$/i.test(file.path)) continue;
-    for (const d of declarations(file.content, { scss: /\.(?:scss|pcss)$/i.test(file.path) })) {
+    const scss = /\.(?:scss|pcss)$/i.test(file.path);
+    for (const d of declarations(file.content, { scss })) {
       if (THEME_NAME.test(d.prop)) names.add(d.prop);
+    }
+    // A name registered with @property (--space-4 and its initial value) is a
+    // name the theme defines too.
+    let code = file.content.replace(/\/\*[\s\S]*?\*\//g, ' ');
+    if (scss) code = code.replace(/(^|\s)\/\/[^\n]*/g, '$1');
+    for (const m of code.matchAll(/@property\s+(--[A-Za-z0-9_-]+)/g)) {
+      if (THEME_NAME.test(m[1])) names.add(m[1]);
     }
   }
   return [...names].sort();
@@ -73,6 +81,10 @@ export function figmaNames(input, { collection = '' } = {}) {
   const names = new Set();
   const notVariables = () => new Error('That does not look like a file of Figma variables: expected a list of names, an exported tokens file, or Figma\'s local variables answer.');
   if (input === null || typeof input !== 'object') throw notVariables();
+  // A saved error answer from Figma, such as {"error":true,"status":403}.
+  if (!Array.isArray(input) && (input.error === true || (typeof input.error === 'string' && input.error !== ''))) {
+    throw new Error(`That is an error answer from Figma${input.status ? ` (${input.status})` : ''}, not a file of variables.`);
+  }
 
   if (Array.isArray(input)) {
     for (const item of input) {
@@ -97,8 +109,14 @@ export function figmaNames(input, { collection = '' } = {}) {
       }
     }
     for (const [id, v] of Object.entries(meta.variables)) {
-      if (!v || typeof v.name !== 'string' || v.remote || v.deletedButReferenced) continue;
-      if (wanted && !wanted.variables.has(id) && !wanted.collections.has(v.variableCollectionId)) continue;
+      if (!v || typeof v.name !== 'string' || v.deletedButReferenced) continue;
+      if (wanted) {
+        // A variable shared from a library belongs to the chosen collection when
+        // that collection lists it (an extended collection inherits them).
+        if (v.remote ? !wanted.variables.has(id) : !wanted.variables.has(id) && !wanted.collections.has(v.variableCollectionId)) continue;
+      } else if (v.remote) {
+        continue;
+      }
       names.add(v.name);
     }
     return [...names].sort();
@@ -155,12 +173,13 @@ export async function fetchFigmaVariables({ key, token, fetchImpl = fetch }) {
 
 // figma: the names in the Figma file. theme: the theme's names (--color-primary).
 export function compareNames({ figma, theme }) {
-  if (figma.length === 0) {
-    return { ok: false, missing: [], extra: [], misnamed: [], message: 'Figma names: found no variables in the Figma file, so there is nothing to compare. Check it is the right file, and that its colours, fonts and sizes are Figma variables.' };
-  }
-  if (theme.length === 0) {
-    return { ok: false, missing: [], extra: [], misnamed: [], message: 'Figma names: found no names in the theme (--color-*, --font-*, --text-*, --space-*, --radius-*). Point --theme at the theme\'s folder.' };
-  }
+  // Nothing on one side is still a failure, but the list of what to add (or
+  // remove) is given all the same.
+  const empty = figma.length === 0
+    ? 'Figma names: found no variables in the Figma file. Check it is the right file, and that its colours, fonts and sizes are Figma variables.'
+    : theme.length === 0
+      ? 'Figma names: found no names in the theme (--color-*, --font-*, --text-*, --space-*, --radius-*). Point --theme at the theme\'s folder.'
+      : '';
 
   const themeSet = new Set(theme);
   const claimed = new Set();
@@ -177,34 +196,41 @@ export function compareNames({ figma, theme }) {
     else left.push(name);
   }
 
-  const unclaimed = theme.filter((n) => !claimed.has(n));
   const byKey = new Map();
-  for (const n of unclaimed) byKey.set(looseKey(n), [...(byKey.get(looseKey(n)) ?? []), n]);
+  for (const n of theme.filter((t) => !claimed.has(t))) byKey.set(looseKey(n), [...(byKey.get(looseKey(n)) ?? []), n]);
+
+  // Two theme names can read alike (--color-primary-dark, --color-primary_dark).
+  // A name that differs from one only in case is matched to it first, so a later
+  // name does not take it; after that, a name with several candidates names them all.
+  const found = new Map();
+  const claim = (name, caseOnly) => {
+    const candidates = byKey.get(looseKey(name)) ?? [];
+    const closest = candidates.filter((c) => figmaForm(c).toLowerCase() === name.toLowerCase());
+    if (caseOnly && closest.length === 0) return;
+    if (!caseOnly && candidates.length === 0) return;
+    const named = closest.length > 0 ? closest : candidates;
+    found.set(name, named.map(figmaForm).join(' or '));
+    byKey.set(looseKey(name), candidates.filter((c) => c !== named[0]));
+    claimed.add(named[0]);
+  };
+  for (const name of left) claim(name, true);
+  for (const name of left) if (!found.has(name)) claim(name, false);
 
   const misnamed = [];
   for (const name of left) {
-    const candidates = byKey.get(looseKey(name));
-    if (candidates?.length) {
-      // Two theme names can read alike (--color-primary-dark, --color-primary_dark):
-      // prefer the one that differs only in case, otherwise name every candidate.
-      const closest = candidates.filter((c) => figmaForm(c).toLowerCase() === name.toLowerCase());
-      const named = closest.length > 0 ? closest : candidates;
-      misnamed.push({ figma: name, shouldBe: named.map(figmaForm).join(' or ') });
-      byKey.set(looseKey(name), candidates.filter((c) => c !== named[0]));
-      claimed.add(named[0]);
-    } else {
-      extra.push(name);
-    }
+    if (found.has(name)) misnamed.push({ figma: name, shouldBe: found.get(name) });
+    else extra.push(name);
   }
   const missing = theme.filter((n) => !claimed.has(n)).map(figmaForm);
   extra.sort();
 
-  const ok = missing.length === 0 && extra.length === 0 && misnamed.length === 0;
+  const ok = !empty && missing.length === 0 && extra.length === 0 && misnamed.length === 0;
   if (ok) {
     return { ok, missing, extra, misnamed, message: `Figma names: all ${theme.length} theme names are in the Figma file, named exactly as the theme names them.` };
   }
 
-  const lines = [`Figma names: ${missing.length + extra.length + misnamed.length} mismatch(es) between the Figma file and the theme.`];
+  const count = missing.length + extra.length + misnamed.length;
+  const lines = empty ? [empty] : [`Figma names: ${count} mismatch(es) between the Figma file and the theme.`];
   if (missing.length) {
     lines.push('', `Missing from Figma (the theme has them, the file does not) — ${missing.length}:`);
     for (const n of missing) lines.push(`  - ${n}  (the theme's ${cssForm(n)})`);
@@ -217,10 +243,12 @@ export function compareNames({ figma, theme }) {
     lines.push('', `Misnamed in Figma (rename to the theme's name) — ${misnamed.length}:`);
     for (const m of misnamed) lines.push(`  - ${m.figma} → ${m.shouldBe}`);
   }
-  lines.push(
-    '',
-    'The theme\'s names are the only ones. Rename a Figma variable to the theme\'s name, or',
-    'if the design needs something new, add the name to the theme first, then to Figma.',
-  );
+  if (count > 0) {
+    lines.push(
+      '',
+      'The theme\'s names are the only ones. Rename a Figma variable to the theme\'s name, or',
+      'if the design needs something new, add the name to the theme first, then to Figma.',
+    );
+  }
   return { ok, missing, extra, misnamed, message: lines.join('\n') };
 }

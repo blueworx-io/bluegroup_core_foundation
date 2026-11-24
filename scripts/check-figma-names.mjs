@@ -64,6 +64,7 @@ async function main() {
   let figma = [];
   try {
     const sources = [];
+    const labels = [...figmaFiles];
     for (const path of figmaFiles) {
       if (!existsSync(path)) throw new Error(`Cannot find the Figma variables file ${path}.`);
       try {
@@ -72,8 +73,20 @@ async function main() {
         throw new Error(`${path} is not valid JSON.`);
       }
     }
+    if (figmaFile) labels.push(`The Figma file ${figmaFile}`);
     if (figmaFile) sources.push(await fetchFigmaVariables({ key: figmaKey(figmaFile), token: process.env.FIGMA_TOKEN }));
-    figma = [...new Set(sources.flatMap((s) => figmaNames(s, { collection })))];
+    const all = new Set();
+    sources.forEach((source, i) => {
+      let names;
+      try {
+        names = figmaNames(source, { collection });
+      } catch (error) {
+        throw new Error(`${labels[i]}: ${error.message}`);
+      }
+      if (names.length === 0) throw new Error(`${labels[i]} has no variables in it.`);
+      names.forEach((n) => all.add(n));
+    });
+    figma = [...all];
   } catch (error) {
     fail(`Figma names: ${error.message}`);
   }
@@ -82,12 +95,16 @@ async function main() {
   const unreadable = [];
   for (const path of themePaths) {
     if (!existsSync(path)) fail(`Figma names: cannot find the theme at ${path}.`);
-    if (statSync(path).isDirectory()) themeFiles.push(...readTextFiles(path, ['.css', '.scss', '.pcss'], 6, (file) => unreadable.push(file)));
-    else themeFiles.push({ path, content: readFileSync(path, 'utf8') });
+    try {
+      if (statSync(path).isDirectory()) themeFiles.push(...readTextFiles(path, ['.css', '.scss', '.pcss'], Infinity, (file) => unreadable.push(file)));
+      else themeFiles.push({ path, content: readFileSync(path, 'utf8') });
+    } catch {
+      unreadable.push(path);
+    }
   }
   if (unreadable.length > 0) {
     const list = unreadable.map((f) => `  - ${f}`).join('\n');
-    fail(`Figma names: cannot read these theme files, so the check would only see part of the theme:\n${list}`);
+    fail(`Figma names: cannot read these theme files or folders, so the check would only see part of the theme:\n${list}`);
   }
 
   const result = compareNames({ figma, theme: themeNames(themeFiles) });

@@ -92,7 +92,7 @@ export function findZips(cwd, slug) {
 export function readTextFiles(cwd, extensions, maxDepth = 6, onUnreadable = null) {
   const wanted = new Set(extensions.map((e) => e.toLowerCase()));
   const out = [];
-  for (const file of walk(cwd, (f) => wanted.has(extname(f).toLowerCase()), maxDepth)) {
+  for (const file of walk(cwd, (f) => wanted.has(extname(f).toLowerCase()), maxDepth, 0, [], onUnreadable)) {
     try {
       out.push({ path: normalize(relative(cwd, file)), content: readFileSync(file, 'utf8') });
     } catch {
@@ -113,12 +113,14 @@ export function readTextFiles(cwd, extensions, maxDepth = 6, onUnreadable = null
 // put that subdirectory ahead of the root file (e.g. "admin/" before
 // "my-plugin.php"). Depth-first-into-subdirs traversal would return the
 // subdirectory file in that case; this breadth-by-depth order never does.
-function walk(dir, predicate, maxDepth, depth = 0, acc = []) {
+function walk(dir, predicate, maxDepth, depth = 0, acc = [], onUnreadable = null) {
   if (depth > maxDepth) return acc;
   let entries;
   try {
     entries = readdirSync(dir, { withFileTypes: true });
   } catch {
+    // A folder that cannot be opened is skipped, unless the caller wants to know.
+    if (onUnreadable) onUnreadable(dir);
     return acc;
   }
   const subdirs = [];
@@ -129,7 +131,7 @@ function walk(dir, predicate, maxDepth, depth = 0, acc = []) {
     else if (predicate(full)) acc.push(full);
   }
   for (const full of subdirs) {
-    walk(full, predicate, maxDepth, depth + 1, acc);
+    walk(full, predicate, maxDepth, depth + 1, acc, onUnreadable);
   }
   return acc;
 }
