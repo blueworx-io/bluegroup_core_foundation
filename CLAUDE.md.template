@@ -122,7 +122,7 @@ Every plugin's admin UI — settings pages, tabs, tables, notices, forms, button
 
 Every client's front-end design lives in one Figma file, started by copying the BlueWorx starter file. The pages are always these, in this order:
 
-1. **Design system** — colours, fonts, sizes, spacing and corners as Figma variables, named exactly as the theme's named styles and nothing else: `color/primary` in Figma is `--color-primary` in code, `space/4` is `--space-4`. A value the theme has no name for is added to the theme first, then to Figma.
+1. **Design system** — colours, fonts, sizes, spacing and corners as Figma variables, named exactly as the theme's named styles and nothing else: `color/primary` in Figma is `--color-primary` in code, `space/4` is `--space-4`. A value the theme has no name for is added to the theme first, then to Figma. Before build starts, run Foundation's `scripts/check-figma-names.mjs` (see its `docs/figma-names-check.md`): it lists every missing, extra or misnamed variable.
 2. **Components** — one component per section block, named exactly as the block's title ("Hero section", "Steps section"), with one property per field a client can edit. Repeating items are a list inside the component, as they are in the block.
 3. **Globals** — header, footer, menus, buttons, forms, cookie banner and 404.
 4. **Layouts** — the whole-page layouts clients start new pages from. Each one becomes a page layout in the plugin.
