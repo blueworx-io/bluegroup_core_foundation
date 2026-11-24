@@ -24,10 +24,6 @@ import { readTextFiles } from './lib/io.mjs';
 import { compareNames, fetchFigmaVariables, figmaKey, figmaNames, themeNames } from './lib/figma-names.mjs';
 
 const mode = process.env.FIGMA_NAMES || 'error';
-if (mode === 'off') {
-  console.log('Figma names: skipped (FIGMA_NAMES=off).');
-  process.exit(0);
-}
 
 const USAGE = [
   'Usage: check-figma-names.mjs --figma <variables.json> --theme <theme folder>',
@@ -35,58 +31,79 @@ const USAGE = [
   'Optional: --collection <name> to check one Figma variable collection.',
 ].join('\n');
 
+// Failing means "could not read something" (exit 2). It throws to the end of main,
+// so the message is written out before Node exits, however much is piped.
+class Stop extends Error {}
 function fail(message) {
-  console.error(message);
-  process.exit(2);
+  throw new Stop(message);
 }
 
-const figmaFiles = [];
-const themePaths = [];
-let figmaFile = '';
-let collection = '';
-const argv = process.argv.slice(2);
-for (let i = 0; i < argv.length; i += 1) {
-  const value = argv[i + 1];
-  const flag = argv[i];
-  if (!['--figma', '--figma-file', '--theme', '--collection'].includes(flag)) fail(`Unknown option ${flag}.\n${USAGE}`);
-  if (value === undefined || value.startsWith('--')) fail(`${flag} needs a value.\n${USAGE}`);
-  i += 1;
-  if (flag === '--figma') figmaFiles.push(value);
-  else if (flag === '--figma-file') figmaFile = value;
-  else if (flag === '--theme') themePaths.push(value);
-  else collection = value;
-}
-if ((figmaFiles.length === 0 && !figmaFile) || themePaths.length === 0) fail(USAGE);
-
-let figma = [];
-try {
-  const sources = [];
-  for (const path of figmaFiles) {
-    if (!existsSync(path)) throw new Error(`Cannot find the Figma variables file ${path}.`);
-    try {
-      sources.push(JSON.parse(readFileSync(path, 'utf8')));
-    } catch {
-      throw new Error(`${path} is not valid JSON.`);
-    }
+async function main() {
+  if (mode === 'off') {
+    console.log('Figma names: skipped (FIGMA_NAMES=off).');
+    return 0;
   }
-  if (figmaFile) sources.push(await fetchFigmaVariables({ key: figmaKey(figmaFile), token: process.env.FIGMA_TOKEN }));
-  figma = [...new Set(sources.flatMap((s) => figmaNames(s, { collection })))];
+  const figmaFiles = [];
+  const themePaths = [];
+  let figmaFile = '';
+  let collection = '';
+  const argv = process.argv.slice(2);
+  for (let i = 0; i < argv.length; i += 1) {
+    const value = argv[i + 1];
+    const flag = argv[i];
+    if (!['--figma', '--figma-file', '--theme', '--collection'].includes(flag)) fail(`Unknown option ${flag}.\n${USAGE}`);
+    if (value === undefined || value.startsWith('--')) fail(`${flag} needs a value.\n${USAGE}`);
+    i += 1;
+    if (flag === '--figma') figmaFiles.push(value);
+    else if (flag === '--figma-file') figmaFile = value;
+    else if (flag === '--theme') themePaths.push(value);
+    else collection = value;
+  }
+  if ((figmaFiles.length === 0 && !figmaFile) || themePaths.length === 0) fail(USAGE);
+
+  let figma = [];
+  try {
+    const sources = [];
+    for (const path of figmaFiles) {
+      if (!existsSync(path)) throw new Error(`Cannot find the Figma variables file ${path}.`);
+      try {
+        sources.push(JSON.parse(readFileSync(path, 'utf8')));
+      } catch {
+        throw new Error(`${path} is not valid JSON.`);
+      }
+    }
+    if (figmaFile) sources.push(await fetchFigmaVariables({ key: figmaKey(figmaFile), token: process.env.FIGMA_TOKEN }));
+    figma = [...new Set(sources.flatMap((s) => figmaNames(s, { collection })))];
+  } catch (error) {
+    fail(`Figma names: ${error.message}`);
+  }
+
+  const themeFiles = [];
+  const unreadable = [];
+  for (const path of themePaths) {
+    if (!existsSync(path)) fail(`Figma names: cannot find the theme at ${path}.`);
+    if (statSync(path).isDirectory()) themeFiles.push(...readTextFiles(path, ['.css', '.scss', '.pcss'], 6, (file) => unreadable.push(file)));
+    else themeFiles.push({ path, content: readFileSync(path, 'utf8') });
+  }
+  if (unreadable.length > 0) {
+    const list = unreadable.map((f) => `  - ${f}`).join('\n');
+    fail(`Figma names: cannot read these theme files, so the check would only see part of the theme:\n${list}`);
+  }
+
+  const result = compareNames({ figma, theme: themeNames(themeFiles) });
+  console.log(result.message);
+  if (result.ok) return 0;
+  if (mode === 'warn') {
+    console.log('\nFIGMA_NAMES=warn — reporting this as a warning, not a failure.');
+    return 0;
+  }
+  return 1;
+}
+
+try {
+  process.exitCode = await main();
 } catch (error) {
-  fail(`Figma names: ${error.message}`);
+  if (!(error instanceof Stop)) throw error;
+  console.error(error.message);
+  process.exitCode = 2;
 }
-
-const themeFiles = [];
-for (const path of themePaths) {
-  if (!existsSync(path)) fail(`Figma names: cannot find the theme at ${path}.`);
-  if (statSync(path).isDirectory()) themeFiles.push(...readTextFiles(path, ['.css', '.scss', '.pcss']));
-  else themeFiles.push({ path, content: readFileSync(path, 'utf8') });
-}
-
-const result = compareNames({ figma, theme: themeNames(themeFiles) });
-console.log(result.message);
-if (result.ok) process.exit(0);
-if (mode === 'warn') {
-  console.log('\nFIGMA_NAMES=warn — reporting this as a warning, not a failure.');
-  process.exit(0);
-}
-process.exit(1);

@@ -89,14 +89,16 @@ export function findZips(cwd, slug) {
 // repo-relative forward-slash paths. Uses the same walk — and the same skip
 // list — as findPluginMainFile, so a provisioned WordPress or a vendor tree is
 // never mistaken for the plugin's own code.
-export function readTextFiles(cwd, extensions, maxDepth = 6) {
+export function readTextFiles(cwd, extensions, maxDepth = 6, onUnreadable = null) {
   const wanted = new Set(extensions.map((e) => e.toLowerCase()));
   const out = [];
   for (const file of walk(cwd, (f) => wanted.has(extname(f).toLowerCase()), maxDepth)) {
     try {
       out.push({ path: normalize(relative(cwd, file)), content: readFileSync(file, 'utf8') });
     } catch {
-      /* unreadable — skip */
+      // Skipped, unless the caller wants to know: a check must not pass on
+      // only the files it could read.
+      if (onUnreadable) onUnreadable(file);
     }
   }
   return out;

@@ -12,6 +12,8 @@ and corner names, before build starts. It lists every mismatch; a correct file p
 - **Extra:** the Figma file has a variable the theme has no name for.
 - **Misnamed:** the Figma name is nearly right (`Color/Primary`, `colour/primary`,
   `color-primary`, `color/primaryDark`, `spacing/4`). The report says what to rename it to.
+- A name that is not spelled exactly (a trailing space included) is misnamed, never trimmed.
+- `--collection` includes the variables an extended collection inherits.
 - `color/text/muted` and `color/text-muted` both mean `--color-text-muted`, so either passes.
 - It fails if the Figma file has no variables, or the theme has no names — never a quiet pass.
 

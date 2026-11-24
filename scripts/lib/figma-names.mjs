@@ -77,7 +77,7 @@ export function figmaNames(input, { collection = '' } = {}) {
   if (Array.isArray(input)) {
     for (const item of input) {
       const name = typeof item === 'string' ? item : item?.name;
-      if (typeof name === 'string' && name.trim() !== '') names.add(name.trim());
+      if (typeof name === 'string' && name.trim() !== '') names.add(name);
     }
     return [...names].sort();
   }
@@ -87,29 +87,37 @@ export function figmaNames(input, { collection = '' } = {}) {
     const collections = meta.variableCollections ?? {};
     let wanted = null;
     if (collection) {
-      wanted = new Set(
-        Object.entries(collections)
-          .filter(([, c]) => String(c?.name ?? '').toLowerCase() === collection.toLowerCase())
-          .map(([id]) => id),
-      );
-      if (wanted.size === 0) {
+      const chosen = Object.entries(collections).filter(([, c]) => String(c?.name ?? '').toLowerCase() === collection.toLowerCase());
+      // variableIds also lists the variables an extended collection inherits,
+      // which still point at the collection they came from.
+      wanted = { collections: new Set(chosen.map(([id]) => id)), variables: new Set(chosen.flatMap(([, c]) => c.variableIds ?? [])) };
+      if (chosen.length === 0) {
         const have = Object.values(collections).map((c) => `"${c?.name}"`).join(', ') || 'none';
         throw new Error(`The Figma file has no variable collection called "${collection}". It has: ${have}.`);
       }
     }
-    for (const v of Object.values(meta.variables)) {
+    for (const [id, v] of Object.entries(meta.variables)) {
       if (!v || typeof v.name !== 'string' || v.remote || v.deletedButReferenced) continue;
-      if (wanted && !wanted.has(v.variableCollectionId)) continue;
-      names.add(v.name.trim());
+      if (wanted && !wanted.variables.has(id) && !wanted.collections.has(v.variableCollectionId)) continue;
+      names.add(v.name);
     }
     return [...names].sort();
   }
 
   const walk = (node, path) => {
     for (const [key, child] of Object.entries(node)) {
-      if (key.startsWith('$') || child === null || typeof child !== 'object') continue;
+      if (child === null || typeof child !== 'object') continue;
+      // $root is a group's own variable (color/primary beside color/primary/hover).
+      if (key === '$root') {
+        if (path.length > 0 && '$value' in child) names.add(path.join('/'));
+        continue;
+      }
+      if (key.startsWith('$')) continue;
       const here = [...path, key];
-      if ('$value' in child || 'value' in child) names.add(here.join('/'));
+      // A variable has a $value; the older export has a plain value, which is
+      // a number or text. A child named "value" is an object, so a group.
+      const legacy = 'value' in child && (child.value === null || typeof child.value !== 'object');
+      if ('$value' in child || legacy) names.add(here.join('/'));
       else walk(child, here);
     }
   };
@@ -120,6 +128,9 @@ export function figmaNames(input, { collection = '' } = {}) {
 // The file key of a Figma link (figma.com/design/<key>/Name), or the key itself.
 export function figmaKey(input) {
   const s = String(input).trim();
+  // A branch has a key of its own: figma.com/design/<main key>/branch/<branch key>/Name.
+  const branch = s.match(/figma\.com\/(?:design|file)\/[A-Za-z0-9]+\/branch\/([A-Za-z0-9]+)/);
+  if (branch) return branch[1];
   const link = s.match(/figma\.com\/(?:design|file|board|make)\/([A-Za-z0-9]+)/);
   if (link) return link[1];
   if (/^[A-Za-z0-9]+$/.test(s)) return s;
@@ -168,15 +179,19 @@ export function compareNames({ figma, theme }) {
 
   const unclaimed = theme.filter((n) => !claimed.has(n));
   const byKey = new Map();
-  for (const n of unclaimed) byKey.set(looseKey(n), n);
+  for (const n of unclaimed) byKey.set(looseKey(n), [...(byKey.get(looseKey(n)) ?? []), n]);
 
   const misnamed = [];
   for (const name of left) {
-    const near = byKey.get(looseKey(name));
-    if (near) {
-      misnamed.push({ figma: name, shouldBe: figmaForm(near) });
-      byKey.delete(looseKey(name));
-      claimed.add(near);
+    const candidates = byKey.get(looseKey(name));
+    if (candidates?.length) {
+      // Two theme names can read alike (--color-primary-dark, --color-primary_dark):
+      // prefer the one that differs only in case, otherwise name every candidate.
+      const closest = candidates.filter((c) => figmaForm(c).toLowerCase() === name.toLowerCase());
+      const named = closest.length > 0 ? closest : candidates;
+      misnamed.push({ figma: name, shouldBe: named.map(figmaForm).join(' or ') });
+      byKey.set(looseKey(name), candidates.filter((c) => c !== named[0]));
+      claimed.add(named[0]);
     } else {
       extra.push(name);
     }

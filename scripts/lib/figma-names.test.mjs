@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -214,4 +214,77 @@ test('script: an unreadable Figma file is an error, not a pass', () => {
   const r = run(['--figma', 'nope.json', '--theme', 'theme'], { 'theme/style.css': THEME_CSS });
   assert.equal(r.status, 2);
   assert.match(r.stderr, /nope\.json/);
+});
+
+// Review fixes.
+test('figmaKey: a branch link names the branch, not the main file', () => {
+  assert.equal(figmaKey('https://www.figma.com/design/MainKey1/branch/BranchKey2/Client-site?node-id=1-2'), 'BranchKey2');
+  assert.equal(figmaKey('https://www.figma.com/file/MainKey1/branch/BranchKey2/Client-site'), 'BranchKey2');
+});
+
+test('figmaNames: a child variable called value is a variable, not the old value field', () => {
+  assert.deepEqual(figmaNames({ text: { value: { $value: '1rem' }, label: { $value: '2rem' } } }), ['text/label', 'text/value']);
+  assert.deepEqual(figmaNames({ text: { value: { size: { $value: '1rem' } } } }), ['text/value/size']);
+  assert.deepEqual(figmaNames({ color: { primary: { value: '#000' } } }), ['color/primary']);
+});
+
+test('figmaNames: $root is the group\'s own variable, beside its children', () => {
+  const tokens = { color: { primary: { $root: { $value: '#000' }, hover: { $value: '#111' } } } };
+  assert.deepEqual(figmaNames(tokens), ['color/primary', 'color/primary/hover']);
+});
+
+test('figmaNames: a chosen collection includes the variables it inherits', () => {
+  const answer = {
+    meta: {
+      variableCollections: { c2: { name: 'Client', variableIds: ['a', 'b'] }, c1: { name: 'Base', variableIds: ['a'] } },
+      variables: {
+        a: { name: 'color/primary', variableCollectionId: 'c1' },
+        b: { name: 'color/accent', variableCollectionId: 'c2' },
+      },
+    },
+  };
+  assert.deepEqual(figmaNames(answer, { collection: 'Client' }), ['color/accent', 'color/primary']);
+  assert.deepEqual(figmaNames(answer, { collection: 'Base' }), ['color/primary']);
+});
+
+test('figmaNames: spaces in a name are kept, so the name is flagged', () => {
+  assert.deepEqual(figmaNames(['color/primary ']), ['color/primary ']);
+  const r = compareNames({ figma: ['color/primary '], theme: ['--color-primary'] });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.misnamed, [{ figma: 'color/primary ', shouldBe: 'color/primary' }]);
+});
+
+test('compareNames: two theme names that read alike are both named, or the closer one wins', () => {
+  const both = compareNames({ figma: ['Color/primary-dark'], theme: ['--color-primary-dark', '--color-primary_dark'] });
+  assert.equal(both.misnamed[0].shouldBe, 'color/primary-dark');
+  const either = compareNames({ figma: ['color/primaryDark'], theme: ['--color-primary-dark', '--color-primary_dark'] });
+  assert.equal(either.misnamed[0].shouldBe, 'color/primary-dark or color/primary_dark');
+  assert.deepEqual(either.missing, ['color/primary_dark']);
+});
+
+test('script: a theme stylesheet it cannot read is an error, not a pass', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'figma-names-'));
+  try {
+    mkdirSync(join(dir, 'theme'));
+    writeFileSync(join(dir, 'theme/style.css'), THEME_CSS);
+    writeFileSync(join(dir, 'v.json'), JSON.stringify(['color/primary']));
+    try {
+      symlinkSync(join(dir, 'missing.css'), join(dir, 'theme/broken.css'));
+    } catch {
+      t.skip('cannot make a symlink here');
+      return;
+    }
+    const r = spawnSync(process.execPath, [script, '--figma', 'v.json', '--theme', 'theme'], { cwd: dir, encoding: 'utf8' });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /broken\.css/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('script: a long report is written out in full when piped', () => {
+  const names = Array.from({ length: 3000 }, (_, i) => `shadow/extra-${i}`);
+  const r = run(['--figma', 'v.json', '--theme', 'theme'], { 'theme/style.css': THEME_CSS, 'v.json': JSON.stringify(names) });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /shadow\/extra-2999/);
 });
