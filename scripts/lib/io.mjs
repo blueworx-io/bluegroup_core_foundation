@@ -37,9 +37,10 @@ export function gitShowFile(ref, path) {
 // Files changed between the merge-base of origin/<baseRef> and HEAD.
 // Returns null if the diff can't be computed (e.g. base not fetched).
 export function gitChangedFiles(baseRef) {
-  const out = git(['diff', '--name-only', `origin/${baseRef}...HEAD`]);
+  const out = git(['diff', '--name-only', '-z', `origin/${baseRef}...HEAD`]);
   if (out === null) return null;
-  return out.split('\n').map((s) => s.trim()).filter(Boolean);
+  // NUL-separated, so Git never quotes a name with non-ASCII characters in it.
+  return out.split('\0').filter(Boolean);
 }
 
 // First *.php (depth <= maxDepth) whose contents declare a WordPress

@@ -173,3 +173,87 @@ test('cli: warn reports without failing, off skips', () => {
   assert.equal(runCli('.hero { color: red; }', { SECTION_STYLES: 'warn' }).code, 0);
   assert.equal(runCli('.hero { color: red; }', { SECTION_STYLES: 'off' }).code, 0);
 });
+
+// Review round 1.
+test('fallbacks: allowed on a theme name, judged on any other variable', () => {
+  bad('color', 'var(--hero-tint, #f00)');
+  bad('background', 'var(--hero-tint, red)');
+  good('color', 'var(--color-text, #16181d)');
+  good('font-size', 'var(--text-lead, var(--wp--preset--font-size--large))');
+  good('font-family', 'var(--font-heading, var(--wp--preset--font-family--serif))');
+});
+
+test('theme names: a definition may only be another theme name', () => {
+  bad('--text-lead', 'calc(var(--text-body) + 12px)');
+  bad('--color-accent', 'var(--hero-tint, #fff)');
+  good('--text-lead', 'var(--text-body)');
+});
+
+test('colour functions are judged one by one', () => {
+  bad('background', 'linear-gradient(rgb(from var(--color-primary) r g b / 50%), rgb(255 0 0))');
+  good('background', 'linear-gradient(rgb(from var(--color-primary) r g b / 50%), var(--color-surface))');
+  bad('color', 'rgb(from var(--hero-tint) r g b)');
+});
+
+test('sizes: nested maths of theme sizes passes', () => {
+  good('font-size', 'calc(max(var(--text-small), var(--text-body)) * 1.2)');
+  bad('font-size', 'calc(max(var(--text-small), 12px) * 1.2)');
+});
+
+test('border-image: named colours in a gradient fail', () => {
+  bad('border-image', 'linear-gradient(red, blue) 1');
+});
+
+test('declarations: text in strings and scss comments is not a declaration', () => {
+  const css = '.a::after { content: "x; color: red;"; }\n// color: red;\n.b { margin: 0 }';
+  assert.deepEqual(declarations(css, { scss: true }).map((d) => d.prop), ['content', 'margin']);
+});
+
+test('declarations: scss nested properties keep their full name', () => {
+  const found = declarations('.a {\n  font: {\n    size: 18px;\n    family: Georgia;\n  }\n}', { scss: true });
+  assert.deepEqual(found.map((d) => d.prop), ['font-size', 'font-family']);
+  assert.ok(judgeDeclaration(found[0].prop, found[0].value));
+  assert.ok(judgeDeclaration(found[1].prop, found[1].value));
+});
+
+test('declarations: a multi-line comment keeps the line numbers', () => {
+  const found = declarations('/* one\n two\n three */\n.a { color: red; }');
+  assert.equal(found[0].line, 4);
+});
+
+test('declarations: a semicolon inside url() does not split the value', () => {
+  const found = declarations('.a { background: url("data:image/svg+xml;utf8,<svg/>") no-repeat; color: red }');
+  assert.deepEqual(found.map((d) => d.prop), ['background', 'color']);
+});
+
+test('phpStyles: markup printed by php is judged, runtime values are not', () => {
+  const php = `<?php\necho '<div style="color: red">hi</div>';\nprintf( "<p style=\\"font-size: 12px\\">%s</p>", $x );\necho "<p style='color: {$colour}'>x</p>";\n$a = array( 'style' => 'background: #fff' );\n?>`;
+  const found = phpStyles(php).map((d) => `${d.prop}=${d.value.trim()}@${d.line}`);
+  assert.deepEqual(found.sort(), ['background=#fff@5', 'color=red@2', 'font-size=12px@3'].sort());
+});
+
+test('phpStyles: data- attributes are metadata, not paint', () => {
+  const php = '<div data-fill="red" data-style="color: red" fill="blue"></div>';
+  assert.deepEqual(phpStyles(php).map((d) => `${d.prop}=${d.value}`), ['fill=blue']);
+});
+
+test('cli: a changed section with a non-ASCII name is still judged on a pull request', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'section-styles-git-'));
+  try {
+    const git = (...args) => spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, encoding: 'utf8' });
+    git('init', '-q');
+    writeFileSync(join(dir, 'README.md'), 'x');
+    git('add', '-A');
+    git('commit', '-q', '-m', 'base');
+    git('update-ref', 'refs/remotes/origin/main', 'HEAD');
+    mkdirSync(join(dir, 'blocks', 'hero'), { recursive: true });
+    writeFileSync(join(dir, 'blocks', 'hero', 'été.scss'), '.hero { color: #ff0000; }');
+    git('add', '-A');
+    git('commit', '-q', '-m', 'section');
+    const run = spawnSync(process.execPath, [script], { cwd: dir, encoding: 'utf8', env: { ...process.env, BASE_REF: 'main' } });
+    assert.equal(run.status, 1);
+    assert.match(run.stdout, /été\.scss:1/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

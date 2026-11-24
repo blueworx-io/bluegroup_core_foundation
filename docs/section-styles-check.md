@@ -4,13 +4,14 @@ Fails a pull request when a section types in its own colour, font or size
 instead of using the theme's named styles, so design and code can't drift apart.
 
 - Script: `scripts/check-section-styles.mjs` (logic in `scripts/lib/section-styles.mjs`).
-- It judges the stylesheets (`.css`, `.scss`) and `render.php` files under a `blocks/` folder.
+- It reads CSS and SCSS (including nested properties) and the markup `render.php` prints, and judges the stylesheets (`.css`, `.scss`) and `render.php` files under a `blocks/` folder.
   On a pull request, only the ones the pull request changes.
 - **Fails:** a hex, `rgb()`/`hsl()`/`oklch()` or named colour; a `font-family` or `font`
   that is not a `--font-*` name; a `font-size` that is not a `--text-*` name (a `calc()` of
   them is fine); a section defining `--color-*`, `--font-*` or `--text-*` itself.
 - **Passes:** `var(--color-primary)` and friends, `transparent`, `currentColor`, `inherit`.
-  A fallback inside `var()` (`var(--color-surface, #f4f6fa)`) is left alone.
+  A fallback inside the `var()` of a theme name (`var(--color-surface, #f4f6fa)`) is left alone; a
+  fallback on any other variable is judged.
 - The old BlueWorx plugin's one file of theme names is allowed: it sits outside `blocks/`,
   or set `SECTION_NAMES_FILE` to its path.
 - `SECTION_STYLES=warn` reports without failing; `off` skips it.
