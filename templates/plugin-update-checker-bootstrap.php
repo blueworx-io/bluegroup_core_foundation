@@ -35,12 +35,13 @@ $blueworx_update_checker = PucFactory::buildUpdateChecker(
 );
 
 /*
- * Our plugin repos are private, so the site needs a token to see releases at all.
+ * Our plugin repos are public, so no token is needed and none is set on live sites.
+ * If a repo is ever made private, the site needs a token to see releases at all.
  * It lives in wp-config.php — never in the plugin, never in the repo:
  *
  *     define( 'BLUEWORX_PLUGIN_UPDATE_TOKEN', 'github_pat_...' );
  *
- * Guarded, so the same code works unchanged if a repo is ever made public.
+ * Guarded, so the same code works whether the repo is public or private.
  */
 if ( defined( 'BLUEWORX_PLUGIN_UPDATE_TOKEN' ) && BLUEWORX_PLUGIN_UPDATE_TOKEN ) {
 	$blueworx_update_checker->setAuthentication( BLUEWORX_PLUGIN_UPDATE_TOKEN );
