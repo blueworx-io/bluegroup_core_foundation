@@ -5,7 +5,7 @@
 // and the repos stay public, so client sites keep fetching plugin updates.
 //
 //   node scripts/lock-public-repos.mjs            show what would change (changes nothing)
-//   node scripts/lock-public-repos.mjs --apply    lock them (also renews an old lock)
+//   node scripts/lock-public-repos.mjs --apply    lock them, and renew the limit for a fresh six months
 //   node scripts/lock-public-repos.mjs --check    prove it, as a second account with no access
 //
 // Environment:
@@ -18,7 +18,7 @@
 // Exits 0 when everything is as it should be, 1 when something needs doing or
 // a stranger got through, 2 when it could not talk to GitHub.
 
-import { applyLock, getLimit, githubRequest, listPublicRepos, planLock, probeAsStranger, probeFailures } from './lib/repo-lock.mjs';
+import { applyLock, getLimit, githubRequest, isFineGrainedToken, listPublicRepos, planLock, probeAsStranger, probeFailures } from './lib/repo-lock.mjs';
 
 const org = process.env.LOCK_ORG || 'blueworx-io';
 const args = new Set(process.argv.slice(2));
@@ -34,6 +34,9 @@ async function main() {
   if (check) {
     const token = process.env.STRANGER_TOKEN;
     if (!token) throw new Error('--check needs STRANGER_TOKEN: a token from a second GitHub account with no access to the organisation.');
+    if (isFineGrainedToken(token)) {
+      throw new Error('STRANGER_TOKEN is a fine-grained token. It can never write to our public repos, so its refusals prove nothing. Use a classic token with the public_repo scope.');
+    }
     const request = githubRequest({ token });
     const repos = await listPublicRepos(request, org);
     if (repos.length === 0) throw new Error(`No public repos found under ${org}.`);
@@ -42,6 +45,7 @@ async function main() {
     console.log(`Tried ${results.length} things as a stranger across ${repos.length} public repos.`);
     for (const line of failures) console.log(`PROBLEM  ${line}`);
     if (failures.length === 0) console.log('Every attempt was blocked.');
+    else console.log('This is not a pass: "inconclusive" and "not tested" mean the lock was not proven.');
     return failures.length === 0 ? 0 : 1;
   }
 
@@ -50,7 +54,7 @@ async function main() {
   const request = githubRequest({ token });
   const repos = await listPublicRepos(request, org);
   if (repos.length === 0) throw new Error(`No public repos found under ${org}.`);
-  const plan = planLock({ repos, limit: await getLimit(request, org), now: new Date() });
+  const plan = planLock({ repos, limit: await getLimit(request, org), now: new Date(), renew: apply });
 
   console.log(`${repos.length} public repos under ${org}.`);
   if (plan.limitProblem) console.log(`TO DO    ${plan.limitProblem}`);

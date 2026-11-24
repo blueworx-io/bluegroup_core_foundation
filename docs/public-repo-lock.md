@@ -33,7 +33,8 @@ they are other places a stranger could write.
 
 GitHub caps an interaction limit at **six months**. After that the repos are open
 again. Renew it at least every five months by running the script below with
-`--apply`: it only changes what has run low or drifted. The script also warns
+`--apply`. Every `--apply` sets the limit again for a fresh six months, so running
+it early is safe. The script also warns
 when fewer than 30 days remain, so running it without `--apply` each month is the
 reminder. A scheduled workflow that does this is a possible follow-up; it needs an
 organisation owner's token stored as a secret, so Luke decides that.
@@ -47,7 +48,7 @@ Node. Give it tokens in the environment, never in a file.
 # 1. See what would change. Changes nothing.
 GITHUB_TOKEN=<org owner token> node scripts/lock-public-repos.mjs
 
-# 2. Lock everything (and renew an old lock).
+# 2. Lock everything, and renew the limit for a fresh six months.
 GITHUB_TOKEN=<org owner token> node scripts/lock-public-repos.mjs --apply
 
 # 3. Prove it from a second GitHub account that is not in the organisation.
@@ -55,9 +56,15 @@ STRANGER_TOKEN=<that account's token> node scripts/lock-public-repos.mjs --check
 ```
 
 - `GITHUB_TOKEN`: an organisation owner's token with `admin:org` and repo admin rights.
-- `STRANGER_TOKEN`: a token from an account with no access. The check tries to
-  open an issue and add a comment on every public repo and expects each to be
-  refused. If one gets through it says so, then closes or deletes what it made.
+- `STRANGER_TOKEN`: a **classic** token (`public_repo` scope) from an account with
+  no access. A fine-grained token is refused up front: it can never write to our
+  public repos, so its refusals would prove nothing.
+- The check tries to open an issue and add a comment (on a thread that is not
+  locked) on every public repo, and expects each to be refused *because of the
+  limit*. A refusal for any other reason (a rate limit, an unexplained 403 or 404)
+  is "inconclusive", and so is a repo with no thread to comment on. Neither is a
+  pass. If an attempt gets through it says so, then closes or deletes what it
+  made. If it cannot clean up, it prints the link to remove by hand.
 - Exit code 0 means all good, 1 means something needs doing or a stranger got
   through, 2 means it could not reach GitHub.
 

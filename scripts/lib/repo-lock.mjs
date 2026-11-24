@@ -89,9 +89,10 @@ export async function getLimit(request, org) {
 
 /**
  * Decides what has to change. Pure.
- * @param {{repos: object[], limit: {limit: string, expiresAt: Date|null}|null, now: Date}} input
+ * `renew` forces the limit to be set again, so a full six months start from now.
+ * @param {{repos: object[], limit: {limit: string, expiresAt: Date|null}|null, now: Date, renew?: boolean}} input
  */
-export function planLock({ repos, limit, now }) {
+export function planLock({ repos, limit, now, renew = false }) {
   const daysLeft = limit?.expiresAt ? (limit.expiresAt.getTime() - now.getTime()) / DAY_MS : null;
   let limitProblem = null;
   if (!limit) limitProblem = 'No limit is set, so anyone with a GitHub account can open issues, pull requests and comments.';
@@ -99,7 +100,7 @@ export function planLock({ repos, limit, now }) {
   else if (daysLeft !== null && daysLeft < 0) limitProblem = 'The limit has expired.';
   else if (daysLeft !== null && daysLeft < RENEW_WITHIN_DAYS) {
     limitProblem = `The limit runs out in ${Math.floor(daysLeft)} days. Renew it.`;
-  }
+  } else if (renew) limitProblem = 'Renewing the limit for a full six months from today.';
 
   const repoFixes = [];
   const warnings = [];
@@ -143,11 +144,27 @@ export async function applyLock(request, org, plan) {
   return done;
 }
 
-/** Turns an HTTP status from a stranger's attempt into a verdict. Pure. */
-export function judgeProbe(status) {
+// What GitHub says when it refuses for a reason that is NOT the lock: rate limits
+// (also sent as 403), and a token that is simply not allowed to write to a repo
+// outside its own account (what a fine-grained token always gets).
+const NOT_THE_LOCK = /rate limit|abuse|secondary|resource not accessible|personal access token|fine-grained|bad credentials|requires authentication/i;
+// What a refusal because of the interaction limit says.
+const THE_LOCK = /interaction|limited to|collaborator|temporarily|restricted/i;
+
+/** A fine-grained token can never write to our public repos, so it proves nothing. */
+export function isFineGrainedToken(token) {
+  return String(token).startsWith('github_pat_');
+}
+
+/**
+ * Turns a stranger's attempt into a verdict. Pure. Only a refusal that names the
+ * interaction limit counts as proof. Any other refusal is "unclear", and GitHub's
+ * own words are kept so the person running it can see why.
+ */
+export function judgeProbe(status, message = '') {
   if (status === 201) return 'open';
-  if (status === 403 || status === 404) return 'blocked';
   if (status === 401) return 'bad-token';
+  if (status === 403 && !NOT_THE_LOCK.test(message) && THE_LOCK.test(message)) return 'blocked';
   return 'unclear';
 }
 
@@ -159,6 +176,13 @@ export function judgeProbe(status) {
  */
 export async function probeAsStranger(request, org, repos) {
   const results = [];
+  const note = (repo, action, res) => ({
+    repo,
+    action,
+    verdict: judgeProbe(res.status, res.body?.message),
+    status: res.status,
+    message: res.body?.message ?? '',
+  });
   for (const repo of repos) {
     const base = `/repos/${org}/${repo.name}`;
 
@@ -166,18 +190,30 @@ export async function probeAsStranger(request, org, repos) {
       title: 'Access check (safe to ignore)',
       body: 'Created by the repo lock check. If you can see this, the repo is not locked.',
     });
-    results.push({ repo: repo.name, action: 'open an issue', verdict: judgeProbe(issue.status), status: issue.status });
+    results.push(note(repo.name, 'open an issue', issue));
     if (issue.status === 201 && issue.body?.number) {
-      await request('PATCH', `${base}/issues/${issue.body.number}`, { state: 'closed' });
+      const closed = await request('PATCH', `${base}/issues/${issue.body.number}`, { state: 'closed' });
+      if (closed.status !== 200) {
+        const url = issue.body.html_url ?? `${base}/issues/${issue.body.number}`;
+        results.push({ repo: repo.name, action: 'close the test issue', verdict: 'cleanup-failed', status: closed.status, url });
+      }
     }
 
-    const existing = await request('GET', `${base}/issues?state=all&per_page=1`);
-    const target = Array.isArray(existing.body) ? existing.body[0]?.number : undefined;
-    if (target) {
-      const comment = await request('POST', `${base}/issues/${target}/comments`, { body: 'Access check (safe to ignore).' });
-      results.push({ repo: repo.name, action: 'comment', verdict: judgeProbe(comment.status), status: comment.status });
-      if (comment.status === 201 && comment.body?.id) {
-        await request('DELETE', `${base}/issues/comments/${comment.body.id}`);
+    // A thread locked on its own refuses everyone, so it says nothing about the
+    // lock: look for one that is not.
+    const existing = await request('GET', `${base}/issues?state=all&per_page=30`);
+    const target = Array.isArray(existing.body) ? existing.body.find((i) => i && !i.locked) : undefined;
+    if (!target) {
+      results.push({ repo: repo.name, action: 'comment', verdict: 'not-run', status: existing.status, message: '' });
+      continue;
+    }
+    const comment = await request('POST', `${base}/issues/${target.number}/comments`, { body: 'Access check (safe to ignore).' });
+    results.push(note(repo.name, 'comment', comment));
+    if (comment.status === 201 && comment.body?.id) {
+      const removed = await request('DELETE', `${base}/issues/comments/${comment.body.id}`);
+      if (removed.status !== 204) {
+        const url = comment.body.html_url ?? `${base}/issues/${target.number}`;
+        results.push({ repo: repo.name, action: 'delete the test comment', verdict: 'cleanup-failed', status: removed.status, url });
       }
     }
   }
@@ -191,6 +227,9 @@ export function probeFailures(results) {
     .map((r) => {
       if (r.verdict === 'open') return `${r.repo}: a stranger could ${r.action}.`;
       if (r.verdict === 'bad-token') return `${r.repo}: GitHub rejected the stranger's token, so this was not tested.`;
-      return `${r.repo}: could not tell whether a stranger can ${r.action} (HTTP ${r.status}).`;
+      if (r.verdict === 'not-run') return `${r.repo}: could not test commenting, because no unlocked thread was found. Not tested.`;
+      if (r.verdict === 'cleanup-failed') return `${r.repo}: could not ${r.action} (HTTP ${r.status}). Remove it by hand: ${r.url}`;
+      const why = r.message ? ` GitHub said: "${r.message}".` : '';
+      return `${r.repo}: inconclusive. Could not tell whether a stranger can ${r.action} (HTTP ${r.status}).${why}`;
     });
 }

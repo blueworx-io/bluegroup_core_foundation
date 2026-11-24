@@ -4,6 +4,7 @@ import {
   applyLock,
   getLimit,
   githubRequest,
+  isFineGrainedToken,
   judgeProbe,
   listPublicRepos,
   planLock,
@@ -131,30 +132,102 @@ test('applyLock does nothing when nothing is wrong', async () => {
   assert.equal(calls.length, 0);
 });
 
-test('judgeProbe: only a created issue or comment counts as open', () => {
+const LOCKED = { status: 403, body: { message: 'Unable to create: interactions are limited to collaborators.' } };
+
+test('judgeProbe: only a refusal that names the limit proves the lock', () => {
   assert.equal(judgeProbe(201), 'open');
-  assert.equal(judgeProbe(403), 'blocked');
-  assert.equal(judgeProbe(404), 'blocked');
+  assert.equal(judgeProbe(403, LOCKED.body.message), 'blocked');
   assert.equal(judgeProbe(401), 'bad-token');
   assert.equal(judgeProbe(500), 'unclear');
 });
 
+test('judgeProbe: rate limits, bare 403/404 and token refusals are inconclusive', () => {
+  assert.equal(judgeProbe(403, 'API rate limit exceeded for user'), 'unclear');
+  assert.equal(judgeProbe(403, 'You have exceeded a secondary rate limit'), 'unclear');
+  assert.equal(judgeProbe(403, 'Resource not accessible by personal access token'), 'unclear');
+  assert.equal(judgeProbe(403), 'unclear');
+  assert.equal(judgeProbe(404, 'Not Found'), 'unclear');
+});
+
+test('a fine-grained token is recognised, a classic one is not', () => {
+  assert.equal(isFineGrainedToken('github_pat_abc'), true);
+  assert.equal(isFineGrainedToken('ghp_abc'), false);
+});
+
 test('probeAsStranger reports blocked everywhere when the lock holds', async () => {
   const { request } = fakeApi({
-    'POST /repos/o/a/issues': { status: 403, body: {} },
-    'GET /repos/o/a/issues?state=all&per_page=1': { status: 200, body: [{ number: 7 }] },
-    'POST /repos/o/a/issues/7/comments': { status: 403, body: {} },
+    'POST /repos/o/a/issues': LOCKED,
+    'GET /repos/o/a/issues?state=all&per_page=30': { status: 200, body: [{ number: 7 }] },
+    'POST /repos/o/a/issues/7/comments': LOCKED,
   });
   const results = await probeAsStranger(request, 'o', [repo('a')]);
   assert.equal(results.length, 2);
   assert.deepEqual(probeFailures(results), []);
 });
 
+test('probeAsStranger skips a locked thread and comments on an unlocked one', async () => {
+  const { request, calls } = fakeApi({
+    'POST /repos/o/a/issues': LOCKED,
+    'GET /repos/o/a/issues?state=all&per_page=30': { status: 200, body: [{ number: 7, locked: true }, { number: 6, locked: false }] },
+    'POST /repos/o/a/issues/6/comments': LOCKED,
+  });
+  await probeAsStranger(request, 'o', [repo('a')]);
+  assert.ok(calls.some((c) => c.path === '/repos/o/a/issues/6/comments'));
+  assert.ok(!calls.some((c) => c.path === '/repos/o/a/issues/7/comments'));
+});
+
+test('probeAsStranger says so when there is no unlocked thread to comment on', async () => {
+  for (const lookup of [
+    { status: 200, body: [] },
+    { status: 200, body: [{ number: 7, locked: true }] },
+    { status: 500, body: { message: 'oops' } },
+  ]) {
+    const { request } = fakeApi({ 'POST /repos/o/a/issues': LOCKED, 'GET /repos/o/a/issues?state=all&per_page=30': lookup });
+    const failures = probeFailures(await probeAsStranger(request, 'o', [repo('a')]));
+    assert.equal(failures.length, 1);
+    assert.match(failures[0], /Not tested/);
+  }
+});
+
+test('an unexplained 403 is reported as inconclusive with what GitHub said', async () => {
+  const { request } = fakeApi({
+    'POST /repos/o/a/issues': { status: 403, body: { message: 'API rate limit exceeded' } },
+    'GET /repos/o/a/issues?state=all&per_page=30': { status: 200, body: [{ number: 7 }] },
+    'POST /repos/o/a/issues/7/comments': LOCKED,
+  });
+  const failures = probeFailures(await probeAsStranger(request, 'o', [repo('a')]));
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /inconclusive.*API rate limit exceeded/);
+});
+
+test('failed cleanup of a test issue or comment prints a link to remove it', async () => {
+  const { request } = fakeApi({
+    'POST /repos/o/a/issues': { status: 201, body: { number: 9, html_url: 'https://github.com/o/a/issues/9' } },
+    'PATCH /repos/o/a/issues/9': { status: 403, body: {} },
+    'GET /repos/o/a/issues?state=all&per_page=30': { status: 200, body: [{ number: 3 }] },
+    'POST /repos/o/a/issues/3/comments': { status: 201, body: { id: 55, html_url: 'https://github.com/o/a/issues/3#issuecomment-55' } },
+    'DELETE /repos/o/a/issues/comments/55': { status: 403, body: {} },
+  });
+  const failures = probeFailures(await probeAsStranger(request, 'o', [repo('a')])).join('\n');
+  assert.match(failures, /Remove it by hand: https:\/\/github.com\/o\/a\/issues\/9\b/);
+  assert.match(failures, /Remove it by hand: https:\/\/github.com\/o\/a\/issues\/3#issuecomment-55/);
+});
+
+test('renew forces the limit to be set again even when plenty of time is left', async () => {
+  const quiet = planLock({ repos: [repo('a')], limit: goodLimit(120), now: NOW });
+  assert.equal(quiet.ok, true);
+  const renew = planLock({ repos: [repo('a')], limit: goodLimit(120), now: NOW, renew: true });
+  assert.equal(renew.needsLimit, true);
+  const { request, calls } = fakeApi({ 'PUT /orgs/o/interaction-limits': { status: 200, body: {} } });
+  await applyLock(request, 'o', renew);
+  assert.equal(calls[0].body.expiry, 'six_months');
+});
+
 test('probeAsStranger catches a repo that is open, and cleans up what it created', async () => {
   const { request, calls } = fakeApi({
     'POST /repos/o/a/issues': { status: 201, body: { number: 9 } },
     'PATCH /repos/o/a/issues/9': { status: 200, body: {} },
-    'GET /repos/o/a/issues?state=all&per_page=1': { status: 200, body: [{ number: 9 }] },
+    'GET /repos/o/a/issues?state=all&per_page=30': { status: 200, body: [{ number: 9 }] },
     'POST /repos/o/a/issues/9/comments': { status: 201, body: { id: 55 } },
     'DELETE /repos/o/a/issues/comments/55': { status: 204, body: null },
   });
