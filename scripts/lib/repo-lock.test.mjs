@@ -5,6 +5,7 @@ import {
   getLimit,
   githubRequest,
   isFineGrainedToken,
+  limitProblemForCheck,
   judgeProbe,
   listPublicRepos,
   planLock,
@@ -54,7 +55,7 @@ test('a looser limit than collaborators only is a problem', () => {
 test('an expired or nearly expired limit is renewed', () => {
   assert.equal(planLock({ repos: [], limit: goodLimit(-1), now: NOW }).needsLimit, true);
   assert.equal(planLock({ repos: [], limit: goodLimit(10), now: NOW }).needsLimit, true);
-  assert.equal(planLock({ repos: [], limit: goodLimit(31), now: NOW }).needsLimit, false);
+  assert.equal(planLock({ repos: [], limit: goodLimit(61), now: NOW }).needsLimit, false);
 });
 
 test('a good limit and tidy repos need nothing', () => {
@@ -258,4 +259,57 @@ test('githubRequest sends the token, parses JSON and reads the next page link', 
   assert.equal(seen.init.headers.Authorization, 'Bearer t');
   assert.deepEqual(res.body, [{ name: 'x' }]);
   assert.equal(res.next, 'https://api.github.com/next');
+});
+
+test('the renewal warning is wide enough for a monthly check', () => {
+  assert.equal(planLock({ repos: [], limit: goodLimit(59), now: NOW }).needsLimit, true);
+  assert.equal(planLock({ repos: [], limit: goodLimit(61), now: NOW }).needsLimit, false);
+});
+
+test('generic words like "temporarily restricted" are not proof of the lock', () => {
+  assert.equal(judgeProbe(403, 'Account temporarily restricted'), 'unclear');
+  assert.equal(judgeProbe(403, 'Only collaborators can do this'), 'unclear');
+});
+
+test('limitProblemForCheck accepts only an unexpired collaborators-only limit', () => {
+  assert.equal(limitProblemForCheck(goodLimit(100), NOW), null);
+  assert.match(limitProblemForCheck(null, NOW), /No interaction limit/);
+  assert.match(limitProblemForCheck({ limit: 'contributors_only', expiresAt: daysFromNow(100) }, NOW), /contributors_only/);
+  assert.match(limitProblemForCheck(goodLimit(-1), NOW), /expired/);
+});
+
+test('a dropped connection during cleanup still reports the link', async () => {
+  const table = {
+    'POST /repos/o/a/issues': { status: 201, body: { number: 9, html_url: 'https://github.com/o/a/issues/9' } },
+    'GET /repos/o/a/issues?state=all&per_page=30': { status: 200, body: [{ number: 3 }] },
+    'POST /repos/o/a/issues/3/comments': LOCKED,
+  };
+  const request = async (method, path) => {
+    if (method === 'PATCH') throw new Error('fetch failed');
+    return table[`${method} ${path}`];
+  };
+  const failures = probeFailures(await probeAsStranger(request, 'o', [repo('a')])).join('\n');
+  assert.match(failures, /no reply.*https:\/\/github.com\/o\/a\/issues\/9/);
+});
+
+test('an unlocked thread is found on a later page', async () => {
+  const { request, calls } = fakeApi({
+    'POST /repos/o/a/issues': LOCKED,
+    'GET /repos/o/a/issues?state=all&per_page=30': { status: 200, body: [{ number: 7, locked: true }], next: '/repos/o/a/issues?page=2' },
+    'GET /repos/o/a/issues?page=2': { status: 200, body: [{ number: 2, locked: false }], next: null },
+    'POST /repos/o/a/issues/2/comments': LOCKED,
+  });
+  const results = await probeAsStranger(request, 'o', [repo('a')]);
+  assert.deepEqual(probeFailures(results), []);
+  assert.ok(calls.some((c) => c.path === '/repos/o/a/issues/2/comments'));
+});
+
+test('every thread locked on every page is reported as not tested', async () => {
+  const { request } = fakeApi({
+    'POST /repos/o/a/issues': LOCKED,
+    'GET /repos/o/a/issues?state=all&per_page=30': { status: 200, body: [{ number: 7, locked: true }], next: '/repos/o/a/issues?page=2' },
+    'GET /repos/o/a/issues?page=2': { status: 200, body: [{ number: 6, locked: true }], next: null },
+  });
+  const failures = probeFailures(await probeAsStranger(request, 'o', [repo('a')]));
+  assert.match(failures[0], /Not tested/);
 });

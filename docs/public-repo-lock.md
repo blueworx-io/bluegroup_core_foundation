@@ -22,9 +22,10 @@ What each requirement needs:
 - **Plugin updates still install.** Nothing about reading a public repo or its
   releases changes. No token is needed on client sites.
 - **Forge's GitHub sync still works.** Issues stay switched on. The limit
-  does not apply to organisation members and collaborators, so the account Forge
-  syncs with must be one of them. `--apply` does not check this; step 3 under
-  "Done when" does. The script warns if any repo has Issues off.
+  exempts organisation members and people with **write access** to the repo, so
+  the account Forge syncs with must be one of them. An outside collaborator with
+  only Triage or Read access is blocked too. Confirm this before running `--apply`.
+  The script cannot check it; step 3 under "Done when" does. The script warns if any repo has Issues off.
 
 Wikis, projects and discussions are switched off on every public repo too, because
 they are other places a stranger could write.
@@ -35,8 +36,8 @@ GitHub caps an interaction limit at **six months**. After that the repos are ope
 again. Renew it at least every five months by running the script below with
 `--apply`. Every `--apply` sets the limit again for a fresh six months, so running
 it early is safe. The script also warns
-when fewer than 30 days remain, so running it without `--apply` each month is the
-reminder. A scheduled workflow that does this is a possible follow-up; it needs an
+when fewer than 60 days remain, so running it without `--apply` once a month always
+shows the warning before the limit runs out. A scheduled workflow that does this is a possible follow-up; it needs an
 organisation owner's token stored as a secret, so Luke decides that.
 
 ## Using the script
@@ -52,10 +53,13 @@ GITHUB_TOKEN=<org owner token> node scripts/lock-public-repos.mjs
 GITHUB_TOKEN=<org owner token> node scripts/lock-public-repos.mjs --apply
 
 # 3. Prove it from a second GitHub account that is not in the organisation.
-STRANGER_TOKEN=<that account's token> node scripts/lock-public-repos.mjs --check
+GITHUB_TOKEN=<org owner token> STRANGER_TOKEN=<that account's token> node scripts/lock-public-repos.mjs --check
 ```
 
 - `GITHUB_TOKEN`: an organisation owner's token with `admin:org` and repo admin rights.
+  `--check` uses it only to read the limit and confirm it is "collaborators only".
+  A looser limit ("prior contributors") refuses in similar words, so the check
+  fails when the active limit is anything else.
 - `STRANGER_TOKEN`: a **classic** token (`public_repo` scope) from an account with
   no access. A fine-grained token is refused up front: it can never write to our
   public repos, so its refusals would prove nothing.

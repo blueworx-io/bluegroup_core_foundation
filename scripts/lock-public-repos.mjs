@@ -9,16 +9,16 @@
 //   node scripts/lock-public-repos.mjs --check    prove it, as a second account with no access
 //
 // Environment:
-//   GITHUB_TOKEN    an organisation owner's token (admin:org and repo scope). Needed for the
-//                   first two. Never put it in a file.
-//   STRANGER_TOKEN  a token from a second GitHub account that is NOT in the organisation.
-//                   Needed for --check only.
+//   GITHUB_TOKEN    an organisation owner's token (admin:org and repo scope). Needed for all
+//                   three; --check only reads the limit with it. Never put it in a file.
+//   STRANGER_TOKEN  a classic token from a second GitHub account that is NOT in the
+//                   organisation. Needed for --check only.
 //   LOCK_ORG        the organisation (default blueworx-io)
 //
 // Exits 0 when everything is as it should be, 1 when something needs doing or
 // a stranger got through, 2 when it could not talk to GitHub.
 
-import { applyLock, getLimit, githubRequest, isFineGrainedToken, listPublicRepos, planLock, probeAsStranger, probeFailures } from './lib/repo-lock.mjs';
+import { applyLock, getLimit, githubRequest, isFineGrainedToken, limitProblemForCheck, listPublicRepos, planLock, probeAsStranger, probeFailures } from './lib/repo-lock.mjs';
 
 const org = process.env.LOCK_ORG || 'blueworx-io';
 const args = new Set(process.argv.slice(2));
@@ -36,6 +36,15 @@ async function main() {
     if (!token) throw new Error('--check needs STRANGER_TOKEN: a token from a second GitHub account with no access to the organisation.');
     if (isFineGrainedToken(token)) {
       throw new Error('STRANGER_TOKEN is a fine-grained token. It can never write to our public repos, so its refusals prove nothing. Use a classic token with the public_repo scope.');
+    }
+    // The stranger cannot read the setting, so an owner's token confirms that the
+    // limit in force is collaborators only. A refusal under a looser one proves nothing.
+    const adminToken = process.env.GITHUB_TOKEN;
+    if (!adminToken) throw new Error('--check also needs GITHUB_TOKEN (read only is enough), to confirm the limit in force is collaborators only.');
+    const problem = limitProblemForCheck(await getLimit(githubRequest({ token: adminToken }), org), new Date());
+    if (problem) {
+      console.log(`PROBLEM  ${problem}`);
+      return 1;
     }
     const request = githubRequest({ token });
     const repos = await listPublicRepos(request, org);

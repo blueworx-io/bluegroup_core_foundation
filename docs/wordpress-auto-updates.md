@@ -91,6 +91,12 @@ assets to a top-level `dist/` ships those assets like any other file in the repo
 
 Nothing. The repos are public, so the site sees the releases as it is.
 
+**Sites set up before the repos were public:** remove the
+`BLUEWORX_PLUGIN_UPDATE_TOKEN` line from `wp-config.php` once every plugin on that
+site is public. While it is set, the bootstrap sends it, and GitHub rejects a
+request that carries an expired or revoked token even for a public repo, so updates
+would stop silently when it lapses. Revoke the token itself once no site uses it.
+
 Only if a repo is ever made private again, add a read-only token to `wp-config.php`,
 above the `/* That's all, stop editing! */` line:
 

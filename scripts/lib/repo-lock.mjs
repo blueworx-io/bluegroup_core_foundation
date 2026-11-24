@@ -12,8 +12,9 @@
 
 export const LIMIT = 'collaborators_only';
 export const EXPIRY = 'six_months';
-// Renew when fewer days than this are left on the limit.
-export const RENEW_WITHIN_DAYS = 30;
+// Renew when fewer days than this are left on the limit. Wide enough that a check
+// run once a month (up to 31 days apart) always sees the warning before it lapses.
+export const RENEW_WITHIN_DAYS = 60;
 
 // Switched off on every public repo: strangers could write to these too.
 // Issues are deliberately NOT here — Forge's sync needs them.
@@ -148,8 +149,22 @@ export async function applyLock(request, org, plan) {
 // (also sent as 403), and a token that is simply not allowed to write to a repo
 // outside its own account (what a fine-grained token always gets).
 const NOT_THE_LOCK = /rate limit|abuse|secondary|resource not accessible|personal access token|fine-grained|bad credentials|requires authentication/i;
-// What a refusal because of the interaction limit says.
-const THE_LOCK = /interaction|limited to|collaborator|temporarily|restricted/i;
+// What a refusal because of an interaction limit says. Generic words such as
+// "restricted" are not enough. Which limit is active is checked separately with
+// `limitProblemForCheck`, because a "prior contributors" limit refuses in the same words.
+const THE_LOCK = /interaction|limited to/i;
+
+/**
+ * Before trusting a stranger's refusals, the active setting must be the right one.
+ * Pure. Returns a plain problem, or null when the limit is collaborators only
+ * and has not run out.
+ */
+export function limitProblemForCheck(limit, now) {
+  if (!limit) return 'No interaction limit is set, so the refusals cannot come from the lock.';
+  if (limit.limit !== LIMIT) return `The active limit is "${limit.limit}", not "${LIMIT}", so some outsiders can still write.`;
+  if (limit.expiresAt && limit.expiresAt.getTime() <= now.getTime()) return 'The limit has expired.';
+  return null;
+}
 
 /** A fine-grained token can never write to our public repos, so it proves nothing. */
 export function isFineGrainedToken(token) {
@@ -192,32 +207,65 @@ export async function probeAsStranger(request, org, repos) {
     });
     results.push(note(repo.name, 'open an issue', issue));
     if (issue.status === 201 && issue.body?.number) {
-      const closed = await request('PATCH', `${base}/issues/${issue.body.number}`, { state: 'closed' });
-      if (closed.status !== 200) {
-        const url = issue.body.html_url ?? `${base}/issues/${issue.body.number}`;
-        results.push({ repo: repo.name, action: 'close the test issue', verdict: 'cleanup-failed', status: closed.status, url });
-      }
+      const url = issue.body.html_url ?? `${base}/issues/${issue.body.number}`;
+      await cleanUp(results, repo.name, 'close the test issue', url, 200, () =>
+        request('PATCH', `${base}/issues/${issue.body.number}`, { state: 'closed' }),
+      );
     }
 
     // A thread locked on its own refuses everyone, so it says nothing about the
-    // lock: look for one that is not.
-    const existing = await request('GET', `${base}/issues?state=all&per_page=30`);
-    const target = Array.isArray(existing.body) ? existing.body.find((i) => i && !i.locked) : undefined;
-    if (!target) {
-      results.push({ repo: repo.name, action: 'comment', verdict: 'not-run', status: existing.status, message: '' });
+    // lock: look for one that is not, on any page.
+    const found = await findUnlockedThread(request, base);
+    if (!found.thread) {
+      results.push({ repo: repo.name, action: 'comment', verdict: 'not-run', status: found.status, message: '' });
       continue;
     }
+    const target = found.thread;
     const comment = await request('POST', `${base}/issues/${target.number}/comments`, { body: 'Access check (safe to ignore).' });
     results.push(note(repo.name, 'comment', comment));
     if (comment.status === 201 && comment.body?.id) {
-      const removed = await request('DELETE', `${base}/issues/comments/${comment.body.id}`);
-      if (removed.status !== 204) {
-        const url = comment.body.html_url ?? `${base}/issues/${target.number}`;
-        results.push({ repo: repo.name, action: 'delete the test comment', verdict: 'cleanup-failed', status: removed.status, url });
-      }
+      const url = comment.body.html_url ?? `${base}/issues/${target.number}`;
+      await cleanUp(results, repo.name, 'delete the test comment', url, 204, () =>
+        request('DELETE', `${base}/issues/comments/${comment.body.id}`),
+      );
     }
   }
   return results;
+}
+
+// Pages through a repo's issues and pull requests until one is not locked.
+// Stops after a few pages: a repo with that many locked threads in a row is odd
+// enough to be reported as "not tested".
+const MAX_THREAD_PAGES = 10;
+async function findUnlockedThread(request, base) {
+  let path = `${base}/issues?state=all&per_page=30`;
+  let status = 0;
+  for (let page = 0; path && page < MAX_THREAD_PAGES; page++) {
+    let res;
+    try {
+      res = await request('GET', path);
+    } catch {
+      return { thread: undefined, status: 0 };
+    }
+    status = res.status;
+    if (!Array.isArray(res.body)) break;
+    const thread = res.body.find((i) => i && !i.locked);
+    if (thread) return { thread, status };
+    path = res.next;
+  }
+  return { thread: undefined, status };
+}
+
+// Undoes a test post. A dropped connection or a refusal must not lose the link,
+// so both are reported with it instead of ending the run.
+async function cleanUp(results, repo, action, url, okStatus, run) {
+  try {
+    const res = await run();
+    if (res.status === okStatus) return;
+    results.push({ repo, action, verdict: 'cleanup-failed', status: res.status, url });
+  } catch {
+    results.push({ repo, action, verdict: 'cleanup-failed', status: 0, url });
+  }
 }
 
 /** One line per repo-action that is not properly blocked. Pure. */
@@ -228,7 +276,7 @@ export function probeFailures(results) {
       if (r.verdict === 'open') return `${r.repo}: a stranger could ${r.action}.`;
       if (r.verdict === 'bad-token') return `${r.repo}: GitHub rejected the stranger's token, so this was not tested.`;
       if (r.verdict === 'not-run') return `${r.repo}: could not test commenting, because no unlocked thread was found. Not tested.`;
-      if (r.verdict === 'cleanup-failed') return `${r.repo}: could not ${r.action} (HTTP ${r.status}). Remove it by hand: ${r.url}`;
+      if (r.verdict === 'cleanup-failed') return `${r.repo}: could not ${r.action} (${r.status ? `HTTP ${r.status}` : 'no reply'}). Remove it by hand: ${r.url}`;
       const why = r.message ? ` GitHub said: "${r.message}".` : '';
       return `${r.repo}: inconclusive. Could not tell whether a stranger can ${r.action} (HTTP ${r.status}).${why}`;
     });
