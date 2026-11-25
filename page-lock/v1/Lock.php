@@ -39,6 +39,12 @@ final class Lock {
 	/** Where a section's id sits, inside the block's metadata. Never stored: see with_ids(). */
 	const ID = 'blueworxSection';
 
+	/** What an id looks like: the section's place on the page, such as 2, or 2.0 for the first one inside it. */
+	const PLACE = '\d+(?:\.\d+)*';
+
+	/** Elements that are part of the words they sit in. */
+	const INLINE = 'a|abbr|b|bdi|bdo|br|cite|code|del|em|font|i|ins|kbd|mark|q|s|samp|small|span|strike|strong|sub|sup|time|tt|u|var|wbr';
+
 	/** Hides the add-block button, which stays on screen, greyed out, when the editor is locked. */
 	const NO_ADD_BUTTON = '.editor-document-tools__inserter-toggle,.edit-post-header-toolbar__inserter-toggle{display:none!important}';
 
@@ -80,6 +86,7 @@ final class Lock {
 		self::retire_theme_lock();
 
 		add_action( 'init', array( self::class, 'register_meta' ) );
+		add_filter( 'register_block_type_args', array( self::class, 'room_for_ids' ) );
 		add_action( 'init', array( self::class, 'register_rest_guards' ), 20 );
 		add_filter( 'add_post_metadata', array( self::class, 'guard_meta' ), 10, 3 );
 		add_filter( 'update_post_metadata', array( self::class, 'guard_meta' ), 10, 3 );
@@ -289,35 +296,38 @@ final class Lock {
 			return false;
 		}
 		return self::outline( $now ) !== self::outline( $was )
-			|| self::adds_outside( $was, $now )
+			|| array_map( array( self::class, 'structure' ), $now['html'] ) !== array_map( array( self::class, 'structure' ), $was['html'] )
 			|| self::moves( $was, $now, $was, '' );
 	}
 
 	/**
-	 * Whether there is markup outside the sections where there was none.
+	 * The elements in some markup, in order.
 	 *
-	 * Words an older page already has beside its sections may still be edited.
+	 * Links and formatting inside words are left out, as they are part of the
+	 * words. Paragraph tags are put round plain words first, as the block editor
+	 * does itself just by opening the page.
 	 *
-	 * @param array $was Page as saved.
-	 * @param array $now Page being saved, of the same shape.
-	 * @return bool
+	 * @param string $html Markup from outside the sections.
+	 * @return string[]
 	 */
-	private static function adds_outside( $was, $now ) {
-		foreach ( $now['html'] as $i => $html ) {
-			if ( '' !== trim( $html ) && '' === trim( $was['html'][ $i ] ) ) {
-				return true;
-			}
+	private static function structure( $html ) {
+		if ( '' === trim( $html ) ) {
+			return array();
 		}
-		return false;
+		$html = strtolower( wpautop( (string) preg_replace( '/<!--.*?-->/s', '', $html ) ) );
+		// A comment nobody closed would hide the sections after it.
+		preg_match_all( '#</?[a-z][a-z0-9-]*|<!--#', $html, $tags );
+		return array_values( preg_grep( '#^</?(?:' . self::INLINE . ')$#', $tags[0], PREG_GREP_INVERT ) );
 	}
 
 	/**
 	 * Whether sections of one type have changed places.
 	 *
 	 * A section that came back with its id has to be where it was. One without
-	 * an id, from something that read the page before ids existed or dropped
-	 * them, is only known by its words, so it counts as moved when whole sections
-	 * have traded places word for word. Any other edit is taken as words.
+	 * an id, from an editor still open since the first layout was saved or from
+	 * something that dropped it, is only known by its words, so it counts as moved when whole sections
+	 * have traded places word for word. Any other edit is taken as words. An id
+	 * that is somehow saved in the page says nothing about where it was read.
 	 *
 	 * @param array  $was  Block as saved.
 	 * @param array  $now  Block being saved, of the same shape.
@@ -330,7 +340,7 @@ final class Lock {
 		foreach ( $now['children'] as $i => $child ) {
 			$here = '' === $path ? (string) $i : $path . '.' . $i;
 			$id   = self::id_of( $child );
-			if ( '' === $id || ! self::has_id( $page, $id ) ) {
+			if ( '' === $id || ! self::has_id( $page, $id ) || self::id_of( $was['children'][ $i ] ) === $id ) {
 				$unknown[ $child['name'] ][] = $i;
 			} elseif ( $id !== $here ) {
 				return true;
@@ -388,18 +398,11 @@ final class Lock {
 	 * @return string
 	 */
 	private static function fingerprint( $node ) {
-		$attrs = self::sorted( json_decode( $node['attrs'], true ) );
-		if ( isset( $attrs['metadata'] ) && is_array( $attrs['metadata'] ) ) {
-			unset( $attrs['metadata'][ self::ID ] );
-			if ( ! $attrs['metadata'] ) {
-				unset( $attrs['metadata'] );
-			}
-		}
 		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- compared here and thrown away.
 		return serialize(
 			array(
 				$node['name'],
-				$attrs ? $attrs : array(),
+				self::sorted( json_decode( self::unmark( $node['attrs'] ), true ) ),
 				array_map( 'trim', $node['html'] ),
 				array_map( array( self::class, 'fingerprint' ), $node['children'] ),
 			)
@@ -421,15 +424,15 @@ final class Lock {
 	}
 
 	/**
-	 * The id a block carries, or ''.
+	 * The id the lock gave a block, or ''.
 	 *
 	 * @param array $node Block from read().
 	 * @return string
 	 */
 	private static function id_of( $node ) {
-		$attrs = json_decode( $node['attrs'], true );
-		$id    = isset( $attrs['metadata'][ self::ID ] ) && is_array( $attrs['metadata'] ) ? $attrs['metadata'][ self::ID ] : '';
-		return is_string( $id ) ? $id : '';
+		$attrs = json_decode( $node['attrs'] );
+		$id    = isset( $attrs->metadata->{self::ID} ) ? $attrs->metadata->{self::ID} : '';
+		return is_string( $id ) && preg_match( '/^' . self::PLACE . '$/D', $id ) ? $id : '';
 	}
 
 	/**
@@ -460,15 +463,42 @@ final class Lock {
 	 * @return string
 	 */
 	public static function with_ids( $content ) {
+		return self::each_block( $content, array( self::class, 'mark' ) );
+	}
+
+	/**
+	 * Content with every section's id taken off.
+	 *
+	 * @param string $content Post content.
+	 * @return string
+	 */
+	public static function without_ids( $content ) {
+		return self::each_block( $content, array( self::class, 'unmark' ) );
+	}
+
+	/**
+	 * Content with each block's settings changed.
+	 *
+	 * @param string   $content Post content.
+	 * @param callable $change  Given the settings as written and the block's id.
+	 * @return string
+	 */
+	private static function each_block( $content, $change ) {
 		$ids = array();
 		self::list_ids( self::read( $content ), '', $ids );
+		// Last first, so the places of those before it stay right.
 		foreach ( array_reverse( $ids, true ) as $id => $node ) {
+			$attrs = call_user_func( $change, $node['attrs'], (string) $id );
+			if ( $attrs === $node['attrs'] ) {
+				continue;
+			}
 			$comment = substr( $content, $node['at'], $node['length'] );
-			$marked  = self::mark( $node['attrs'], (string) $id );
 			if ( '' === $node['attrs'] ) {
-				$comment = preg_replace( '#\s+(/?-->)$#', ' ' . $marked . ' $1', $comment );
+				$comment = preg_replace( '#\s+(/?-->)$#', ' ' . $attrs . ' $1', $comment );
+			} elseif ( '' === $attrs ) {
+				$comment = preg_replace( '#\s*' . preg_quote( $node['attrs'], '#' ) . '#', '', $comment );
 			} else {
-				$comment = str_replace( $node['attrs'], $marked, $comment );
+				$comment = str_replace( $node['attrs'], $attrs, $comment );
 			}
 			$content = substr_replace( $content, $comment, $node['at'], $node['length'] );
 		}
@@ -492,73 +522,75 @@ final class Lock {
 	}
 
 	/**
-	 * A block's settings with its id added.
-	 *
-	 * Written into the text as it stands, so taking the id off again gives back
-	 * exactly what was saved.
+	 * A block's settings with its id added, or as they are where it cannot be.
 	 *
 	 * @param string $attrs Settings, as written, or ''.
 	 * @param string $id    Id.
 	 * @return string
 	 */
 	private static function mark( $attrs, $id ) {
-		$mark    = '"metadata":{"' . self::ID . '":"' . $id . '"}';
-		$decoded = json_decode( $attrs );
-		if ( '' === $attrs || ( is_object( $decoded ) && ! get_object_vars( $decoded ) ) ) {
-			return '{' . $mark . '}';
+		$mark     = '"' . self::ID . '":"' . $id . '"';
+		$settings = json_decode( $attrs );
+		if ( '' === $attrs ) {
+			return '{"metadata":{' . $mark . '}}';
 		}
-		if ( ! is_object( $decoded ) ) {
+		if ( ! is_object( $settings ) || ! get_object_vars( $settings ) ) {
 			return $attrs;
 		}
-		if ( ! isset( $decoded->metadata ) ) {
-			return substr( $attrs, 0, -1 ) . ',' . $mark . '}';
+		if ( ! property_exists( $settings, 'metadata' ) ) {
+			return substr( $attrs, 0, -1 ) . ',"metadata":{' . $mark . '}}';
 		}
-		if ( ! is_object( $decoded->metadata ) ) {
+		if ( ! is_object( $settings->metadata ) || ! get_object_vars( $settings->metadata ) ) {
 			return $attrs;
 		}
-		// The block already has some, such as a name of its own.
-		$decoded->metadata->{self::ID} = $id;
-		return serialize_block_attributes( $decoded );
+		$settings->metadata = (object) array_merge( array( self::ID => $id ), get_object_vars( $settings->metadata ) );
+		return self::rewrite( $attrs, '"metadata"\s*:\s*\{', '$0' . $mark . ',', $settings );
 	}
 
 	/**
-	 * Content with every section's id taken off.
+	 * A block's settings with its id taken off.
 	 *
-	 * @param string $content Post content.
+	 * @param string $attrs Settings, as written, or ''.
 	 * @return string
 	 */
-	public static function without_ids( $content ) {
-		$content = (string) $content;
-		if ( false === strpos( $content, '"' . self::ID . '"' ) ) {
-			return $content;
+	private static function unmark( $attrs ) {
+		if ( '' === self::id_of( array( 'attrs' => $attrs ) ) ) {
+			return $attrs;
 		}
-		$out = preg_replace_callback(
-			self::DELIMITER,
-			function ( $m ) {
-				if ( empty( $m['attrs'] ) ) {
-					return $m[0];
-				}
-				// A quote inside somebody's words is always written escaped, so
-				// this only ever matches the id itself.
-				$id    = '"' . self::ID . '"\s*:\s*"[^"\\\\]*"';
-				$attrs = preg_replace(
-					array(
-						'#,\s*"metadata"\s*:\s*\{\s*' . $id . '\s*\}#',
-						'#"metadata"\s*:\s*\{\s*' . $id . '\s*\}(?:\s*,\s*)?#',
-						'#,\s*' . $id . '#',
-						'#' . $id . '(?:\s*,\s*)?#',
-					),
-					'',
-					$m['attrs']
-				);
-				if ( preg_match( '#^\{\s*\}\s*$#', $attrs ) ) {
-					$attrs = '';
-				}
-				return str_replace( $m['attrs'], $attrs, $m[0] );
-			},
-			$content
-		);
-		return null === $out ? $content : $out;
+		$settings = json_decode( $attrs );
+		$mark     = '"' . self::ID . '"\s*:\s*"' . self::PLACE . '"';
+		unset( $settings->metadata->{self::ID} );
+		if ( ! get_object_vars( $settings->metadata ) ) {
+			unset( $settings->metadata );
+			$mark = '"metadata"\s*:\s*\{\s*' . $mark . '\s*\}';
+		}
+		$attrs = self::rewrite( $attrs, ',\s*' . $mark . '|' . $mark . '(?:\s*,\s*)?', '', $settings );
+		return get_object_vars( $settings ) ? $attrs : '';
+	}
+
+	/**
+	 * Settings with the one change made that gives the settings wanted.
+	 *
+	 * The text is changed rather than written out again, so everything else in it
+	 * stays exactly as it was saved, and only where the result is what was meant:
+	 * the same words can turn up again inside a list.
+	 *
+	 * @param string $attrs   Settings, as written.
+	 * @param string $pattern What to replace.
+	 * @param string $with    What to put there.
+	 * @param object $wanted  The settings that should come out.
+	 * @return string
+	 */
+	private static function rewrite( $attrs, $pattern, $with, $wanted ) {
+		preg_match_all( '/' . $pattern . '/', $attrs, $matches, PREG_OFFSET_CAPTURE );
+		foreach ( $matches[0] as $match ) {
+			$out = substr_replace( $attrs, str_replace( '$0', $match[0], $with ), $match[1], strlen( $match[0] ) );
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- compared here and thrown away.
+			if ( serialize( json_decode( $out ) ) === serialize( $wanted ) ) {
+				return $out;
+			}
+		}
+		return $attrs;
 	}
 
 	/**
@@ -683,18 +715,29 @@ final class Lock {
 	}
 
 	/**
-	 * Gives whoever the lock holds the ids of the sections they are reading.
+	 * Lets a block hold its id on WordPress before 6.5, which is when WordPress
+	 * gave every block metadata itself.
 	 *
-	 * Not before WordPress 6.5, whose block previews refuse metadata.
+	 * @param array $args Block type settings.
+	 * @return array
+	 */
+	public static function room_for_ids( $args ) {
+		$attributes = isset( $args['attributes'] ) && is_array( $args['attributes'] ) ? $args['attributes'] : array();
+		if ( ! isset( $attributes['metadata'] ) ) {
+			$attributes['metadata'] = array( 'type' => 'object' );
+			$args['attributes']     = $attributes;
+		}
+		return $args;
+	}
+
+	/**
+	 * Gives whoever the lock holds the ids of the sections they are reading.
 	 *
 	 * @param object $response The response.
 	 * @param object $post     The post.
 	 * @return object
 	 */
 	public static function rest_ids( $response, $post ) {
-		if ( ! isset( \WP_Block_Type::GLOBAL_ATTRIBUTES['metadata'] ) ) {
-			return $response;
-		}
 		$data = $response->get_data();
 		if ( isset( $data['content']['raw'] ) && self::applies( $post->ID ) ) {
 			$data['content']['raw'] = self::with_ids( $data['content']['raw'] );
@@ -705,7 +748,7 @@ final class Lock {
 
 	/**
 	 * Keeps a locked page's content on any save that is not REST, and takes the
-	 * section ids off whatever is saved.
+	 * section ids off any page as it is saved.
 	 *
 	 * There is no way to refuse from here with a message, so the content stays
 	 * as it was and the rest of the save (title, excerpt) goes through.
@@ -727,9 +770,15 @@ final class Lock {
 				return $data;
 			}
 		}
-		$saved = self::without_ids( $content );
-		if ( $saved !== $content ) {
-			$data['post_content'] = wp_slash( $saved );
+		$type = isset( $data['post_type'] ) ? $data['post_type'] : '';
+		if ( 'revision' === $type && ! empty( $data['post_parent'] ) ) {
+			$type = get_post_type( $data['post_parent'] );
+		}
+		if ( self::covers( $type ) ) {
+			$saved = self::without_ids( $content );
+			if ( $saved !== $content ) {
+				$data['post_content'] = wp_slash( $saved );
+			}
 		}
 		return $data;
 	}

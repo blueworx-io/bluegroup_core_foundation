@@ -49,24 +49,15 @@ if ( ! function_exists( 'wp_unslash' ) ) {
 		return stripslashes( (string) $value );
 	}
 }
-if ( ! function_exists( 'serialize_block_attributes' ) ) {
-	function serialize_block_attributes( $attrs ) {
-		return strtr(
-			json_encode( $attrs, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
-			[
-				'\\\\' => '\\u005c',
-				'--'   => '\\u002d\\u002d',
-				'<'    => '\\u003c',
-				'>'    => '\\u003e',
-				'&'    => '\\u0026',
-				'\\"'  => '\\u0022',
-			]
-		);
-	}
-}
-if ( ! class_exists( 'WP_Block_Type' ) ) {
-	class WP_Block_Type {
-		const GLOBAL_ATTRIBUTES = [ 'lock' => [], 'metadata' => [] ];
+if ( ! function_exists( 'wpautop' ) ) {
+	// The part that matters here: loose words become paragraphs.
+	function wpautop( $text ) {
+		$out = '';
+		foreach ( preg_split( '#(<(?:p|div|h2)\b.*</(?:p|div|h2)>)|\n\s*\n#sU', (string) $text, -1, PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE ) as $piece ) {
+			$loose = '' !== trim( $piece ) && ! preg_match( '#^\s*</?(?:p|div|h2)\b#', $piece );
+			$out  .= $loose ? '<p>' . trim( $piece ) . '</p>' : $piece;
+		}
+		return $out;
 	}
 }
 if ( ! class_exists( 'WP_Block_Type_Registry' ) ) {

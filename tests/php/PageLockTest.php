@@ -76,6 +76,45 @@ final class PageLockTest extends TestCase {
 		$this->assertTrue( Lock::refuses( $page, $page . '<p>More</p>' ) );
 	}
 
+	public function test_nothing_is_added_beside_words_already_outside_the_sections(): void {
+		$old = '<p>An old introduction</p>';
+		foreach (
+			[
+				$old . '<p>Another paragraph</p>',
+				'<h2>A heading</h2>' . $old,
+				$old . '<img src="x.jpg">',
+				$old . '<a href="/buy">Buy</a>',
+				$old . "\n\nBare words",
+				'<div>An old introduction</div>',
+				'<p>An old introduction<iframe src="x"></iframe></p>',
+				'<p>An old introduction<!-- </p>',
+				'',
+			] as $now
+		) {
+			$this->assertTrue( Lock::refuses( $old . self::HERO, $now . self::HERO ), $now );
+		}
+	}
+
+	public function test_words_outside_the_sections_can_be_reworded_linked_and_made_bold(): void {
+		$old = '<div><p>An old introduction</p><img src="a.jpg"></div>';
+		foreach (
+			[
+				'<div><p>All new</p><img src="b.jpg" alt="B"></div>',
+				'<div><p class="x">An <strong>old</strong><br><a href="/">introduction</a></p><img src="a.jpg"></div>',
+				"<div>\n<p>An old introduction</p>\n<img src='a.jpg' />\n</div>",
+				'<!-- a note with <p> in it --><div><p>An old introduction</p><img src="a.jpg"></div>',
+			] as $now
+		) {
+			$this->assertFalse( Lock::refuses( $old . self::HERO, $now . self::HERO ), $now );
+		}
+	}
+
+	public function test_the_editor_adding_paragraph_tags_to_plain_words_is_not_a_change(): void {
+		// The block editor does this to a page's plain words as it opens it.
+		$this->assertFalse( Lock::refuses( "First words\n\nSecond words\n" . self::HERO, "<p>First words</p>\n<p>Second, edited</p>\n\n" . self::HERO ) );
+		$this->assertTrue( Lock::refuses( "First words\n\n" . self::HERO, "<p>First words</p>\n<p>A second</p>\n\n" . self::HERO ) );
+	}
+
 	public function test_words_inside_a_block_can_change(): void {
 		$this->assertFalse(
 			Lock::refuses(
@@ -153,6 +192,10 @@ final class PageLockTest extends TestCase {
 		$this->assertFalse( Lock::refuses( self::HERO, '<!-- wp:bwx/section-hero {"metadata":"0"} /-->' ) );
 	}
 
+	public function test_an_id_saved_in_a_page_never_makes_it_unsaveable(): void {
+		$this->assertFalse( Lock::refuses( self::hero( 'A', '1' ) . self::hero( 'B', '0' ), self::hero( 'A, edited', '1' ) . self::hero( 'B', '0' ) ) );
+	}
+
 	public function pages_to_read(): array {
 		return [
 			'sections'                => [ self::HERO . "\n\n" . self::STEPS ],
@@ -170,7 +213,7 @@ final class PageLockTest extends TestCase {
 		$read = Lock::with_ids( $content );
 		$this->assertStringContainsString( '"blueworxSection":"0"', $read );
 		$this->assertFalse( Lock::refuses( $content, $read ) );
-		$data = Lock::insert_guard( [ 'post_content' => wp_slash( $read ) ], [ 'ID' => 1 ] );
+		$data = Lock::insert_guard( [ 'post_type' => 'page', 'post_content' => wp_slash( $read ) ], [ 'ID' => 1 ] );
 		$this->assertSame( $content, wp_unslash( $data['post_content'] ) );
 	}
 
@@ -183,7 +226,9 @@ final class PageLockTest extends TestCase {
 
 	public function test_ids_come_off_however_the_tool_writes_its_json(): void {
 		$this->assertSame( '<!-- wp:bwx/a {"b": 1} /-->', Lock::without_ids( '<!-- wp:bwx/a {"metadata": {"blueworxSection": "0"}, "b": 1} /-->' ) );
-		$this->assertSame( '<!-- wp:bwx/a /-->', Lock::without_ids( Lock::with_ids( '<!-- wp:bwx/a {} /-->' ) ) );
+		foreach ( [ '{}', '{"metadata":null}', '{"metadata":{}}', '{"metadata":"x"}' ] as $attrs ) {
+			$this->assertSame( '<!-- wp:bwx/a ' . $attrs . ' /-->', Lock::without_ids( Lock::with_ids( '<!-- wp:bwx/a ' . $attrs . ' /-->' ) ) );
+		}
 		$this->assertSame( '<!-- wp:bwx/a {"metadata":{"name":"N"}} /-->', Lock::without_ids( '<!-- wp:bwx/a {"metadata":{"blueworxSection":"0","name":"N"}} /-->' ) );
 	}
 
@@ -192,14 +237,60 @@ final class PageLockTest extends TestCase {
 		$this->assertSame( $words, Lock::without_ids( $words ) );
 	}
 
+	public function test_only_an_id_the_lock_gave_out_comes_off(): void {
+		foreach (
+			[
+				'{"items":[{"blueworxSection":"0"},{"metadata":{"blueworxSection":"0"}}]}',
+				'{"blueworxSection":"0"}',
+				'{"settings":{"metadata":{"blueworxSection":"1.2"}}}',
+				'{"metadata":{"blueworxSection":"hero"}}',
+				'{"metadata":{"blueworxSection":["0"]}}',
+				'{"metadata":{"blueworxSection":0}}',
+			] as $attrs
+		) {
+			$content = '<!-- wp:other/block ' . $attrs . ' /-->';
+			$this->assertSame( $content, Lock::without_ids( $content ) );
+		}
+		// The id comes off and everything else stays to the letter.
+		foreach (
+			[
+				'{"items":[{"blueworxSection":"0"},{"metadata":{"blueworxSection":"0"}}],"big":12345678901234567890,"n":1.0,"o":{}}',
+				'{"metadata":{"name":"Top","x":[{"blueworxSection":"0"}]},"n":1.50}',
+			] as $attrs
+		) {
+			$content = '<!-- wp:other/block ' . $attrs . ' /-->';
+			$this->assertNotSame( $content, Lock::with_ids( $content ) );
+			$this->assertSame( $content, Lock::without_ids( Lock::with_ids( $content ) ) );
+		}
+	}
+
+	public function test_another_post_type_is_never_altered(): void {
+		$content = Lock::with_ids( self::HERO );
+		foreach ( [ 'post', 'product', 'wp_block' ] as $type ) {
+			$data = [ 'post_type' => $type, 'post_content' => wp_slash( $content ) ];
+			$this->assertSame( $data, Lock::insert_guard( $data, [ 'ID' => 7 ] ) );
+		}
+		// A page's autosave and revisions are the page's.
+		$this->page( 1, self::HERO );
+		$data = Lock::insert_guard( [ 'post_type' => 'revision', 'post_parent' => 1, 'post_content' => wp_slash( $content ) ], [ 'ID' => 0 ] );
+		$this->assertSame( self::HERO, wp_unslash( $data['post_content'] ) );
+	}
+
 	public function test_ids_never_stay_in_a_saved_page_whoever_saves_it(): void {
 		$this->admin();
 		$this->page( 1, self::HERO );
 		$read = Lock::with_ids( self::HERO . self::STEPS );
 		foreach ( [ [ 'ID' => 1 ], [], [ 'ID' => 99 ] ] as $postarr ) {
-			$data = Lock::insert_guard( [ 'post_content' => wp_slash( $read ) ], $postarr );
+			$data = Lock::insert_guard( [ 'post_type' => 'page', 'post_content' => wp_slash( $read ) ], $postarr );
 			$this->assertSame( self::HERO . self::STEPS, wp_unslash( $data['post_content'] ) );
 		}
+	}
+
+	public function test_every_block_can_hold_its_id_on_an_older_wordpress(): void {
+		$this->assertSame( [ 'attributes' => [ 'metadata' => [ 'type' => 'object' ] ] ], Lock::room_for_ids( [] ) );
+		$this->assertSame( [ 'attributes' => [ 'metadata' => [ 'type' => 'object' ] ] ], Lock::room_for_ids( [ 'attributes' => null ] ) );
+		$own = [ 'attributes' => [ 'heading' => [ 'type' => 'string' ], 'metadata' => [ 'type' => 'string' ] ] ];
+		$this->assertSame( $own, Lock::room_for_ids( $own ) );
 	}
 
 	public function test_only_someone_held_by_the_lock_is_given_the_ids(): void {

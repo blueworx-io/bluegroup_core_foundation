@@ -262,12 +262,10 @@ test('markup outside the sections, and sections swapped round, are refused', asy
   expect((await save(hero('Second section') + hero('First section'))).status()).toBe(403);
 
   // What a client reads says which section is which, so a section moved and
-  // reworded in one go is still refused. Not before WordPress 6.5.
+  // reworded in one go is still refused.
   const read = await savedContent(cp, clientNonce, post.id);
-  if (read.includes('blueworxSection')) {
-    const [first, second] = read.split(/(?=<!-- wp:)/);
-    expect((await save(second.replace('Second section', 'Reworded') + first)).status()).toBe(403);
-  }
+  const [first, second] = read.split(/(?=<!-- wp:)/);
+  expect((await save(second.replace('Second section', 'Reworded') + first)).status()).toBe(403);
 
   // Reading a page and saving it back with new words leaves nothing behind.
   const reworded = await save(read.replace('First section', 'New words'));
@@ -280,9 +278,6 @@ test('a client can swap the words of two sections in the editor', async ({ page,
   const post = await createPage(page, await nonceFor(page), LAYOUT);
   const { context, page: cp } = await asClient(browser);
   await openEditor(cp, post.id);
-  const hasIds = await cp.evaluate(() => JSON.stringify(wp.data.select('core/block-editor').getBlocks()).includes('blueworxSection'));
-  test.skip(!hasIds, 'this WordPress is older than section ids');
-
   expect(await cp.evaluate(() => wp.data.select('core/editor').isEditedPostDirty()), 'opening a page changes nothing').toBe(false);
   const saved = await cp.evaluate(async () => {
     const [first, second] = wp.data.select('core/block-editor').getBlocks();
@@ -305,4 +300,27 @@ test('a client can swap the words of two sections in the editor', async ({ page,
   const raw = await savedContent(page, await nonceFor(page), post.id);
   expect(raw).not.toContain('blueworxSection');
   expect(raw.indexOf('Third go')).toBeLessThan(raw.indexOf('First section'));
+});
+
+test('words an older page has outside its sections can change, but nothing joins them', async ({ page, browser }) => {
+  const nonce = await nonceFor(page);
+  const post = await createPage(page, nonce, 'Plain old words\n\nand <b>more</b> of them\n\n' + hero('First section'));
+  const { context, page: cp, nonce: clientNonce } = await asClient(browser);
+  const save = (content) => cp.request.post(`/wp-json/wp/v2/pages/${post.id}`, { headers: { 'X-WP-Nonce': clientNonce }, data: { content } });
+  expect((await save('Plain old words\n\nand more of them\n\nand yet more\n\n' + hero('First section'))).status()).toBe(403);
+
+  // The editor puts paragraph tags round plain words, so editing a section
+  // beside them changes their markup without anyone touching them.
+  await openEditor(cp, post.id);
+  const saved = await cp.evaluate(async () => {
+    const section = wp.data.select('core/block-editor').getBlocks().find((b) => b.name === 'bwx/section-hero');
+    wp.data.dispatch('core/block-editor').updateBlockAttributes(section.clientId, { heading: 'New heading' });
+    await wp.data.dispatch('core/editor').savePost();
+    return wp.data.select('core/editor').didPostSaveRequestSucceed();
+  });
+  expect(saved).toBe(true);
+  await context.close();
+  const raw = await savedContent(page, nonce, post.id);
+  expect(raw).toContain('New heading');
+  expect(raw).toContain('<p>Plain old words</p>');
 });
