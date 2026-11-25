@@ -10,8 +10,9 @@
  * The lock is one post meta flag that only administrators may write. The
  * server checks every save, wherever it came from: the shape of the page
  * (which blocks, in which order, nested how) has to come back exactly as it
- * went out. A REST save that changes the shape is refused with a message; any
- * other write keeps the content the page had.
+ * went out, with each section in its own place and nothing new outside them. A
+ * REST save that breaks that is refused with a message; any other write keeps
+ * the content the page had.
  *
  * A page with no blocks yet has no shape to keep, so its first layout can be
  * saved once. After that the shape is fixed.
@@ -35,6 +36,15 @@ final class Lock {
 	/** The post meta flag. Kept from the theme's own lock so pages it locked stay locked. */
 	const META = '_blueworx_page_lock';
 
+	/** Where a section's id sits, inside the block's metadata. Never stored: see with_ids(). */
+	const ID = 'blueworxSection';
+
+	/** Hides the add-block button, which stays on screen, greyed out, when the editor is locked. */
+	const NO_ADD_BUTTON = '.editor-document-tools__inserter-toggle,.edit-post-header-toolbar__inserter-toggle{display:none!important}';
+
+	/** A block's opening or closing comment, as WordPress's own parser reads it. */
+	const DELIMITER = '/<!--[ \t\f\r\n]+(?P<closer>\/)?wp:(?P<namespace>[a-z][a-z0-9_-]*\/)?(?P<name>[a-z][a-z0-9_-]*)[ \t\f\r\n]+(?P<attrs>{(?:(?:[^}]+|}+(?=})|(?!}[ \t\f\r\n]+\/?-->).)*+)?}[ \t\f\r\n]+)?(?P<void>\/)?-->/s';
+
 	/**
 	 * Web address of the copy's folder, for the editor script.
 	 *
@@ -47,7 +57,7 @@ final class Lock {
 	 *
 	 * @var string
 	 */
-	private static $version = '1.0.0';
+	private static $version = '1.0.1';
 
 	/**
 	 * True while the lock writes its own flag, so its own guard lets it through.
@@ -155,46 +165,112 @@ final class Lock {
 	}
 
 	/**
+	 * Reads post content into its blocks, the way WordPress's own parser does.
+	 *
+	 * Each block is [ name, attrs, html, children, at, length ]: its settings as
+	 * written, the pieces of markup of its own around its children, and where its
+	 * opening comment sits. The page itself comes back as the outermost block, so
+	 * its html is whatever is outside every section.
+	 *
+	 * @param string $content Post content.
+	 * @return array
+	 */
+	private static function read( $content ) {
+		$content = (string) $content;
+		$root    = self::node( '', '', 0, 0 );
+		$stack   = array( &$root );
+		$from    = 0;
+
+		preg_match_all( self::DELIMITER, $content, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE );
+
+		foreach ( $matches as $m ) {
+			$depth   = count( $stack ) - 1;
+			$at      = $m[0][1];
+			$length  = strlen( $m[0][0] );
+			$closing = '' !== $m['closer'][0];
+
+			// WordPress reads no blocks after a closing comment that closes nothing.
+			if ( $closing && 0 === $depth ) {
+				break;
+			}
+
+			$piece = count( $stack[ $depth ]['html'] ) - 1;
+
+			$stack[ $depth ]['html'][ $piece ] .= substr( $content, $from, $at - $from );
+
+			$from = $at + $length;
+
+			if ( $closing ) {
+				array_pop( $stack );
+				continue;
+			}
+
+			$name  = ( '' === $m['namespace'][0] ? 'core/' : $m['namespace'][0] ) . $m['name'][0];
+			$attrs = isset( $m['attrs'] ) ? rtrim( $m['attrs'][0] ) : '';
+
+			$stack[ $depth ]['html'][]     = '';
+			$stack[ $depth ]['children'][] = self::node( $name, $attrs, $at, $length );
+
+			if ( empty( $m['void'][0] ) ) {
+				$index   = count( $stack[ $depth ]['children'] ) - 1;
+				$stack[] = &$stack[ $depth ]['children'][ $index ];
+			}
+		}
+
+		$last  = count( $stack ) - 1;
+		$piece = count( $stack[ $last ]['html'] ) - 1;
+
+		$stack[ $last ]['html'][ $piece ] .= substr( $content, $from );
+
+		return $root;
+	}
+
+	/**
+	 * An empty block for read() to fill.
+	 *
+	 * @param string $name   Block name.
+	 * @param string $attrs  Settings, as written.
+	 * @param int    $at     Where its opening comment starts.
+	 * @param int    $length How long that comment is.
+	 * @return array
+	 */
+	private static function node( $name, $attrs, $at, $length ) {
+		return array(
+			'name'     => $name,
+			'attrs'    => $attrs,
+			'html'     => array( '' ),
+			'children' => array(),
+			'at'       => $at,
+			'length'   => $length,
+		);
+	}
+
+	/**
 	 * The shape of a block tree: which blocks, in which order, nested how.
 	 *
-	 * Reads the block comments WordPress writes into post content and returns a
-	 * nested list of [ block name, children ]. Text, markup and attributes are
-	 * ignored, because a locked page is still a page somebody may write on.
+	 * Returns a nested list of [ block name, children ]. Text, markup and
+	 * attributes are ignored, because a locked page is still a page somebody may
+	 * write on.
 	 *
 	 * @param string $content Post content.
 	 * @return array<int, array{0: string, 1: array}>
 	 */
 	public static function shape( $content ) {
-		$root  = array();
-		$stack = array( &$root );
+		return self::outline( self::read( $content ) );
+	}
 
-		// <!-- wp:name {"json":1} --> … <!-- /wp:name -->, or <!-- wp:name /-->.
-		if ( ! preg_match_all( '#<!--\s+(/)?wp:([a-z][a-z0-9_-]*(?:/[a-z][a-z0-9_-]*)?)(?:\s+\{.*?\})?\s*(/)?-->#s', (string) $content, $matches, PREG_SET_ORDER ) ) {
-			return $root;
+	/**
+	 * The shape of one block's children.
+	 *
+	 * @param array $node Block from read().
+	 * @return array<int, array{0: string, 1: array}>
+	 */
+	private static function outline( $node ) {
+		$out = array();
+		foreach ( $node['children'] as $child ) {
+			$out[] = array( $child['name'], self::outline( $child ) );
 		}
-
-		foreach ( $matches as $m ) {
-			$closing = '' !== $m[1];
-			$name    = false === strpos( $m[2], '/' ) ? 'core/' . $m[2] : $m[2];
-			$void    = isset( $m[3] ) && '' !== $m[3];
-			$depth   = count( $stack ) - 1;
-
-			if ( $closing ) {
-				if ( $depth > 0 ) {
-					array_pop( $stack );
-				}
-				continue;
-			}
-
-			$stack[ $depth ][] = array( $name, array() );
-			$index             = count( $stack[ $depth ] ) - 1;
-
-			if ( ! $void ) {
-				$stack[] = &$stack[ $depth ][ $index ][1];
-			}
-		}
-
-		return $root;
+		return $out;
 	}
 
 	/**
@@ -207,8 +283,282 @@ final class Lock {
 	 * @return bool
 	 */
 	public static function refuses( $before, $after ) {
-		$was = self::shape( $before );
-		return array() !== $was && self::shape( $after ) !== $was;
+		$was = self::read( $before );
+		$now = self::read( $after );
+		if ( ! $was['children'] ) {
+			return false;
+		}
+		return self::outline( $now ) !== self::outline( $was )
+			|| self::adds_outside( $was, $now )
+			|| self::moves( $was, $now, $was, '' );
+	}
+
+	/**
+	 * Whether there is markup outside the sections where there was none.
+	 *
+	 * Words an older page already has beside its sections may still be edited.
+	 *
+	 * @param array $was Page as saved.
+	 * @param array $now Page being saved, of the same shape.
+	 * @return bool
+	 */
+	private static function adds_outside( $was, $now ) {
+		foreach ( $now['html'] as $i => $html ) {
+			if ( '' !== trim( $html ) && '' === trim( $was['html'][ $i ] ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Whether sections of one type have changed places.
+	 *
+	 * A section that came back with its id has to be where it was. One without
+	 * an id, from something that read the page before ids existed or dropped
+	 * them, is only known by its words, so it counts as moved when whole sections
+	 * have traded places word for word. Any other edit is taken as words.
+	 *
+	 * @param array  $was  Block as saved.
+	 * @param array  $now  Block being saved, of the same shape.
+	 * @param array  $page The whole page as saved.
+	 * @param string $path Id of the block, '' for the page.
+	 * @return bool
+	 */
+	private static function moves( $was, $now, $page, $path ) {
+		$unknown = array();
+		foreach ( $now['children'] as $i => $child ) {
+			$here = '' === $path ? (string) $i : $path . '.' . $i;
+			$id   = self::id_of( $child );
+			if ( '' === $id || ! self::has_id( $page, $id ) ) {
+				$unknown[ $child['name'] ][] = $i;
+			} elseif ( $id !== $here ) {
+				return true;
+			}
+			if ( self::moves( $was['children'][ $i ], $child, $page, $here ) ) {
+				return true;
+			}
+		}
+		foreach ( $unknown as $slots ) {
+			if ( self::trades_places( $was, $now, $slots ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Whether any of these children have traded places word for word.
+	 *
+	 * Each changed place is followed back to the place its section came from;
+	 * places left once the dead ends are gone form a loop, which is a move. A
+	 * section copied over another, or rewritten, always leaves a dead end.
+	 *
+	 * @param array $was   Block as saved.
+	 * @param array $now   Block being saved, of the same shape.
+	 * @param int[] $slots Places of the children to compare.
+	 * @return bool
+	 */
+	private static function trades_places( $was, $now, $slots ) {
+		$old = array();
+		$new = array();
+		foreach ( $slots as $i ) {
+			$before = self::fingerprint( $was['children'][ $i ] );
+			$after  = self::fingerprint( $now['children'][ $i ] );
+			if ( $before !== $after ) {
+				$old[ $i ] = $before;
+				$new[ $i ] = $after;
+			}
+		}
+		do {
+			$left = count( $new );
+			foreach ( $new as $i => $after ) {
+				if ( ! in_array( $after, $old, true ) ) {
+					unset( $new[ $i ], $old[ $i ] );
+				}
+			}
+		} while ( count( $new ) < $left );
+		return array() !== $new;
+	}
+
+	/**
+	 * Everything in a block but its id, so two copies of it compare equal.
+	 *
+	 * @param array $node Block from read().
+	 * @return string
+	 */
+	private static function fingerprint( $node ) {
+		$attrs = self::sorted( json_decode( $node['attrs'], true ) );
+		if ( isset( $attrs['metadata'] ) && is_array( $attrs['metadata'] ) ) {
+			unset( $attrs['metadata'][ self::ID ] );
+			if ( ! $attrs['metadata'] ) {
+				unset( $attrs['metadata'] );
+			}
+		}
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- compared here and thrown away.
+		return serialize(
+			array(
+				$node['name'],
+				$attrs ? $attrs : array(),
+				array_map( 'trim', $node['html'] ),
+				array_map( array( self::class, 'fingerprint' ), $node['children'] ),
+			)
+		);
+	}
+
+	/**
+	 * Settings with their keys in one order, however they were written.
+	 *
+	 * @param mixed $value Decoded settings.
+	 * @return mixed
+	 */
+	private static function sorted( $value ) {
+		if ( ! is_array( $value ) ) {
+			return $value;
+		}
+		ksort( $value );
+		return array_map( array( self::class, 'sorted' ), $value );
+	}
+
+	/**
+	 * The id a block carries, or ''.
+	 *
+	 * @param array $node Block from read().
+	 * @return string
+	 */
+	private static function id_of( $node ) {
+		$attrs = json_decode( $node['attrs'], true );
+		$id    = isset( $attrs['metadata'][ self::ID ] ) && is_array( $attrs['metadata'] ) ? $attrs['metadata'][ self::ID ] : '';
+		return is_string( $id ) ? $id : '';
+	}
+
+	/**
+	 * Whether an id names a block on the page.
+	 *
+	 * @param array  $page Page as saved.
+	 * @param string $id   Id.
+	 * @return bool
+	 */
+	private static function has_id( $page, $id ) {
+		foreach ( explode( '.', $id ) as $i ) {
+			if ( ! isset( $page['children'][ $i ] ) ) {
+				return false;
+			}
+			$page = $page['children'][ $i ];
+		}
+		return true;
+	}
+
+	/**
+	 * Content with an id on every section: where it sits in the saved page.
+	 *
+	 * Nothing is stored. A locked page's sections never move, so their places are
+	 * ids that every page already has, whenever it was saved. They are given out
+	 * as the page is read and taken off again as it is saved.
+	 *
+	 * @param string $content Post content as saved.
+	 * @return string
+	 */
+	public static function with_ids( $content ) {
+		$ids = array();
+		self::list_ids( self::read( $content ), '', $ids );
+		foreach ( array_reverse( $ids, true ) as $id => $node ) {
+			$comment = substr( $content, $node['at'], $node['length'] );
+			$marked  = self::mark( $node['attrs'], (string) $id );
+			if ( '' === $node['attrs'] ) {
+				$comment = preg_replace( '#\s+(/?-->)$#', ' ' . $marked . ' $1', $comment );
+			} else {
+				$comment = str_replace( $node['attrs'], $marked, $comment );
+			}
+			$content = substr_replace( $content, $comment, $node['at'], $node['length'] );
+		}
+		return $content;
+	}
+
+	/**
+	 * Lists every block under a block by its id, in the order they are written.
+	 *
+	 * @param array  $node Block from read().
+	 * @param string $path Id of the block, '' for the page.
+	 * @param array  $ids  Filled with id => block.
+	 * @return void
+	 */
+	private static function list_ids( $node, $path, &$ids ) {
+		foreach ( $node['children'] as $i => $child ) {
+			$id         = '' === $path ? (string) $i : $path . '.' . $i;
+			$ids[ $id ] = $child;
+			self::list_ids( $child, $id, $ids );
+		}
+	}
+
+	/**
+	 * A block's settings with its id added.
+	 *
+	 * Written into the text as it stands, so taking the id off again gives back
+	 * exactly what was saved.
+	 *
+	 * @param string $attrs Settings, as written, or ''.
+	 * @param string $id    Id.
+	 * @return string
+	 */
+	private static function mark( $attrs, $id ) {
+		$mark    = '"metadata":{"' . self::ID . '":"' . $id . '"}';
+		$decoded = json_decode( $attrs );
+		if ( '' === $attrs || ( is_object( $decoded ) && ! get_object_vars( $decoded ) ) ) {
+			return '{' . $mark . '}';
+		}
+		if ( ! is_object( $decoded ) ) {
+			return $attrs;
+		}
+		if ( ! isset( $decoded->metadata ) ) {
+			return substr( $attrs, 0, -1 ) . ',' . $mark . '}';
+		}
+		if ( ! is_object( $decoded->metadata ) ) {
+			return $attrs;
+		}
+		// The block already has some, such as a name of its own.
+		$decoded->metadata->{self::ID} = $id;
+		return serialize_block_attributes( $decoded );
+	}
+
+	/**
+	 * Content with every section's id taken off.
+	 *
+	 * @param string $content Post content.
+	 * @return string
+	 */
+	public static function without_ids( $content ) {
+		$content = (string) $content;
+		if ( false === strpos( $content, '"' . self::ID . '"' ) ) {
+			return $content;
+		}
+		$out = preg_replace_callback(
+			self::DELIMITER,
+			function ( $m ) {
+				if ( empty( $m['attrs'] ) ) {
+					return $m[0];
+				}
+				// A quote inside somebody's words is always written escaped, so
+				// this only ever matches the id itself.
+				$id    = '"' . self::ID . '"\s*:\s*"[^"\\\\]*"';
+				$attrs = preg_replace(
+					array(
+						'#,\s*"metadata"\s*:\s*\{\s*' . $id . '\s*\}#',
+						'#"metadata"\s*:\s*\{\s*' . $id . '\s*\}(?:\s*,\s*)?#',
+						'#,\s*' . $id . '#',
+						'#' . $id . '(?:\s*,\s*)?#',
+					),
+					'',
+					$m['attrs']
+				);
+				if ( preg_match( '#^\{\s*\}\s*$#', $attrs ) ) {
+					$attrs = '';
+				}
+				return str_replace( $m['attrs'], $attrs, $m[0] );
+			},
+			$content
+		);
+		return null === $out ? $content : $out;
 	}
 
 	/**
@@ -266,13 +616,14 @@ final class Lock {
 	}
 
 	/**
-	 * Adds the REST guard for every covered post type.
+	 * Adds the REST guard and the section ids for every covered post type.
 	 *
 	 * @return void
 	 */
 	public static function register_rest_guards() {
 		foreach ( self::post_types() as $type ) {
 			add_filter( 'rest_pre_insert_' . $type, array( self::class, 'rest_guard' ) );
+			add_filter( 'rest_prepare_' . $type, array( self::class, 'rest_ids' ), 10, 2 );
 		}
 	}
 
@@ -332,7 +683,29 @@ final class Lock {
 	}
 
 	/**
-	 * Keeps a locked page's content on any save that is not REST.
+	 * Gives whoever the lock holds the ids of the sections they are reading.
+	 *
+	 * Not before WordPress 6.5, whose block previews refuse metadata.
+	 *
+	 * @param object $response The response.
+	 * @param object $post     The post.
+	 * @return object
+	 */
+	public static function rest_ids( $response, $post ) {
+		if ( ! isset( \WP_Block_Type::GLOBAL_ATTRIBUTES['metadata'] ) ) {
+			return $response;
+		}
+		$data = $response->get_data();
+		if ( isset( $data['content']['raw'] ) && self::applies( $post->ID ) ) {
+			$data['content']['raw'] = self::with_ids( $data['content']['raw'] );
+			$response->set_data( $data );
+		}
+		return $response;
+	}
+
+	/**
+	 * Keeps a locked page's content on any save that is not REST, and takes the
+	 * section ids off whatever is saved.
 	 *
 	 * There is no way to refuse from here with a message, so the content stays
 	 * as it was and the rest of the save (title, excerpt) goes through.
@@ -343,12 +716,20 @@ final class Lock {
 	 */
 	public static function insert_guard( $data, $postarr ) {
 		$post_id = isset( $postarr['ID'] ) ? (int) $postarr['ID'] : 0;
-		if ( ! $post_id || ! isset( $data['post_content'] ) || ! self::applies( $post_id ) ) {
+		if ( ! isset( $data['post_content'] ) ) {
 			return $data;
 		}
-		$existing = get_post( $post_id );
-		if ( $existing && self::refuses( $existing->post_content, wp_unslash( $data['post_content'] ) ) ) {
-			$data['post_content'] = wp_slash( $existing->post_content );
+		$content = wp_unslash( $data['post_content'] );
+		if ( $post_id && self::applies( $post_id ) ) {
+			$existing = get_post( $post_id );
+			if ( $existing && self::refuses( $existing->post_content, $content ) ) {
+				$data['post_content'] = wp_slash( $existing->post_content );
+				return $data;
+			}
+		}
+		$saved = self::without_ids( $content );
+		if ( $saved !== $content ) {
+			$data['post_content'] = wp_slash( $saved );
 		}
 		return $data;
 	}
@@ -454,6 +835,9 @@ final class Lock {
 				'metaKey'      => self::META,
 				'canManage'    => self::can_manage(),
 				'openListView' => self::applies( $post->ID ),
+				// The page has no layout yet: lock the editor once its first one is saved.
+				'lockOnSave'   => self::applies( $post->ID ) && ! self::frozen( $post ),
+				'noAddButton'  => self::NO_ADD_BUTTON,
 				'copy'         => array(
 					'title'    => __( 'Page lock', 'blueworx-page-lock' ),
 					'label'    => __( 'Locked', 'blueworx-page-lock' ),
@@ -464,12 +848,11 @@ final class Lock {
 			)
 		);
 
-		// The add-block button stays on screen, greyed out, when the editor is
-		// locked; a button that never works is clutter, so it goes.
+		// A button that never works is clutter, so it goes.
 		if ( self::frozen( $post ) ) {
 			wp_register_style( 'blueworx-page-lock', false, array(), self::$version );
 			wp_enqueue_style( 'blueworx-page-lock' );
-			wp_add_inline_style( 'blueworx-page-lock', '.editor-document-tools__inserter-toggle,.edit-post-header-toolbar__inserter-toggle{display:none!important}' );
+			wp_add_inline_style( 'blueworx-page-lock', self::NO_ADD_BUTTON );
 		}
 	}
 }

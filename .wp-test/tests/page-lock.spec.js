@@ -220,3 +220,89 @@ test('an administrator gets the normal editor and the lock switch', async ({ pag
   await expect(page.locator('.blueworx-page-lock')).toHaveCount(1);
   await expect(page.locator('.blueworx-page-lock').getByRole('checkbox', { name: 'Locked' })).toBeChecked();
 });
+
+test('the editor locks as soon as the first layout is saved, without a reload', async ({ page, browser }) => {
+  const { context, page: cp, nonce } = await asClient(browser);
+  const post = await createPage(cp, nonce, '');
+  await openEditor(cp, post.id);
+  const addButton = cp.locator('.editor-document-tools__inserter-toggle, .edit-post-header-toolbar__inserter-toggle');
+  const templateLock = () => cp.evaluate(() => wp.data.select('core/block-editor').getSettings().templateLock || false);
+  await expect(addButton).toBeVisible();
+
+  await cp.evaluate(() => {
+    wp.data.dispatch('core/block-editor').insertBlocks(['First section', 'Second section'].map((heading) => wp.blocks.createBlock('bwx/section-hero', { heading })));
+  });
+  // Laid out but not saved: still theirs to arrange.
+  expect(await templateLock()).toBe(false);
+
+  await cp.evaluate(() => wp.data.dispatch('core/editor').savePost());
+  await expect.poll(templateLock, { timeout: 15000 }).toBe('all');
+  await expect(addButton).toBeHidden();
+  expect(await cp.evaluate(() => wp.data.select('core/block-editor').canInsertBlockType('bwx/section-hero'))).toBe(false);
+
+  // Words still save.
+  await cp.evaluate(() => {
+    const [first] = wp.data.select('core/block-editor').getBlocks();
+    wp.data.dispatch('core/block-editor').updateBlockAttributes(first.clientId, { heading: 'Typed after the lock' });
+    return wp.data.dispatch('core/editor').savePost();
+  });
+  expect(await cp.evaluate(() => wp.data.select('core/editor').didPostSaveRequestSucceed())).toBe(true);
+  await context.close();
+  expect(await savedContent(page, await nonceFor(page), post.id)).toContain('Typed after the lock');
+});
+
+test('markup outside the sections, and sections swapped round, are refused', async ({ page, browser }) => {
+  const nonce = await nonceFor(page);
+  const post = await createPage(page, nonce, LAYOUT);
+  const { context, page: cp, nonce: clientNonce } = await asClient(browser);
+  const save = (content) => cp.request.post(`/wp-json/wp/v2/pages/${post.id}`, { headers: { 'X-WP-Nonce': clientNonce }, data: { content } });
+
+  expect((await save(LAYOUT + '<p>Outside</p>')).status()).toBe(403);
+  expect((await save('<p>Outside</p>' + LAYOUT)).status()).toBe(403);
+  expect((await save(hero('Second section') + hero('First section'))).status()).toBe(403);
+
+  // What a client reads says which section is which, so a section moved and
+  // reworded in one go is still refused. Not before WordPress 6.5.
+  const read = await savedContent(cp, clientNonce, post.id);
+  if (read.includes('blueworxSection')) {
+    const [first, second] = read.split(/(?=<!-- wp:)/);
+    expect((await save(second.replace('Second section', 'Reworded') + first)).status()).toBe(403);
+  }
+
+  // Reading a page and saving it back with new words leaves nothing behind.
+  const reworded = await save(read.replace('First section', 'New words'));
+  expect(reworded.ok(), await reworded.text()).toBeTruthy();
+  await context.close();
+  expect(await savedContent(page, nonce, post.id)).toBe(hero('New words') + hero('Second section'));
+});
+
+test('a client can swap the words of two sections in the editor', async ({ page, browser }) => {
+  const post = await createPage(page, await nonceFor(page), LAYOUT);
+  const { context, page: cp } = await asClient(browser);
+  await openEditor(cp, post.id);
+  const hasIds = await cp.evaluate(() => JSON.stringify(wp.data.select('core/block-editor').getBlocks()).includes('blueworxSection'));
+  test.skip(!hasIds, 'this WordPress is older than section ids');
+
+  expect(await cp.evaluate(() => wp.data.select('core/editor').isEditedPostDirty()), 'opening a page changes nothing').toBe(false);
+  const saved = await cp.evaluate(async () => {
+    const [first, second] = wp.data.select('core/block-editor').getBlocks();
+    wp.data.dispatch('core/block-editor').updateBlockAttributes(first.clientId, { heading: 'Second section' });
+    wp.data.dispatch('core/block-editor').updateBlockAttributes(second.clientId, { heading: 'First section' });
+    await wp.data.dispatch('core/editor').savePost();
+    return wp.data.select('core/editor').didPostSaveRequestSucceed();
+  });
+  expect(saved).toBe(true);
+  // And again from the same open editor.
+  const again = await cp.evaluate(async () => {
+    const [first] = wp.data.select('core/block-editor').getBlocks();
+    wp.data.dispatch('core/block-editor').updateBlockAttributes(first.clientId, { heading: 'Third go' });
+    await wp.data.dispatch('core/editor').savePost();
+    return wp.data.select('core/editor').didPostSaveRequestSucceed();
+  });
+  expect(again).toBe(true);
+  await context.close();
+
+  const raw = await savedContent(page, await nonceFor(page), post.id);
+  expect(raw).not.toContain('blueworxSection');
+  expect(raw.indexOf('Third go')).toBeLessThan(raw.indexOf('First section'));
+});

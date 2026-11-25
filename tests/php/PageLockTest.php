@@ -52,6 +52,178 @@ final class PageLockTest extends TestCase {
 		$this->assertFalse( Lock::refuses( self::HERO, '<!-- wp:bwx/section-hero {"heading":"New words"} /-->' ) );
 	}
 
+	// Markup outside the sections.
+
+	public function test_markup_added_outside_the_sections_is_refused(): void {
+		$page = self::HERO . "\n\n" . self::STEPS;
+		$this->assertTrue( Lock::refuses( $page, '<p>Before</p>' . $page ) );
+		$this->assertTrue( Lock::refuses( $page, self::HERO . '<p>Between</p>' . self::STEPS ) );
+		$this->assertTrue( Lock::refuses( $page, $page . '<p>After</p>' ) );
+		$this->assertFalse( Lock::refuses( $page, "\n" . self::HERO . "\n" . self::STEPS . "\n" ) );
+	}
+
+	public function test_rest_and_other_saves_refuse_markup_added_outside_the_sections(): void {
+		$this->page( 1, self::HERO );
+		$this->assertInstanceOf( \WP_Error::class, Lock::rest_guard( (object) [ 'ID' => 1, 'post_content' => self::HERO . '<p>After</p>' ] ) );
+		$data = Lock::insert_guard( [ 'post_content' => wp_slash( self::HERO . '<p>After</p>' ) ], [ 'ID' => 1 ] );
+		$this->assertSame( self::HERO, wp_unslash( $data['post_content'] ) );
+	}
+
+	public function test_words_already_outside_the_sections_can_still_change(): void {
+		$page = '<p>An old introduction</p>' . self::HERO;
+		$this->assertFalse( Lock::refuses( $page, '<p>A new introduction</p>' . self::HERO ) );
+		$this->assertFalse( Lock::refuses( $page, '<p>An old introduction</p><!-- wp:bwx/section-hero {"heading":"New"} /-->' ) );
+		$this->assertTrue( Lock::refuses( $page, $page . '<p>More</p>' ) );
+	}
+
+	public function test_words_inside_a_block_can_change(): void {
+		$this->assertFalse(
+			Lock::refuses(
+				'<!-- wp:group --><div><!-- wp:paragraph --><p>Hi</p><!-- /wp:paragraph --></div><!-- /wp:group -->',
+				'<!-- wp:group --><div><!-- wp:paragraph --><p>Hello there</p><!-- /wp:paragraph --></div><!-- /wp:group -->'
+			)
+		);
+	}
+
+	public function test_a_section_wordpress_would_not_read_as_one_counts_as_removed(): void {
+		$this->assertTrue( Lock::refuses( self::HERO, '<!-- wp:bwx/section-hero {"heading":"Hello"}/-->' ) );
+		$this->assertTrue( Lock::refuses( self::HERO . self::STEPS, self::HERO . '<!-- /wp:group -->' . self::STEPS ) );
+	}
+
+	// Which section is which.
+
+	private static function hero( string $heading, string $id = '' ): string {
+		return '<!-- wp:bwx/section-hero {"heading":"' . $heading . '"' . ( '' === $id ? '' : ',"metadata":{"blueworxSection":"' . $id . '"}' ) . '} /-->';
+	}
+
+	public function test_swapping_two_sections_of_one_type_is_refused(): void {
+		$page = self::hero( 'Celebration' ) . self::STEPS . self::hero( 'Dress code' );
+		$this->assertTrue( Lock::refuses( $page, self::hero( 'Dress code' ) . self::STEPS . self::hero( 'Celebration' ) ) );
+		$this->assertTrue(
+			Lock::refuses(
+				self::hero( 'A' ) . self::hero( 'B' ) . self::hero( 'C' ),
+				self::hero( 'A, edited' ) . self::hero( 'C' ) . self::hero( 'B' )
+			)
+		);
+		$this->assertTrue(
+			Lock::refuses(
+				'<!-- wp:group --><div>' . self::hero( 'A' ) . self::hero( 'B' ) . '</div><!-- /wp:group -->',
+				'<!-- wp:group --><div>' . self::hero( 'B' ) . self::hero( 'A' ) . '</div><!-- /wp:group -->'
+			)
+		);
+	}
+
+	public function test_a_swap_is_seen_however_the_tool_writes_its_json(): void {
+		$page = '<!-- wp:bwx/section-hero {"heading":"A","text":"x"} /--><!-- wp:bwx/section-hero {"heading":"B \u0026 C","text":"y"} /-->';
+		$this->assertTrue( Lock::refuses( $page, '<!-- wp:bwx/section-hero {"text": "y", "heading": "B & C"} /--><!-- wp:bwx/section-hero {"text": "x", "heading": "A"} /-->' ) );
+	}
+
+	public function test_a_page_saved_before_section_ids_takes_any_edit_to_its_words(): void {
+		$page = self::hero( 'Celebration' ) . self::hero( 'Dress code' ) . self::hero( 'Transport' );
+		foreach (
+			[
+				[ 'Celebration, edited', 'Dress code', 'Transport' ],
+				[ 'All', 'New', 'Words' ],
+				[ 'Dress code', 'Dress code', 'Transport' ],
+				[ 'Dress code', 'Dress code, rewritten', 'Transport' ],
+				[ '', '', '' ],
+			] as $words
+		) {
+			$after = self::hero( $words[0] ) . self::hero( $words[1] ) . self::hero( $words[2] );
+			$this->assertFalse( Lock::refuses( $page, $after ), implode( ' / ', $words ) );
+		}
+		$same = self::hero( 'Same' ) . self::hero( 'Same' );
+		$this->assertFalse( Lock::refuses( $same, $same ) );
+	}
+
+	public function test_a_moved_section_is_refused_even_when_its_words_change_too(): void {
+		$page = self::hero( 'Celebration' ) . self::hero( 'Dress code' );
+		$this->assertTrue( Lock::refuses( $page, self::hero( 'Dress code, edited', '1' ) . self::hero( 'Celebration', '0' ) ) );
+		$this->assertTrue( Lock::refuses( $page, self::hero( 'Dress code, edited', '1' ) . self::hero( 'Celebration' ) ) );
+	}
+
+	public function test_words_swapped_between_sections_that_stayed_put_are_saved(): void {
+		$page = self::hero( 'Celebration' ) . self::hero( 'Dress code' );
+		$this->assertFalse( Lock::refuses( $page, self::hero( 'Dress code', '0' ) . self::hero( 'Celebration', '1' ) ) );
+	}
+
+	public function test_an_id_from_somewhere_else_is_ignored(): void {
+		$this->assertFalse( Lock::refuses( self::hero( 'A' ) . self::hero( 'B' ), self::hero( 'A2', '7' ) . self::hero( 'B2', '7.1' ) ) );
+		$this->assertFalse( Lock::refuses( self::HERO, '<!-- wp:bwx/section-hero {"metadata":{"blueworxSection":["0"]}} /-->' ) );
+		$this->assertFalse( Lock::refuses( self::HERO, '<!-- wp:bwx/section-hero {"metadata":"0"} /-->' ) );
+	}
+
+	public function pages_to_read(): array {
+		return [
+			'sections'                => [ self::HERO . "\n\n" . self::STEPS ],
+			'nested, and no settings' => [ '<!-- wp:bwx/opening /--><!-- wp:group --><div>' . self::HERO . '</div><!-- /wp:group -->' ],
+			'a renamed section'       => [ '<!-- wp:bwx/section-hero {"metadata":{"name":"Top"},"list":{},"words":"It\u0022s \u002d\u002d {fine}"} /-->' ],
+			'words beside sections'   => [ '<p>Old</p>' . self::HERO . '<p>Old</p>' ],
+		];
+	}
+
+	/**
+	 * @dataProvider pages_to_read
+	 */
+	public function test_a_client_reads_the_ids_and_saving_takes_them_off_again( string $content ): void {
+		$this->page( 1, $content );
+		$read = Lock::with_ids( $content );
+		$this->assertStringContainsString( '"blueworxSection":"0"', $read );
+		$this->assertFalse( Lock::refuses( $content, $read ) );
+		$data = Lock::insert_guard( [ 'post_content' => wp_slash( $read ) ], [ 'ID' => 1 ] );
+		$this->assertSame( $content, wp_unslash( $data['post_content'] ) );
+	}
+
+	public function test_a_nested_section_gets_an_id_of_its_own(): void {
+		$this->assertStringContainsString(
+			'"blueworxSection":"1.0"',
+			Lock::with_ids( '<!-- wp:bwx/opening /--><!-- wp:group --><div>' . self::HERO . '</div><!-- /wp:group -->' )
+		);
+	}
+
+	public function test_ids_come_off_however_the_tool_writes_its_json(): void {
+		$this->assertSame( '<!-- wp:bwx/a {"b": 1} /-->', Lock::without_ids( '<!-- wp:bwx/a {"metadata": {"blueworxSection": "0"}, "b": 1} /-->' ) );
+		$this->assertSame( '<!-- wp:bwx/a /-->', Lock::without_ids( Lock::with_ids( '<!-- wp:bwx/a {} /-->' ) ) );
+		$this->assertSame( '<!-- wp:bwx/a {"metadata":{"name":"N"}} /-->', Lock::without_ids( '<!-- wp:bwx/a {"metadata":{"blueworxSection":"0","name":"N"}} /-->' ) );
+	}
+
+	public function test_words_that_mention_an_id_are_left_alone(): void {
+		$words = '<!-- wp:bwx/a {"b":"\"blueworxSection\":\"0\""} /--><p>,"blueworxSection":"0"</p>';
+		$this->assertSame( $words, Lock::without_ids( $words ) );
+	}
+
+	public function test_ids_never_stay_in_a_saved_page_whoever_saves_it(): void {
+		$this->admin();
+		$this->page( 1, self::HERO );
+		$read = Lock::with_ids( self::HERO . self::STEPS );
+		foreach ( [ [ 'ID' => 1 ], [], [ 'ID' => 99 ] ] as $postarr ) {
+			$data = Lock::insert_guard( [ 'post_content' => wp_slash( $read ) ], $postarr );
+			$this->assertSame( self::HERO . self::STEPS, wp_unslash( $data['post_content'] ) );
+		}
+	}
+
+	public function test_only_someone_held_by_the_lock_is_given_the_ids(): void {
+		$response = new class() {
+			public $data = [];
+			public function get_data() {
+				return $this->data;
+			}
+			public function set_data( $data ) {
+				$this->data = $data;
+			}
+		};
+		$post           = $this->page( 1, self::HERO );
+		$response->data = [ 'content' => [ 'raw' => self::HERO ] ];
+		$this->assertSame( Lock::with_ids( self::HERO ), Lock::rest_ids( $response, $post )->data['content']['raw'] );
+
+		$response->data = [ 'content' => [ 'rendered' => '<p>Hi</p>' ] ];
+		$this->assertSame( [ 'content' => [ 'rendered' => '<p>Hi</p>' ] ], Lock::rest_ids( $response, $post )->data );
+
+		$this->admin();
+		$response->data = [ 'content' => [ 'raw' => self::HERO ] ];
+		$this->assertSame( self::HERO, Lock::rest_ids( $response, $post )->data['content']['raw'] );
+	}
+
 	// Who the lock applies to.
 
 	public function test_applies_to_a_client_on_a_locked_page(): void {

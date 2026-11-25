@@ -49,6 +49,26 @@ if ( ! function_exists( 'wp_unslash' ) ) {
 		return stripslashes( (string) $value );
 	}
 }
+if ( ! function_exists( 'serialize_block_attributes' ) ) {
+	function serialize_block_attributes( $attrs ) {
+		return strtr(
+			json_encode( $attrs, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
+			[
+				'\\\\' => '\\u005c',
+				'--'   => '\\u002d\\u002d',
+				'<'    => '\\u003c',
+				'>'    => '\\u003e',
+				'&'    => '\\u0026',
+				'\\"'  => '\\u0022',
+			]
+		);
+	}
+}
+if ( ! class_exists( 'WP_Block_Type' ) ) {
+	class WP_Block_Type {
+		const GLOBAL_ATTRIBUTES = [ 'lock' => [], 'metadata' => [] ];
+	}
+}
 if ( ! class_exists( 'WP_Block_Type_Registry' ) ) {
 	class WP_Block_Type_Registry {
 		public static function get_instance() {
