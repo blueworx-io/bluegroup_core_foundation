@@ -7,10 +7,12 @@
  *   $GLOBALS['bwpe_stub']['filters'][ hook ] — what apply_filters() returns
  *   $GLOBALS['bwpl_removed']                — hooks removed, as "hook|callback"
  *   $GLOBALS['bwpl_blocks']                 — registered block names
+ *   $GLOBALS['bwpl_revisions']              — the page's revisions, id => post
  */
 
 $GLOBALS['bwpl_removed'] = [];
 $GLOBALS['bwpl_blocks']  = [];
+$GLOBALS['bwpl_revisions'] = [];
 
 if ( ! function_exists( 'apply_filters' ) ) {
 	function apply_filters( $hook, $value, ...$args ) {
@@ -50,14 +52,42 @@ if ( ! function_exists( 'wp_unslash' ) ) {
 	}
 }
 if ( ! function_exists( 'wpautop' ) ) {
-	// The part that matters here: loose words become paragraphs.
+	// The parts that matter here: loose words become paragraphs, and two line
+	// breaks or an empty line end one.
 	function wpautop( $text ) {
-		$out = '';
-		foreach ( preg_split( '#(<(?:p|div|h2)\b.*</(?:p|div|h2)>)|\n\s*\n#sU', (string) $text, -1, PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE ) as $piece ) {
-			$loose = '' !== trim( $piece ) && ! preg_match( '#^\s*</?(?:p|div|h2)\b#', $piece );
+		$text = preg_replace( '#<br\s*/?>\s*<br\s*/?>#', "\n\n", (string) $text );
+		$out  = '';
+		foreach ( preg_split( '#(<p\b.*</p>|<(?:div|h2)\b.*</(?:div|h2)>|<hr>)|\n\s*\n#sU', $text, -1, PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE ) as $piece ) {
+			$loose = '' !== trim( $piece ) && ! preg_match( '#^\s*</?(?:p|div|h2|hr)\b#', $piece );
+			$piece = preg_replace( '#\n\s*\n#', '</p><p>', $piece );
 			$out  .= $loose ? '<p>' . trim( $piece ) . '</p>' : $piece;
 		}
-		return $out;
+		return preg_replace( '#<p>\s*</p>#', '', $out );
+	}
+}
+if ( ! function_exists( 'wp_get_post_revisions' ) ) {
+	function wp_get_post_revisions( $post, $args = [] ) {
+		return $GLOBALS['bwpl_revisions'];
+	}
+}
+if ( ! function_exists( 'wp_get_post_revision' ) ) {
+	function wp_get_post_revision( &$id ) {
+		return $GLOBALS['bwpl_revisions'][ $id ] ?? null;
+	}
+}
+if ( ! function_exists( 'wp_is_post_autosave' ) ) {
+	function wp_is_post_autosave( $post ) {
+		return false !== strpos( $post->post_name, '-autosave' );
+	}
+}
+if ( ! function_exists( 'esc_html' ) ) {
+	function esc_html( $text ) {
+		return htmlspecialchars( $text );
+	}
+}
+if ( ! function_exists( 'wp_die' ) ) {
+	function wp_die( $message ) {
+		throw new \RuntimeException( $message );
 	}
 }
 if ( ! class_exists( 'WP_Block_Type_Registry' ) ) {

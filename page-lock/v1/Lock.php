@@ -73,6 +73,13 @@ final class Lock {
 	private static $writing = false;
 
 	/**
+	 * The page a revision is being restored to, 0 for none.
+	 *
+	 * @var int
+	 */
+	private static $restoring = 0;
+
+	/**
 	 * Adds every hook.
 	 *
 	 * @param string $url     Web address of the copy's folder.
@@ -93,6 +100,7 @@ final class Lock {
 		add_filter( 'delete_post_metadata', array( self::class, 'guard_meta' ), 10, 3 );
 		add_filter( 'wp_insert_post_data', array( self::class, 'insert_guard' ), 10, 2 );
 		add_action( 'wp_insert_post', array( self::class, 'lock_new_page' ), 10, 3 );
+		add_action( 'load-revision.php', array( self::class, 'check_restore' ) );
 		add_filter( 'block_editor_settings_all', array( self::class, 'editor_settings' ), 10, 2 );
 		add_filter( 'allowed_block_types_all', array( self::class, 'allowed_blocks' ), 10, 2 );
 		add_filter( 'display_post_states', array( self::class, 'post_state' ), 10, 2 );
@@ -292,12 +300,51 @@ final class Lock {
 	public static function refuses( $before, $after ) {
 		$was = self::read( $before );
 		$now = self::read( $after );
+		return self::relays( $was, $now ) || ( $was['children'] && self::moves( $was, $now, $was, '' ) );
+	}
+
+	/**
+	 * Whether the sections, or the elements outside them, are not the same ones.
+	 *
+	 * @param array $was Page as saved.
+	 * @param array $now Page being saved.
+	 * @return bool
+	 */
+	private static function relays( $was, $now ) {
 		if ( ! $was['children'] ) {
 			return false;
 		}
-		return self::outline( $now ) !== self::outline( $was )
-			|| array_map( array( self::class, 'structure' ), $now['html'] ) !== array_map( array( self::class, 'structure' ), $was['html'] )
-			|| self::moves( $was, $now, $was, '' );
+		if ( self::outline( $now ) !== self::outline( $was ) ) {
+			return true;
+		}
+		foreach ( $now['html'] as $i => $html ) {
+			$old      = $was['html'][ $i ];
+			$elements = self::structure( self::as_words( $html ) );
+			// As it is saved, or as the block editor redraws it by opening the page.
+			if ( self::structure( self::as_words( $old ) ) !== $elements && self::structure( $old ) !== $elements ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Markup with line breaks inside words taken as words, so they cannot end a
+	 * paragraph, and breaks standing alone taken as elements.
+	 *
+	 * @param string $html Markup from outside the sections.
+	 * @return string
+	 */
+	private static function as_words( $html ) {
+		$edge = '<(?!/?(?:' . self::INLINE . ')\b)[^>]*>';
+		$html = preg_replace_callback(
+			'#(^|' . $edge . ')((?:\s*<br\b[^>]*>)+)(?=\s*(?:$|' . $edge . '))#i',
+			function ( $m ) {
+				return $m[1] . str_repeat( '<hr>', preg_match_all( '#<br#i', $m[2] ) );
+			},
+			$html
+		);
+		return (string) preg_replace( '#<br\b[^>]*>#i', ' . ', (string) $html );
 	}
 
 	/**
@@ -695,6 +742,60 @@ final class Lock {
 	}
 
 	/**
+	 * Whether a save puts back one of the page's own revisions.
+	 *
+	 * Revisions have no ids, so one that swaps words between two sections of a
+	 * type looks like a move. It is let through as long as the sections are the
+	 * same ones.
+	 *
+	 * @param object $post    The page as saved.
+	 * @param string $content Content being saved.
+	 * @return bool
+	 */
+	private static function restores( $post, $content ) {
+		$now = self::read( $content );
+		if ( self::relays( self::read( $post->post_content ), $now ) || self::without_ids( $content ) !== $content ) {
+			return false;
+		}
+		if ( self::$restoring === (int) $post->ID ) {
+			return true;
+		}
+		foreach ( wp_get_post_revisions( $post->ID, array( 'check_enabled' => false ) ) as $revision ) {
+			// An autosave holds whatever was typed, checked or not.
+			if ( ! wp_is_post_autosave( $revision ) && self::fingerprint( self::read( $revision->post_content ) ) === self::fingerprint( $now ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Refuses, with the message, to restore a revision with other sections.
+	 *
+	 * WordPress's restore link says it worked whatever a save does, so it has to
+	 * be stopped before it starts.
+	 *
+	 * @return void
+	 */
+	public static function check_restore() {
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- only reads; WordPress checks the link itself.
+		if ( ! isset( $_REQUEST['action'], $_REQUEST['revision'] ) || 'restore' !== $_REQUEST['action'] ) {
+			return;
+		}
+		$id       = (int) $_REQUEST['revision'];
+		$revision = wp_get_post_revision( $id );
+		// phpcs:enable
+		if ( ! $revision || ! self::applies( $revision->post_parent ) ) {
+			return;
+		}
+		$post = get_post( $revision->post_parent );
+		if ( self::relays( self::read( $post->post_content ), self::read( $revision->post_content ) ) ) {
+			wp_die( esc_html( self::message() ), '', array( 'response' => 403, 'back_link' => true ) );
+		}
+		self::$restoring = (int) $post->ID;
+	}
+
+	/**
 	 * Refuses a REST save that would change a locked page's sections.
 	 *
 	 * @param object|\WP_Error $prepared The post as prepared for the database.
@@ -708,7 +809,7 @@ final class Lock {
 			return $prepared;
 		}
 		$existing = get_post( $prepared->ID );
-		if ( $existing && self::refuses( $existing->post_content, $prepared->post_content ) ) {
+		if ( $existing && self::refuses( $existing->post_content, $prepared->post_content ) && ! self::restores( $existing, $prepared->post_content ) ) {
 			return new \WP_Error( 'blueworx_page_locked', self::message(), array( 'status' => 403 ) );
 		}
 		return $prepared;
@@ -765,7 +866,7 @@ final class Lock {
 		$content = wp_unslash( $data['post_content'] );
 		if ( $post_id && self::applies( $post_id ) ) {
 			$existing = get_post( $post_id );
-			if ( $existing && self::refuses( $existing->post_content, $content ) ) {
+			if ( $existing && self::refuses( $existing->post_content, $content ) && ! self::restores( $existing, $content ) ) {
 				$data['post_content'] = wp_slash( $existing->post_content );
 				return $data;
 			}

@@ -324,3 +324,42 @@ test('words an older page has outside its sections can change, but nothing joins
   expect(raw).toContain('New heading');
   expect(raw).toContain('<p>Plain old words</p>');
 });
+
+test('a client can restore a revision that only changes words, and is told when one changes sections', async ({ page, browser }) => {
+  const nonce = await nonceFor(page);
+  const post = await createPage(page, nonce, LAYOUT);
+  const { context, page: cp, nonce: clientNonce } = await asClient(browser);
+  const write = async (who, whoNonce, content) => {
+    const res = await who.request.post(`/wp-json/wp/v2/pages/${post.id}`, { headers: { 'X-WP-Nonce': whoNonce }, data: { content } });
+    expect(res.ok(), await res.text()).toBeTruthy();
+  };
+  const revisions = async () => (await (await page.request.get(`/wp-json/wp/v2/pages/${post.id}/revisions?context=edit`, { headers: { 'X-WP-Nonce': nonce } })).json());
+
+  // One change first, so WordPress holds LAYOUT as a revision; then the client
+  // swaps the words of two sections that stay put.
+  await write(cp, clientNonce, (await savedContent(cp, clientNonce, post.id)).replace('First section', 'x'));
+  await write(cp, clientNonce, (await savedContent(cp, clientNonce, post.id)).replace('"x"', '"First section"'));
+  const old = (await revisions())[0];
+  expect(old.content.raw).toBe(LAYOUT);
+  const read = await savedContent(cp, clientNonce, post.id);
+  await write(cp, clientNonce, read.replace('First', 'TEMP').replace('Second', 'First').replace('TEMP', 'Second'));
+  expect(await savedContent(page, nonce, post.id)).toBe(hero('Second section') + hero('First section'));
+
+  // Straight to WordPress's own restore link, as its revisions screen draws it.
+  const restore = async (id) => {
+    await cp.goto(`/wp-admin/revision.php?revision=${id}`);
+    const href = await cp.evaluate(() => window._wpRevisionsSettings.revisionData.map((r) => r.restoreUrl)).then((urls) => urls.find((u) => u && u.includes(`revision=${id}&`)));
+    return cp.goto(href.replace(/&amp;/g, '&'));
+  };
+  await restore(old.id);
+  expect(await savedContent(page, nonce, post.id)).toBe(LAYOUT);
+
+  // An administrator adds a section: going back would take it away again.
+  const longer = LAYOUT + hero('Third section');
+  await write(page, nonce, longer);
+  const refused = await restore(old.id);
+  expect(refused.status()).toBe(403);
+  await expect(cp.locator('body')).toContainText('This page is locked');
+  await context.close();
+  expect(await savedContent(page, nonce, post.id)).toBe(longer);
+});

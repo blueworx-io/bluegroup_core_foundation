@@ -14,6 +14,10 @@ final class PageLockTest extends TestCase {
 		bwpe_stub_reset();
 		$GLOBALS['bwpl_removed'] = [];
 		$GLOBALS['bwpl_blocks']  = [];
+		$GLOBALS['bwpl_revisions'] = [];
+		$restoring = new \ReflectionProperty( Lock::class, 'restoring' );
+		$restoring->setAccessible( true );
+		$restoring->setValue( null, 0 );
 	}
 
 	private function page( int $id, string $content, bool $locked = true ): object {
@@ -113,6 +117,31 @@ final class PageLockTest extends TestCase {
 		// The block editor does this to a page's plain words as it opens it.
 		$this->assertFalse( Lock::refuses( "First words\n\nSecond words\n" . self::HERO, "<p>First words</p>\n<p>Second, edited</p>\n\n" . self::HERO ) );
 		$this->assertTrue( Lock::refuses( "First words\n\n" . self::HERO, "<p>First words</p>\n<p>A second</p>\n\n" . self::HERO ) );
+	}
+
+	public function test_line_breaks_are_part_of_the_words_they_sit_in(): void {
+		foreach (
+			[
+				[ '<p>Hello world</p>', '<p>Hello<br><br>world</p>' ],
+				[ '<p>Hello<br /><br />world</p>', '<p>Hello world</p>' ],
+				[ '<div>Hello world</div>', '<div>Hello<br><br>world</div>' ],
+				// As the block editor rewrites them by opening the page.
+				[ '<p>Hello<br><br>world</p>', '<p>Hello</p><p>world, edited</p>' ],
+				[ 'Hello<br><br>world', '<p>Hello</p><p>world, edited</p>' ],
+				[ '<p>Hello</p><br><br><p>world</p>', '<p>Hello</p><p>world, edited</p>' ],
+			] as $edit
+		) {
+			$this->assertFalse( Lock::refuses( $edit[0] . self::HERO, $edit[1] . self::HERO ), $edit[1] );
+		}
+	}
+
+	public function test_line_breaks_of_their_own_are_not_words(): void {
+		$old = '<p>Hello</p>';
+		foreach ( [ $old . '<br>', $old . '<br/><br/>', '<br><br>' . $old, $old . '<p><br></p>' ] as $now ) {
+			$this->assertTrue( Lock::refuses( $old . self::HERO, $now . self::HERO ), $now );
+		}
+		$this->assertTrue( Lock::refuses( self::HERO, self::HERO . '<br>' ) );
+		$this->assertFalse( Lock::refuses( $old . '<br><br>' . self::HERO, '<p>Edited</p><br><br>' . self::HERO ) );
 	}
 
 	public function test_words_inside_a_block_can_change(): void {
@@ -262,6 +291,66 @@ final class PageLockTest extends TestCase {
 			$this->assertNotSame( $content, Lock::with_ids( $content ) );
 			$this->assertSame( $content, Lock::without_ids( Lock::with_ids( $content ) ) );
 		}
+	}
+
+	// Revisions.
+
+	private function revisions( string ...$contents ): void {
+		$GLOBALS['bwpl_revisions'] = [];
+		foreach ( $contents as $i => $content ) {
+			$id = 50 + $i;
+			$GLOBALS['bwpl_revisions'][ $id ] = (object) [ 'ID' => $id, 'post_type' => 'revision', 'post_parent' => 1, 'post_name' => '1-revision-v1', 'post_content' => $content ];
+		}
+	}
+
+	private function restore( string $content ): string {
+		$data = Lock::insert_guard( [ 'post_type' => 'page', 'post_content' => wp_slash( $content ) ], [ 'ID' => 1 ] );
+		return wp_unslash( $data['post_content'] );
+	}
+
+	public function test_restoring_a_revision_brings_its_words_back(): void {
+		$old = self::hero( 'Celebration' ) . self::hero( 'Dress code' );
+		$this->page( 1, self::hero( 'Dress code' ) . self::hero( 'Celebration' ) );
+		$this->assertNotSame( $old, $this->restore( $old ), 'not a revision' );
+		$this->revisions( $old );
+		$this->assertSame( $old, $this->restore( $old ) );
+		$prepared = (object) [ 'ID' => 1, 'post_content' => $old ];
+		$this->assertSame( $prepared, Lock::rest_guard( $prepared ) );
+	}
+
+	public function test_a_section_known_to_have_moved_is_refused_whatever_the_revisions_say(): void {
+		$old = self::hero( 'Celebration' ) . self::hero( 'Dress code' );
+		$this->page( 1, self::hero( 'Dress code' ) . self::hero( 'Celebration' ) );
+		$this->revisions( $old );
+		$moved = self::hero( 'Celebration', '1' ) . self::hero( 'Dress code', '0' );
+		$this->assertInstanceOf( \WP_Error::class, Lock::rest_guard( (object) [ 'ID' => 1, 'post_content' => $moved ] ) );
+	}
+
+	public function test_an_autosave_is_not_a_revision_to_restore(): void {
+		$page = self::hero( 'Celebration' ) . self::hero( 'Dress code' );
+		$this->page( 1, $page );
+		$this->revisions( self::hero( 'Dress code' ) . self::hero( 'Celebration' ) );
+		$GLOBALS['bwpl_revisions'][50]->post_name = '1-autosave-v1';
+		$this->assertSame( $page, $this->restore( self::hero( 'Dress code' ) . self::hero( 'Celebration' ) ) );
+	}
+
+	public function test_a_revision_with_other_sections_is_refused_out_loud(): void {
+		$this->page( 1, self::HERO );
+		$this->revisions( self::HERO . self::STEPS, self::hero( 'Old words' ) );
+		$_REQUEST = [ 'action' => 'restore', 'revision' => '50' ];
+		try {
+			Lock::check_restore();
+			$this->fail( 'the restore went ahead' );
+		} catch ( \RuntimeException $e ) {
+			$this->assertSame( Lock::message(), $e->getMessage() );
+		}
+		// Only its words differ, or the person may change the page: nothing to say.
+		$_REQUEST['revision'] = '51';
+		Lock::check_restore();
+		$_REQUEST['revision'] = '50';
+		$this->admin();
+		Lock::check_restore();
+		$_REQUEST = [];
 	}
 
 	public function test_another_post_type_is_never_altered(): void {
