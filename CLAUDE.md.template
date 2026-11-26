@@ -120,17 +120,17 @@ Every plugin's admin UI — settings pages, tabs, tables, notices, forms, button
 
 ## Client Figma files
 
-Every client's front-end design lives in one Figma file, started by copying the BlueWorx starter file. The pages are always these, in this order:
+Every client's front-end design lives in one Figma file, started by copying the BlueWorx starter file. The sections are always these, in this order (Pages holds one Figma page per site page, see 5):
 
 1. **Design system** — colours, fonts, sizes, spacing and corners as Figma variables, named exactly as the theme's named styles and nothing else: `color/primary` in Figma is `--color-primary` in code, `space/4` is `--space-4`. A value the theme has no name for is added to the theme first, then to Figma. Before build starts, run Foundation's `scripts/check-figma-names.mjs` (see its `docs/figma-names-check.md`): it lists every missing, extra or misnamed variable.
 2. **Components** — one component per section block, named exactly as the block's title ("Hero section", "Steps section"), with one property per field a client can edit. Repeating items are a list inside the component, as they are in the block.
 3. **Globals** — header, footer, menus, buttons, forms, cookie banner and 404.
 4. **Layouts** — the whole-page layouts clients start new pages from. Each one becomes a page layout in the plugin.
-5. **Pages** — the real site pages, built only from component instances. A page is marked "Ready for dev" when it is signed off; nothing else is built from.
+5. **Pages** — the real site pages, built only from component instances, **one Figma page per site page**, never several site pages on one sheet. They sit after a "Pages" divider, numbered "5.1 · Home", "5.2 · Courses" and so on, each holding that page at desktop, tablet and mobile side by side with its notes beside it. The three sizes sit together in one Figma section, and that section is marked "Ready for dev" when the page is signed off (Figma cannot mark a Figma page itself); nothing else is built from.
 6. **Live site** — updated from code after each release, so Figma always shows what is live. Never edited by hand.
 7. **Archive** — old ideas and explorations. Never built from.
 
-Every page and component is designed at three sizes: desktop 1440, tablet 768 and mobile 375. Claude builds only from Components, Globals, Layouts and Pages marked Ready for dev; anything detached from its component is treated as a mistake to raise, not a design to copy.
+Every page and component is designed at three sizes: desktop 1440, tablet 768 and mobile 375. Claude builds only from Components, Globals, Layouts and Pages marked Ready for dev (for a page, its section); anything detached from its component is treated as a mistake to raise, not a design to copy.
 
 ## Claude Design ↔ code sync rules
 
