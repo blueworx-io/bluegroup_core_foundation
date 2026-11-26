@@ -220,3 +220,146 @@ test('an administrator gets the normal editor and the lock switch', async ({ pag
   await expect(page.locator('.blueworx-page-lock')).toHaveCount(1);
   await expect(page.locator('.blueworx-page-lock').getByRole('checkbox', { name: 'Locked' })).toBeChecked();
 });
+
+test('the editor locks as soon as the first layout is saved, without a reload', async ({ page, browser }) => {
+  const { context, page: cp, nonce } = await asClient(browser);
+  const post = await createPage(cp, nonce, '');
+  await openEditor(cp, post.id);
+  const addButton = cp.locator('.editor-document-tools__inserter-toggle, .edit-post-header-toolbar__inserter-toggle');
+  const templateLock = () => cp.evaluate(() => wp.data.select('core/block-editor').getSettings().templateLock || false);
+  await expect(addButton).toBeVisible();
+
+  await cp.evaluate(() => {
+    wp.data.dispatch('core/block-editor').insertBlocks(['First section', 'Second section'].map((heading) => wp.blocks.createBlock('bwx/section-hero', { heading })));
+  });
+  // Laid out but not saved: still theirs to arrange.
+  expect(await templateLock()).toBe(false);
+
+  await cp.evaluate(() => wp.data.dispatch('core/editor').savePost());
+  await expect.poll(templateLock, { timeout: 15000 }).toBe('all');
+  await expect(addButton).toBeHidden();
+  expect(await cp.evaluate(() => wp.data.select('core/block-editor').canInsertBlockType('bwx/section-hero'))).toBe(false);
+
+  // Words still save.
+  await cp.evaluate(() => {
+    const [first] = wp.data.select('core/block-editor').getBlocks();
+    wp.data.dispatch('core/block-editor').updateBlockAttributes(first.clientId, { heading: 'Typed after the lock' });
+    return wp.data.dispatch('core/editor').savePost();
+  });
+  expect(await cp.evaluate(() => wp.data.select('core/editor').didPostSaveRequestSucceed())).toBe(true);
+  await context.close();
+  expect(await savedContent(page, await nonceFor(page), post.id)).toContain('Typed after the lock');
+});
+
+test('markup outside the sections, and sections swapped round, are refused', async ({ page, browser }) => {
+  const nonce = await nonceFor(page);
+  const post = await createPage(page, nonce, LAYOUT);
+  const { context, page: cp, nonce: clientNonce } = await asClient(browser);
+  const save = (content) => cp.request.post(`/wp-json/wp/v2/pages/${post.id}`, { headers: { 'X-WP-Nonce': clientNonce }, data: { content } });
+
+  expect((await save(LAYOUT + '<p>Outside</p>')).status()).toBe(403);
+  expect((await save('<p>Outside</p>' + LAYOUT)).status()).toBe(403);
+  expect((await save(hero('Second section') + hero('First section'))).status()).toBe(403);
+
+  // What a client reads says which section is which, so a section moved and
+  // reworded in one go is still refused.
+  const read = await savedContent(cp, clientNonce, post.id);
+  const [first, second] = read.split(/(?=<!-- wp:)/);
+  expect((await save(second.replace('Second section', 'Reworded') + first)).status()).toBe(403);
+
+  // Reading a page and saving it back with new words leaves nothing behind.
+  const reworded = await save(read.replace('First section', 'New words'));
+  expect(reworded.ok(), await reworded.text()).toBeTruthy();
+  await context.close();
+  expect(await savedContent(page, nonce, post.id)).toBe(hero('New words') + hero('Second section'));
+});
+
+test('a client can swap the words of two sections in the editor', async ({ page, browser }) => {
+  const post = await createPage(page, await nonceFor(page), LAYOUT);
+  const { context, page: cp } = await asClient(browser);
+  await openEditor(cp, post.id);
+  expect(await cp.evaluate(() => wp.data.select('core/editor').isEditedPostDirty()), 'opening a page changes nothing').toBe(false);
+  const saved = await cp.evaluate(async () => {
+    const [first, second] = wp.data.select('core/block-editor').getBlocks();
+    wp.data.dispatch('core/block-editor').updateBlockAttributes(first.clientId, { heading: 'Second section' });
+    wp.data.dispatch('core/block-editor').updateBlockAttributes(second.clientId, { heading: 'First section' });
+    await wp.data.dispatch('core/editor').savePost();
+    return wp.data.select('core/editor').didPostSaveRequestSucceed();
+  });
+  expect(saved).toBe(true);
+  // And again from the same open editor.
+  const again = await cp.evaluate(async () => {
+    const [first] = wp.data.select('core/block-editor').getBlocks();
+    wp.data.dispatch('core/block-editor').updateBlockAttributes(first.clientId, { heading: 'Third go' });
+    await wp.data.dispatch('core/editor').savePost();
+    return wp.data.select('core/editor').didPostSaveRequestSucceed();
+  });
+  expect(again).toBe(true);
+  await context.close();
+
+  const raw = await savedContent(page, await nonceFor(page), post.id);
+  expect(raw).not.toContain('blueworxSection');
+  expect(raw.indexOf('Third go')).toBeLessThan(raw.indexOf('First section'));
+});
+
+test('words an older page has outside its sections can change, but nothing joins them', async ({ page, browser }) => {
+  const nonce = await nonceFor(page);
+  const post = await createPage(page, nonce, 'Plain old words\n\nand <b>more</b> of them\n\n' + hero('First section'));
+  const { context, page: cp, nonce: clientNonce } = await asClient(browser);
+  const save = (content) => cp.request.post(`/wp-json/wp/v2/pages/${post.id}`, { headers: { 'X-WP-Nonce': clientNonce }, data: { content } });
+  expect((await save('Plain old words\n\nand more of them\n\nand yet more\n\n' + hero('First section'))).status()).toBe(403);
+
+  // The editor puts paragraph tags round plain words, so editing a section
+  // beside them changes their markup without anyone touching them.
+  await openEditor(cp, post.id);
+  const saved = await cp.evaluate(async () => {
+    const section = wp.data.select('core/block-editor').getBlocks().find((b) => b.name === 'bwx/section-hero');
+    wp.data.dispatch('core/block-editor').updateBlockAttributes(section.clientId, { heading: 'New heading' });
+    await wp.data.dispatch('core/editor').savePost();
+    return wp.data.select('core/editor').didPostSaveRequestSucceed();
+  });
+  expect(saved).toBe(true);
+  await context.close();
+  const raw = await savedContent(page, nonce, post.id);
+  expect(raw).toContain('New heading');
+  expect(raw).toContain('<p>Plain old words</p>');
+});
+
+test('a client can restore a revision that only changes words, and is told when one changes sections', async ({ page, browser }) => {
+  const nonce = await nonceFor(page);
+  const post = await createPage(page, nonce, LAYOUT);
+  const { context, page: cp, nonce: clientNonce } = await asClient(browser);
+  const write = async (who, whoNonce, content) => {
+    const res = await who.request.post(`/wp-json/wp/v2/pages/${post.id}`, { headers: { 'X-WP-Nonce': whoNonce }, data: { content } });
+    expect(res.ok(), await res.text()).toBeTruthy();
+  };
+  const revisions = async () => (await (await page.request.get(`/wp-json/wp/v2/pages/${post.id}/revisions?context=edit`, { headers: { 'X-WP-Nonce': nonce } })).json());
+
+  // One change first, so WordPress holds LAYOUT as a revision; then the client
+  // swaps the words of two sections that stay put.
+  await write(cp, clientNonce, (await savedContent(cp, clientNonce, post.id)).replace('First section', 'x'));
+  await write(cp, clientNonce, (await savedContent(cp, clientNonce, post.id)).replace('"x"', '"First section"'));
+  const old = (await revisions())[0];
+  expect(old.content.raw).toBe(LAYOUT);
+  const read = await savedContent(cp, clientNonce, post.id);
+  await write(cp, clientNonce, read.replace('First', 'TEMP').replace('Second', 'First').replace('TEMP', 'Second'));
+  expect(await savedContent(page, nonce, post.id)).toBe(hero('Second section') + hero('First section'));
+
+  // Straight to WordPress's own restore link, as its revisions screen draws it.
+  const restore = async (id) => {
+    await cp.goto(`/wp-admin/revision.php?revision=${id}`);
+    const href = await cp.evaluate(() => window._wpRevisionsSettings.revisionData.map((r) => r.restoreUrl)).then((urls) => urls.find((u) => u && u.includes(`revision=${id}&`)));
+    return cp.goto(href.replace(/&amp;/g, '&'));
+  };
+  await restore(old.id);
+  expect(await savedContent(page, nonce, post.id)).toBe(LAYOUT);
+
+  // An administrator adds a section: going back would take it away again.
+  const longer = LAYOUT + hero('Third section');
+  await write(page, nonce, longer);
+  const refused = await restore(old.id);
+  expect(refused.status()).toBe(403);
+  await expect(cp.locator('body')).toContainText('This page is locked');
+  await context.close();
+  expect(await savedContent(page, nonce, post.id)).toBe(longer);
+});

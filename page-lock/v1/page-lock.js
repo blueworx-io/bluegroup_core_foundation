@@ -23,15 +23,24 @@
 
 	var panelName = 'blueworx-page-lock/blueworx-page-lock';
 
-	function openListView() {
+	// Panels and the structure list live in core/editor from WordPress 6.5 and
+	// in core/edit-post before it. Finds whichever one has the function wanted.
+	function call( from, name, value ) {
 		var stores = [ 'core/editor', 'core/edit-post' ];
 		for ( var i = 0; i < stores.length; i++ ) {
-			var actions = wp.data.dispatch( stores[ i ] );
-			if ( actions && typeof actions.setIsListViewOpened === 'function' ) {
-				actions.setIsListViewOpened( true );
-				return;
+			var store = from( stores[ i ] );
+			if ( store && typeof store[ name ] === 'function' ) {
+				return store[ name ]( value );
 			}
 		}
+	}
+
+	// What the server does on the next load of a page that has its layout.
+	function lockEditor() {
+		wp.data.dispatch( 'core/editor' ).updateEditorSettings( { templateLock: 'all' } );
+		var style = document.createElement( 'style' );
+		style.textContent = config.noAddButton;
+		document.head.appendChild( style );
 	}
 
 	function PageLockPanel() {
@@ -39,7 +48,11 @@
 			return select( 'core/editor' ).getEditedPostAttribute( 'meta' ) || {};
 		}, [] );
 		var isOpen = wp.data.useSelect( function ( select ) {
-			return select( 'core/editor' ).isEditorPanelOpened( panelName );
+			return !! call( select, 'isEditorPanelOpened', panelName );
+		}, [] );
+		// The page as last saved, not as it is being edited.
+		var layoutSaved = wp.data.useSelect( function ( select ) {
+			return /<!--\s+wp:/.test( select( 'core/editor' ).getCurrentPostAttribute( 'content' ) || '' );
 		}, [] );
 		var editor = wp.data.useDispatch( 'core/editor' );
 		var locked = !! meta[ config.metaKey ];
@@ -48,14 +61,22 @@
 		// it afterwards is the person's choice and is left alone.
 		wp.element.useEffect( function () {
 			if ( config.openListView ) {
-				openListView();
+				call( wp.data.dispatch, 'setIsListViewOpened', true );
 			}
 		}, [] );
+
+		// The server fixes the sections as soon as the first layout is saved, so
+		// the open editor stops offering to change them at the same moment.
+		wp.element.useEffect( function () {
+			if ( config.lockOnSave && layoutSaved ) {
+				lockEditor();
+			}
+		}, [ layoutSaved ] );
 
 		// A locked page's notice has to be readable without a click.
 		wp.element.useEffect( function () {
 			if ( locked && ! isOpen ) {
-				editor.toggleEditorPanelOpened( panelName );
+				call( wp.data.dispatch, 'toggleEditorPanelOpened', panelName );
 			}
 		}, [ locked ] );
 

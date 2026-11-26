@@ -26,7 +26,7 @@ if ( ! class_exists( 'Blueworx\PageLock\Registry', false ) ) {
 	require_once __DIR__ . '/Registry.php';
 }
 
-\Blueworx\PageLock\Registry::add( '1.0.0', __DIR__ );
+\Blueworx\PageLock\Registry::add( '1.0.1', __DIR__ );
 
 if ( function_exists( 'add_action' ) ) {
 	add_action( 'after_setup_theme', array( '\Blueworx\PageLock\Registry', 'load' ), 0 );
