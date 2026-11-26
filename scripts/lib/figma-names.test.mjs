@@ -359,3 +359,14 @@ test('compareNames: with nothing on one side, it still fails and lists the rest'
   assert.match(noTheme.message, /color\/primary/);
   assert.equal(compareNames({ figma: [], theme: [] }).ok, false);
 });
+
+test('widths, gutter, section gap and overlay are theme names too', () => {
+  const css = ':root { --width-reading: 720px; --width-page: 1200px; --width-wide: 1440px; --gutter: 24px; --section-space: 96px; --overlay: rgb(0 0 0 / .5); --shadow-sm: none; --focus-ring: none; }';
+  const names = themeNames([{ path: 'tokens.css', content: css }]);
+  assert.deepEqual(names, ['--gutter', '--overlay', '--section-space', '--width-page', '--width-reading', '--width-wide']);
+  const pass = compareNames({ figma: ['gutter', 'overlay', 'section-space', 'width/page', 'width/reading', 'width/wide'], theme: names });
+  assert.equal(pass.ok, true, pass.message);
+  const fail = compareNames({ figma: ['Gutter', 'width/page'], theme: names });
+  assert.deepEqual(fail.missing, ['overlay', 'section-space', 'width/reading', 'width/wide']);
+  assert.deepEqual(fail.misnamed, [{ figma: 'Gutter', shouldBe: 'gutter' }]);
+});
