@@ -1,13 +1,16 @@
 # Figma names check
 
-Checks that a client's Figma file uses exactly the theme's colour, font, size, space
-and corner names, before build starts. It lists every mismatch; a correct file passes.
+Checks that a client's Figma file uses exactly the theme's colour, font, size, space,
+corner and width names, before build starts. It lists every mismatch; a correct file passes.
 
 - Script: `scripts/check-figma-names.mjs` (logic in `scripts/lib/figma-names.mjs`).
 - The rule it enforces is "Client Figma files" in `CLAUDE.md.template`: `color/primary` in
   Figma is `--color-primary` in the theme, `space/4` is `--space-4`.
-- **The theme's names** are the `--color-*`, `--font-*`, `--text-*` (sizes), `--space-*` and
-  `--radius-*` (corners) it defines in its `.css` / `.scss` files.
+- **The theme's names** are the `--color-*`, `--font-*`, `--text-*` (sizes), `--space-*`,
+  `--radius-*` (corners) and `--width-*` (content widths) it defines in its `.css` / `.scss`
+  files, plus `--gutter` (page edges), `--section-space` (gap between sections) and `--overlay`
+  (behind dialogs). In Figma those three keep their names as they are: `gutter`,
+  `section-space`, `overlay`.
 - **Missing:** the theme has the name, the Figma file does not.
 - **Extra:** the Figma file has a variable the theme has no name for.
 - **Misnamed:** the Figma name is nearly right (`Color/Primary`, `colour/primary`,

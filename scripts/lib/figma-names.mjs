@@ -13,11 +13,16 @@
 import { declarations } from './section-styles.mjs';
 
 // The theme's groups, as they start a name: --color-*, --font-*, --text-* (sizes),
-// --space-*, --radius-* (corners). The same --font-*, --text-* and --color-*
-// the section styles check allows.
-export const THEME_GROUPS = ['color', 'font', 'text', 'space', 'radius'];
+// --space-*, --radius-* (corners), --width-* (content widths). The same --font-*,
+// --text-* and --color-* the section styles check allows.
+export const THEME_GROUPS = ['color', 'font', 'text', 'space', 'radius', 'width'];
 
-const THEME_NAME = new RegExp(`^--(?:${THEME_GROUPS.join('|')})-[A-Za-z0-9_-]+$`);
+// Theme names that stand alone, outside any group: the page edge, the gap
+// between sections, and the shade behind dialogs. Figma names them the same,
+// without the "--": gutter, section-space, overlay.
+export const THEME_SINGLES = ['gutter', 'section-space', 'overlay'];
+
+const THEME_NAME = new RegExp(`^--(?:(?:${THEME_GROUPS.join('|')})-[A-Za-z0-9_-]+|${THEME_SINGLES.join('|')})$`);
 
 // Names a designer is likely to type for a group, so a near miss can say what
 // the right name is. Only used to suggest — they are never accepted.
@@ -51,11 +56,13 @@ export function themeNames(files) {
 }
 
 // --color-primary -> color/primary
-const figmaForm = (cssName) => cssName.slice(2).replace('-', '/');
+// (--gutter -> gutter, and --section-space stays section-space).
+const figmaForm = (cssName) => (THEME_SINGLES.includes(cssName.slice(2)) ? cssName.slice(2) : cssName.slice(2).replace('-', '/'));
 // color/text/muted -> --color-text-muted
 const cssForm = (figmaName) => `--${figmaName.replace(/\//g, '-')}`;
 // The group starts the name, then a slash: color-primary is not color/primary.
-const startsWithGroup = (figmaName) => THEME_GROUPS.includes(figmaName.split('/')[0]) && figmaName.includes('/');
+// A name that stands alone is right only when spelled exactly.
+const startsWithGroup = (figmaName) => THEME_SINGLES.includes(figmaName) || (THEME_GROUPS.includes(figmaName.split('/')[0]) && figmaName.includes('/'));
 
 // What a name boils down to once case, separators and a group's other spellings
 // are ignored: Colour/Primary Dark, color-primaryDark and color/primary-dark
@@ -178,7 +185,7 @@ export function compareNames({ figma, theme }) {
   const empty = figma.length === 0
     ? 'Figma names: found no variables in the Figma file. Check it is the right file, and that its colours, fonts and sizes are Figma variables.'
     : theme.length === 0
-      ? 'Figma names: found no names in the theme (--color-*, --font-*, --text-*, --space-*, --radius-*). Point --theme at the theme\'s folder.'
+      ? 'Figma names: found no names in the theme (--color-*, --font-*, --text-*, --space-*, --radius-*, --width-*, --gutter, --section-space, --overlay). Point --theme at the theme\'s folder.'
       : '';
 
   const themeSet = new Set(theme);
