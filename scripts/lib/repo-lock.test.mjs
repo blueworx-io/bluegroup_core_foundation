@@ -11,6 +11,8 @@ import {
   planLock,
   probeAsStranger,
   probeFailures,
+  vetStranger,
+  writeRouteProblems,
 } from './repo-lock.mjs';
 
 const NOW = new Date('2026-11-24T00:00:00Z');
@@ -312,4 +314,73 @@ test('every thread locked on every page is reported as not tested', async () => 
   });
   const failures = probeFailures(await probeAsStranger(request, 'o', [repo('a')]));
   assert.match(failures[0], /Not tested/);
+});
+
+test('a repo with a wiki, projects or discussions on is reported by the check', () => {
+  const lines = writeRouteProblems([repo('a', { has_wiki: true }), repo('b'), repo('c', { has_projects: true, has_discussions: true })]);
+  assert.equal(lines.length, 3);
+  assert.match(lines[0], /^a: wiki is switched on/);
+  assert.deepEqual(writeRouteProblems([repo('a'), repo('old', { archived: true, has_wiki: true })]), []);
+});
+
+test('a failed request later on keeps the clean-up links already collected', async () => {
+  const table = {
+    'POST /repos/o/a/issues': { status: 201, body: { number: 9, html_url: 'https://github.com/o/a/issues/9' } },
+    'PATCH /repos/o/a/issues/9': { status: 403, body: {} },
+    'GET /repos/o/a/issues?state=all&per_page=30': { status: 200, body: [{ number: 3 }] },
+  };
+  const request = async (method, path) => {
+    if (method === 'POST' && path.endsWith('/comments')) throw new Error('fetch failed');
+    return table[`${method} ${path}`] ?? LOCKED;
+  };
+  const failures = probeFailures(await probeAsStranger(request, 'o', [repo('a'), repo('b')])).join('\n');
+  assert.match(failures, /Remove it by hand: https:\/\/github.com\/o\/a\/issues\/9\b/);
+  assert.match(failures, /a: inconclusive.*comment.*HTTP 0/);
+  assert.match(failures, /b: /); // the next repo is still tried
+});
+
+test('a failed thread listing is reported, not thrown', async () => {
+  const request = async (method) => {
+    if (method === 'GET') throw new Error('fetch failed');
+    return LOCKED;
+  };
+  const failures = probeFailures(await probeAsStranger(request, 'o', [repo('a')]));
+  assert.match(failures[0], /Not tested/);
+});
+
+// Answers the vetting calls: the stranger's own name, and what the owner sees.
+function vetApi({ login = 'outsider', member = 404, collaborator = {} } = {}) {
+  const stranger = async () => ({ status: 200, body: { login } });
+  const admin = async (method, path) => {
+    if (path === `/orgs/o/members/${login}`) return { status: member, body: null };
+    const repoName = /\/repos\/o\/([^/]+)\/collaborators\//.exec(path)?.[1];
+    return { status: collaborator[repoName] ?? 404, body: null };
+  };
+  return { stranger, admin };
+}
+
+test('an account with no access passes the check before anything is posted', async () => {
+  const { stranger, admin } = vetApi();
+  const vet = await vetStranger(stranger, admin, 'o', [repo('a'), repo('b')]);
+  assert.deepEqual(vet, { login: 'outsider', problems: [] });
+});
+
+test('the owner, a member or a collaborator is not a stranger', async () => {
+  const owner = vetApi({ login: 'O' });
+  assert.match((await vetStranger(owner.stranger, owner.admin, 'o', [repo('a')])).problems[0], /owns the repos/);
+  const member = vetApi({ member: 204 });
+  assert.match((await vetStranger(member.stranger, member.admin, 'o', [repo('a')])).problems[0], /member of o/);
+  const collab = vetApi({ collaborator: { b: 204 } });
+  const found = (await vetStranger(collab.stranger, collab.admin, 'o', [repo('a'), repo('b')])).problems;
+  assert.equal(found.length, 1);
+  assert.match(found[0], /collaborator on b/);
+});
+
+test('a token GitHub rejects, or an unclear answer, stops the check', async () => {
+  const bad = await vetStranger(async () => ({ status: 401, body: {} }), async () => ({ status: 404 }), 'o', [repo('a')]);
+  assert.match(bad.problems[0], /did not accept STRANGER_TOKEN \(HTTP 401\)/);
+  const down = await vetStranger(async () => { throw new Error('fetch failed'); }, async () => ({ status: 404 }), 'o', [repo('a')]);
+  assert.match(down.problems[0], /Nothing was posted/);
+  const unclear = vetApi({ collaborator: { a: 403 } });
+  assert.match((await vetStranger(unclear.stranger, unclear.admin, 'o', [repo('a')])).problems[0], /Could not tell.*HTTP 403/);
 });

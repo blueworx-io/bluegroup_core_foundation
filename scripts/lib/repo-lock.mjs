@@ -172,6 +172,65 @@ export function isFineGrainedToken(token) {
 }
 
 /**
+ * The other places a stranger could write (wiki, projects, discussions) must be
+ * switched off on every public repo, or a locked issue tracker proves little.
+ * Pure. Archived repos are read-only already.
+ */
+export function writeRouteProblems(repos) {
+  const lines = [];
+  for (const repo of repos) {
+    if (repo.archived) continue;
+    for (const [key, want] of Object.entries(REPO_SETTINGS)) {
+      if (repo[key] !== want) {
+        lines.push(`${repo.name}: ${key.replace('has_', '')} is switched on, so a stranger may be able to write there. Run --apply.`);
+      }
+    }
+  }
+  return lines;
+}
+
+/**
+ * Before the stranger posts anything, make sure it really is a stranger: the
+ * owner's account, an organisation member or a collaborator on any repo would be
+ * let in by the lock, so its successes and refusals would prove nothing.
+ * `strangerRequest` carries the stranger's token, `adminRequest` the owner's.
+ * Returns the account's name and the problems found (none means it is a stranger).
+ */
+export async function vetStranger(strangerRequest, adminRequest, org, repos) {
+  let me;
+  try {
+    me = await strangerRequest('GET', '/user');
+  } catch {
+    return { login: null, problems: ['Could not reach GitHub to see whose token STRANGER_TOKEN is. Nothing was posted.'] };
+  }
+  const login = me.body?.login;
+  if (me.status !== 200 || !login) {
+    return { login: null, problems: [`GitHub did not accept STRANGER_TOKEN (HTTP ${me.status}), so nothing was posted.`] };
+  }
+  const problems = [];
+  if (login.toLowerCase() === String(org).toLowerCase()) {
+    problems.push(`STRANGER_TOKEN belongs to ${login}, the account that owns the repos. Use a different account.`);
+  }
+  const ask = async (path) => {
+    try {
+      return (await adminRequest('GET', path)).status;
+    } catch {
+      return 0;
+    }
+  };
+  // 204 means yes. For a personal account the members route answers 404, which is fine.
+  const member = await ask(`/orgs/${org}/members/${login}`);
+  if (member === 204) problems.push(`${login} is a member of ${org}, so the lock lets it in. Use an account with no access.`);
+  else if (member !== 404) problems.push(`Could not tell whether ${login} is a member of ${org} (HTTP ${member || 'no reply'}).`);
+  for (const repo of repos) {
+    const status = await ask(`/repos/${org}/${repo.name}/collaborators/${login}`);
+    if (status === 204) problems.push(`${login} is a collaborator on ${repo.name}, so the lock lets it in. Use an account with no access.`);
+    else if (status !== 404) problems.push(`Could not tell whether ${login} has access to ${repo.name} (HTTP ${status || 'no reply'}).`);
+  }
+  return { login, problems };
+}
+
+/**
  * Turns a stranger's attempt into a verdict. Pure. Only a refusal that names the
  * interaction limit counts as proof. Any other refusal is "unclear", and GitHub's
  * own words are kept so the person running it can see why.
@@ -189,8 +248,17 @@ export function judgeProbe(status, message = '') {
  * carry the stranger's token, never an admin's.
  * @returns {Promise<{repo: string, action: string, verdict: string, status: number}[]>}
  */
-export async function probeAsStranger(request, org, repos) {
+export async function probeAsStranger(rawRequest, org, repos) {
   const results = [];
+  // A dropped connection becomes a reply with status 0, so the run carries on and
+  // the clean-up links already collected are never thrown away with an exception.
+  const request = async (method, path, body) => {
+    try {
+      return await rawRequest(method, path, body);
+    } catch {
+      return { status: 0, body: { message: 'no reply from GitHub' }, next: null };
+    }
+  };
   const note = (repo, action, res) => ({
     repo,
     action,
@@ -242,11 +310,7 @@ async function findUnlockedThread(request, base) {
   let status = 0;
   for (let page = 0; path && page < MAX_THREAD_PAGES; page++) {
     let res;
-    try {
-      res = await request('GET', path);
-    } catch {
-      return { thread: undefined, status: 0 };
-    }
+    res = await request('GET', path);
     status = res.status;
     if (!Array.isArray(res.body)) break;
     const thread = res.body.find((i) => i && !i.locked);
