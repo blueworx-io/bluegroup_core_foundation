@@ -18,7 +18,7 @@
 // Exits 0 when everything is as it should be, 1 when something needs doing or
 // a stranger got through, 2 when it could not talk to GitHub.
 
-import { applyLock, getLimit, githubRequest, isFineGrainedToken, limitProblemForCheck, listPublicRepos, planLock, probeAsStranger, probeFailures, vetStranger, writeRouteProblems } from './lib/repo-lock.mjs';
+import { applyLock, getLimit, githubRequest, isFineGrainedToken, limitProblemForCheck, lostConnection, listPublicRepos, planLock, probeAsStranger, probeFailures, vetStranger, writeRouteProblems } from './lib/repo-lock.mjs';
 
 const org = process.env.LOCK_ORG || 'blueworx-io';
 const args = new Set(process.argv.slice(2));
@@ -40,7 +40,7 @@ async function main() {
     // The stranger cannot read the setting, so an owner's token confirms that the
     // limit in force is collaborators only. A refusal under a looser one proves nothing.
     const adminToken = process.env.GITHUB_TOKEN;
-    if (!adminToken) throw new Error('--check also needs GITHUB_TOKEN (read only is enough), to confirm the limit in force is collaborators only.');
+    if (!adminToken) throw new Error('--check also needs GITHUB_TOKEN, to confirm the limit in force is collaborators only and that the stranger has no access. Read only is enough, but it must be able to read Administration and Members (a classic token with repo and read:org does).');
     const problem = limitProblemForCheck(await getLimit(githubRequest({ token: adminToken }), org), new Date());
     if (problem) {
       console.log(`PROBLEM  ${problem}`);
@@ -66,6 +66,11 @@ async function main() {
     for (const line of failures) console.log(`PROBLEM  ${line}`);
     if (failures.length === 0) console.log('Every attempt was blocked.');
     else console.log('This is not a pass: "inconclusive" and "not tested" mean the lock was not proven.');
+    // No reply from GitHub is "could not talk to GitHub" (2), not a problem with the lock (1).
+    if (lostConnection(results)) {
+      console.log('GitHub stopped answering during the check. Remove any links listed above by hand, then run it again.');
+      return 2;
+    }
     return failures.length === 0 ? 0 : 1;
   }
 

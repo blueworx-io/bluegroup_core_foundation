@@ -8,6 +8,7 @@ import {
   limitProblemForCheck,
   judgeProbe,
   listPublicRepos,
+  lostConnection,
   planLock,
   probeAsStranger,
   probeFailures,
@@ -349,9 +350,11 @@ test('a failed thread listing is reported, not thrown', async () => {
 });
 
 // Answers the vetting calls: the stranger's own name, and what the owner sees.
-function vetApi({ login = 'outsider', member = 404, collaborator = {} } = {}) {
+function vetApi({ login = 'outsider', member = 404, collaborator = {}, canRead = true } = {}) {
   const stranger = async () => ({ status: 200, body: { login } });
   const admin = async (method, path) => {
+    if (path === '/user') return { status: 200, body: { login: 'owner' } };
+    if (path.endsWith('/collaborators/owner')) return { status: canRead ? 204 : 404, body: null };
     if (path === `/orgs/o/members/${login}`) return { status: member, body: null };
     const repoName = /\/repos\/o\/([^/]+)\/collaborators\//.exec(path)?.[1];
     return { status: collaborator[repoName] ?? 404, body: null };
@@ -383,4 +386,21 @@ test('a token GitHub rejects, or an unclear answer, stops the check', async () =
   assert.match(down.problems[0], /Nothing was posted/);
   const unclear = vetApi({ collaborator: { a: 403 } });
   assert.match((await vetStranger(unclear.stranger, unclear.admin, 'o', [repo('a')])).problems[0], /Could not tell.*HTTP 403/);
+});
+
+test('an owner token that cannot read access lists stops the check, so a 404 is never taken as "no access"', async () => {
+  const blind = vetApi({ canRead: false });
+  const vet = await vetStranger(blind.stranger, blind.admin, 'o', [repo('a')]);
+  assert.match(vet.problems[0], /GITHUB_TOKEN cannot read who has access.*Nothing was posted/);
+  assert.equal(vet.problems.length, 1);
+});
+
+test('no reply from GitHub during the check is told apart from a lock problem', async () => {
+  const request = async (method) => {
+    if (method === 'POST') throw new Error('fetch failed');
+    return { status: 200, body: [] };
+  };
+  const results = await probeAsStranger(request, 'o', [repo('a')]);
+  assert.equal(lostConnection(results), true);
+  assert.equal(lostConnection([{ repo: 'a', action: 'comment', verdict: 'blocked', status: 403 }]), false);
 });

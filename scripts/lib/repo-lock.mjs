@@ -218,6 +218,25 @@ export async function vetStranger(strangerRequest, adminRequest, org, repos) {
       return 0;
     }
   };
+  // A token that cannot read who has access answers 404 to everything, which would
+  // look like "no access". Prove it can: the owner's own account is a collaborator.
+  let adminLogin = null;
+  try {
+    adminLogin = (await adminRequest('GET', '/user')).body?.login ?? null;
+  } catch {
+    adminLogin = null;
+  }
+  if (repos.length > 0) {
+    const canary = adminLogin ? await ask(`/repos/${org}/${repos[0].name}/collaborators/${adminLogin}`) : 0;
+    if (canary !== 204) {
+      return {
+        login,
+        problems: [
+          'GITHUB_TOKEN cannot read who has access to the repos, so a "no access" answer would prove nothing. Give it Administration (read) and Members (read) on the organisation, or use a classic token with repo and read:org. Nothing was posted.',
+        ],
+      };
+    }
+  }
   // 204 means yes. For a personal account the members route answers 404, which is fine.
   const member = await ask(`/orgs/${org}/members/${login}`);
   if (member === 204) problems.push(`${login} is a member of ${org}, so the lock lets it in. Use an account with no access.`);
@@ -330,6 +349,11 @@ async function cleanUp(results, repo, action, url, okStatus, run) {
   } catch {
     results.push({ repo, action, verdict: 'cleanup-failed', status: 0, url });
   }
+}
+
+/** True when GitHub stopped answering during the check, so it must end as "could not talk to GitHub". Pure. */
+export function lostConnection(results) {
+  return results.some((r) => r.status === 0);
 }
 
 /** One line per repo-action that is not properly blocked. Pure. */
