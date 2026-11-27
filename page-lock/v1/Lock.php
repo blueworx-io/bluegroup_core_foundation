@@ -405,16 +405,73 @@ final class Lock {
 		if ( '' === trim( $bare ) ) {
 			return array();
 		}
-		// WordPress hands back nothing when it cannot work on markup (a large inline SVG), which must not read as no
-		// elements. The tags are then read as they stand, so words beside the SVG can still be edited.
-		$html     = strtolower( wpautop( $bare ) );
-		$untidied = '' === trim( $html );
-		if ( $untidied ) {
-			$html = strtolower( $bare );
+		// A large inline SVG is more than WordPress can work on, and it hands back nothing, which must not read as no
+		// elements. The SVGs are set aside, so the words round them are tidied as they are anywhere else, and their
+		// own tags are put back where they stood.
+		$svgs   = array();
+		$masked = self::set_aside_svgs( $bare, $svgs );
+		$html   = strtolower( wpautop( $masked ) );
+		if ( '' === trim( $html ) ) {
+			return false;
 		}
-		// A comment nobody closed would hide the sections after it.
-		// A tag runs to its closing bracket, and what a quoted attribute says is not part of the markup.
-		// Possessive, so a long attribute cannot run PHP's regex engine out of stack.
+		$names = self::tag_names( $html );
+		if ( false === $names ) {
+			return false;
+		}
+		$out = array();
+		foreach ( $names as $name ) {
+			if ( '<bwplsvg' === $name && $svgs ) {
+				$inside = self::tag_names( strtolower( array_shift( $svgs ) ) );
+				if ( false === $inside ) {
+					return false;
+				}
+				$out = array_merge( $out, $inside );
+				continue;
+			}
+			$out[] = $name;
+		}
+		return array_values( preg_grep( '#^</?(?:' . self::INLINE . ')$#', $out, PREG_GREP_INVERT ) );
+	}
+
+	/**
+	 * Markup with each inline SVG taken out and a marker left in its place.
+	 *
+	 * Found by position, not by a pattern, so a very large SVG cannot run PHP's
+	 * regex engine out of steps.
+	 *
+	 * @param string   $html Markup from outside the sections.
+	 * @param string[] $svgs Filled with each SVG taken out, in order.
+	 * @return string
+	 */
+	private static function set_aside_svgs( $html, &$svgs ) {
+		$out = '';
+		$at  = 0;
+		while ( preg_match( '#<svg(?=[\s/>])#i', $html, $open, PREG_OFFSET_CAPTURE, $at ) ) {
+			$from  = $open[0][1];
+			$close = stripos( $html, '</svg', $from );
+			$last  = false === $close ? false : strpos( $html, '>', $close );
+			if ( false === $last ) {
+				break;
+			}
+			$svgs[] = substr( $html, $from, $last + 1 - $from );
+			$out   .= substr( $html, $at, $from - $at ) . '<bwplsvg/>';
+			$at     = $last + 1;
+		}
+		return $out . substr( $html, $at );
+	}
+
+	/**
+	 * The names of the tags in some markup, in order.
+	 *
+	 * A comment nobody closed would hide the sections after it, so its opening is
+	 * listed too. A tag runs to its closing bracket, and what a quoted attribute
+	 * says is not part of the markup. Possessive, so a long attribute cannot run
+	 * PHP's regex engine out of stack.
+	 *
+	 * @param string $html Markup.
+	 * @return string[]|false The names, or false when the markup could not be read.
+	 */
+	private static function tag_names( $html ) {
 		if ( false === preg_match_all( '#</?[a-z][a-z0-9-]*+(?:"[^"]*+"|\'[^\']*+\'|[^>"\']++)*+|<!--#', $html, $tags ) ) {
 			return false;
 		}
@@ -422,9 +479,7 @@ final class Lock {
 		foreach ( $tags[0] as $tag ) {
 			$names[] = preg_match( '#^</?[a-z][a-z0-9-]*#', $tag, $name ) ? $name[0] : $tag;
 		}
-		// Paragraph tags are the ones the editor puts round loose words, which untidied markup has not had done.
-		$skip = $untidied ? '|p' : '';
-		return array_values( preg_grep( '#^</?(?:' . self::INLINE . $skip . ')$#', $names, PREG_GREP_INVERT ) );
+		return $names;
 	}
 
 	/**

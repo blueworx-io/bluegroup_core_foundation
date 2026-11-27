@@ -516,20 +516,35 @@ final class PageLockTest extends TestCase {
 	}
 
 	public function test_words_beside_a_large_inline_svg_can_still_be_edited(): void {
+		// The SVG is what WordPress cannot tidy.
 		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
-		$old = '<p>An old introduction <svg viewBox="0 0 9 9"><path d="M0 0"/></svg> BIGSVG</p>' . self::HERO;
+		$old = '<p>An old introduction <svg viewBox="0 0 9 9"><path d="BIGSVG"/></svg></p>' . self::HERO;
 		$this->assertFalse( Lock::refuses( $old, str_replace( 'old introduction', 'new words', $old ) ) );
 		$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ) );
 		$this->assertTrue( Lock::refuses( $old, str_replace( '</p>', '</p><iframe src="x"></iframe>', $old ) ) );
-		$this->assertTrue( Lock::refuses( $old, str_replace( '<path d="M0 0"/>', '<path d="M0 0"/><script></script>', $old ) ) );
+		$this->assertTrue( Lock::refuses( $old, str_replace( '<path d="BIGSVG"/>', '<path d="BIGSVG"/><script></script>', $old ) ) );
 	}
 
-	public function test_paragraphs_the_editor_adds_beside_a_large_inline_svg_are_not_a_change(): void {
+	public function test_paragraphs_beside_a_large_inline_svg_are_read_as_anywhere_else(): void {
 		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
-		$loose = 'Intro words <svg viewBox="0 0 9 9"><path d="M0 0"/></svg> BIGSVG';
+		$svg   = '<svg viewBox="0 0 9 9"><path d="BIGSVG"/></svg>';
+		$loose = 'Intro words ' . $svg;
+		// Paragraph tags round loose words, as the editor adds them, are not a change.
 		$this->assertFalse( Lock::refuses( $loose . self::HERO, '<p>' . $loose . '</p>' . self::HERO ) );
 		$this->assertFalse( Lock::refuses( '<p>' . $loose . '</p>' . self::HERO, $loose . self::HERO ) );
 		$this->assertTrue( Lock::refuses( $loose . self::HERO, '<p>' . $loose . '</p><iframe src="x"></iframe>' . self::HERO ) );
+		// A whole paragraph added or taken away is.
+		$this->assertTrue( Lock::refuses( '<p>' . $loose . '</p>' . self::HERO, '<p>' . $loose . '</p><p>More</p>' . self::HERO ) );
+		$this->assertTrue( Lock::refuses( '<p>' . $loose . '</p><p>More</p>' . self::HERO, '<p>' . $loose . '</p>' . self::HERO ) );
+		// The same SVG moved to another place is not the same elements.
+		$this->assertTrue( Lock::refuses( '<div>One</div><div>Two ' . $svg . '</div>' . self::HERO, '<div>One ' . $svg . '</div><div>Two</div>' . self::HERO ) );
+	}
+
+	public function test_a_text_edit_that_pushes_an_svg_past_the_limit_is_not_refused(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$old = '<p>Intro <svg viewBox="0 0 9 9"><path d="M0 0"/></svg></p>' . self::HERO;
+		$this->assertFalse( Lock::refuses( $old, str_replace( 'M0 0', 'BIGSVG', $old ) ) );
+		$this->assertFalse( Lock::refuses( str_replace( 'M0 0', 'BIGSVG', $old ), $old ) );
 	}
 
 	public function test_a_line_break_written_inside_an_attribute_does_not_hide_the_closing_tag(): void {
