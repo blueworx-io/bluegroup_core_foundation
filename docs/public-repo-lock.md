@@ -63,14 +63,19 @@ GITHUB_TOKEN=<org owner token> STRANGER_TOKEN=<that account's token> node script
 - `STRANGER_TOKEN`: a **classic** token (`public_repo` scope) from an account with
   no access. A fine-grained token is refused up front: it can never write to our
   public repos, so its refusals would prove nothing.
+- Before it posts anything, the check confirms the account really is an outsider:
+  it is not the owner, not a member of the organisation and not a collaborator on
+  any public repo (it asks with `GITHUB_TOKEN`, which must be able to read who has access: Administration (read) and Members (read), or a classic token with `repo` and `read:org`; the check first proves this by looking up the owner's own access, as a collaborator and, for an organisation, as a member, and stops if it cannot). If it is, the check stops and
+  posts nothing, because the lock lets that account in. It also reports any public
+  repo that still has a wiki, projects or discussions switched on.
 - The check tries to open an issue and add a comment (on a thread that is not
   locked) on every public repo, and expects each to be refused *because of the
   limit*. A refusal for any other reason (a rate limit, an unexplained 403 or 404)
   is "inconclusive", and so is a repo with no thread to comment on. Neither is a
   pass. If an attempt gets through it says so, then closes or deletes what it
-  made. If it cannot clean up, it prints the link to remove by hand.
+  made. If it cannot clean up, it prints the link to remove by hand. A dropped connection part-way through does not lose those links: it is reported as inconclusive and the check carries on with the next repo.
 - Exit code 0 means all good, 1 means something needs doing or a stranger got
-  through, 2 means it could not reach GitHub.
+  through, 2 means it could not reach GitHub, or GitHub stopped answering at any point, including before anything is posted.
 
 ## Done when
 

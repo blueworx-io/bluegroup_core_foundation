@@ -172,6 +172,99 @@ export function isFineGrainedToken(token) {
 }
 
 /**
+ * The other places a stranger could write (wiki, projects, discussions) must be
+ * switched off on every public repo, or a locked issue tracker proves little.
+ * Pure. Archived repos are read-only already.
+ */
+export function writeRouteProblems(repos) {
+  const lines = [];
+  for (const repo of repos) {
+    if (repo.archived) continue;
+    for (const [key, want] of Object.entries(REPO_SETTINGS)) {
+      if (repo[key] !== want) {
+        lines.push(`${repo.name}: ${key.replace('has_', '')} is switched on, so a stranger may be able to write there. Run --apply.`);
+      }
+    }
+  }
+  return lines;
+}
+
+/**
+ * Before the stranger posts anything, make sure it really is a stranger: the
+ * owner's account, an organisation member or a collaborator on any repo would be
+ * let in by the lock, so its successes and refusals would prove nothing.
+ * `strangerRequest` carries the stranger's token, `adminRequest` the owner's.
+ * Returns the account's name and the problems found (none means it is a stranger).
+ */
+export async function vetStranger(strangerRequest, adminRequest, org, repos) {
+  const noReplyText = 'GitHub stopped answering, so nothing was posted.';
+  let me;
+  try {
+    me = await strangerRequest('GET', '/user');
+  } catch {
+    return { login: null, unreachable: true, problems: [`Could not reach GitHub to see whose token STRANGER_TOKEN is. ${noReplyText}`] };
+  }
+  const login = me.body?.login;
+  if (me.status !== 200 || !login) {
+    return { login: null, problems: [`GitHub did not accept STRANGER_TOKEN (HTTP ${me.status}), so nothing was posted.`] };
+  }
+  const problems = [];
+  if (login.toLowerCase() === String(org).toLowerCase()) {
+    problems.push(`STRANGER_TOKEN belongs to ${login}, the account that owns the repos. Use a different account.`);
+  }
+  // A dropped connection is remembered, so the script can exit 2 ("could not talk
+  // to GitHub") instead of blaming the token or the lock.
+  let noReply = false;
+  const call = async (path) => {
+    try {
+      return await adminRequest('GET', path);
+    } catch {
+      noReply = true;
+      return { status: 0, body: null };
+    }
+  };
+  const ask = async (path) => (await call(path)).status;
+  const adminLogin = (await call('/user')).body?.login ?? null;
+  const type = (await call(`/users/${org}`)).body?.type ?? null;
+  if (noReply) return { login, unreachable: true, problems: [`Could not reach GitHub to check the owner's token. ${noReplyText}`] };
+
+  // A token that cannot read who has access answers 404 to everything, which would
+  // look like "no access". Prove it can: the owner's own account is a collaborator,
+  // and for an organisation also a member (private members need Members read).
+  const blind = [];
+  if (repos.length > 0) {
+    const canary = adminLogin ? await ask(`/repos/${org}/${repos[0].name}/collaborators/${adminLogin}`) : 0;
+    if (canary !== 204) blind.push('collaborators');
+  }
+  const isOrg = type === 'Organization';
+  if (isOrg) {
+    const canary = adminLogin ? await ask(`/orgs/${org}/members/${adminLogin}`) : 0;
+    if (canary !== 204) blind.push('members');
+  }
+  if (noReply) return { login, unreachable: true, problems: [`Could not reach GitHub to check the owner's token. ${noReplyText}`] };
+  if (blind.length) {
+    return {
+      login,
+      problems: [
+        `GITHUB_TOKEN cannot read the ${blind.join(' or ')} list, so a "no access" answer would prove nothing. Give it Administration (read) and Members (read) on the organisation, or use a classic token with repo and read:org. Nothing was posted.`,
+      ],
+    };
+  }
+  // 204 means yes. A personal account has no members, so only an organisation is asked.
+  if (isOrg) {
+    const member = await ask(`/orgs/${org}/members/${login}`);
+    if (member === 204) problems.push(`${login} is a member of ${org}, so the lock lets it in. Use an account with no access.`);
+    else if (member !== 404) problems.push(`Could not tell whether ${login} is a member of ${org} (HTTP ${member || 'no reply'}).`);
+  }
+  for (const repo of repos) {
+    const status = await ask(`/repos/${org}/${repo.name}/collaborators/${login}`);
+    if (status === 204) problems.push(`${login} is a collaborator on ${repo.name}, so the lock lets it in. Use an account with no access.`);
+    else if (status !== 404) problems.push(`Could not tell whether ${login} has access to ${repo.name} (HTTP ${status || 'no reply'}).`);
+  }
+  return { login, problems, unreachable: noReply };
+}
+
+/**
  * Turns a stranger's attempt into a verdict. Pure. Only a refusal that names the
  * interaction limit counts as proof. Any other refusal is "unclear", and GitHub's
  * own words are kept so the person running it can see why.
@@ -189,8 +282,17 @@ export function judgeProbe(status, message = '') {
  * carry the stranger's token, never an admin's.
  * @returns {Promise<{repo: string, action: string, verdict: string, status: number}[]>}
  */
-export async function probeAsStranger(request, org, repos) {
+export async function probeAsStranger(rawRequest, org, repos) {
   const results = [];
+  // A dropped connection becomes a reply with status 0, so the run carries on and
+  // the clean-up links already collected are never thrown away with an exception.
+  const request = async (method, path, body) => {
+    try {
+      return await rawRequest(method, path, body);
+    } catch {
+      return { status: 0, body: { message: 'no reply from GitHub' }, next: null };
+    }
+  };
   const note = (repo, action, res) => ({
     repo,
     action,
@@ -242,11 +344,7 @@ async function findUnlockedThread(request, base) {
   let status = 0;
   for (let page = 0; path && page < MAX_THREAD_PAGES; page++) {
     let res;
-    try {
-      res = await request('GET', path);
-    } catch {
-      return { thread: undefined, status: 0 };
-    }
+    res = await request('GET', path);
     status = res.status;
     if (!Array.isArray(res.body)) break;
     const thread = res.body.find((i) => i && !i.locked);
@@ -266,6 +364,11 @@ async function cleanUp(results, repo, action, url, okStatus, run) {
   } catch {
     results.push({ repo, action, verdict: 'cleanup-failed', status: 0, url });
   }
+}
+
+/** True when GitHub stopped answering during the check, so it must end as "could not talk to GitHub". Pure. */
+export function lostConnection(results) {
+  return results.some((r) => r.status === 0);
 }
 
 /** One line per repo-action that is not properly blocked. Pure. */
