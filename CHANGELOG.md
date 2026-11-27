@@ -4,7 +4,6 @@
 
 - New version number, so a site can tell this copy from 1.0.2 (the first with the fixes below).
 - Words beside a large inline SVG can be edited on a locked page again: when WordPress cannot tidy the markup, its tags are read as they stand instead of the whole piece having to stay the same.
-
 - Paragraphs the editor puts round loose words beside such an SVG are no longer read as a change.
 - Autosaves keep their section ids (the live page and ordinary revisions still do not), so restoring one that only changed words is no longer mistaken for a move.
 - A `<br` written inside a quoted attribute is no longer read as a line break, so it cannot hide a closing tag.
