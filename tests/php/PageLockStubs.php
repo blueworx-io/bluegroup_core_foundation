@@ -55,6 +55,12 @@ if ( ! function_exists( 'wpautop' ) ) {
 	// The parts that matter here: loose words become paragraphs, and two line
 	// breaks or an empty line end one.
 	function wpautop( $text ) {
+		// WordPress gives back nothing when it cannot work on markup, such as a large inline SVG.
+		foreach ( $GLOBALS['bwpl_wpautop_fails'] ?? [] as $needle ) {
+			if ( false !== strpos( (string) $text, $needle ) ) {
+				return '';
+			}
+		}
 		$text = preg_replace( '#<br\s*/?>\s*<br\s*/?>#', "\n\n", (string) $text );
 		$out  = '';
 		$pieces = preg_split( '#(<p\b.*</p>|<(?:div|h2)\b.*</(?:div|h2)>|<hr>)|\n\s*\n#sU', $text, -1, PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE );

@@ -333,17 +333,15 @@ final class Lock {
 			$elements = self::structure( self::as_words( $html ) );
 			$before   = self::structure( self::as_words( $old ) );
 			$plain    = self::structure( $old );
-			// Markup that could not be read says nothing about its elements, so it has to be the same text.
-			if ( false === $elements || false === $before || false === $plain ) {
-				if ( trim( $old ) !== trim( $html ) ) {
-					return true;
-				}
+			// As it is saved, or as the block editor redraws it by opening the page.
+			if ( false !== $elements && ( $before === $elements || $plain === $elements ) ) {
 				continue;
 			}
-			// As it is saved, or as the block editor redraws it by opening the page.
-			if ( $before !== $elements && $plain !== $elements ) {
-				return true;
+			// Markup that could not be read says nothing about its elements, so it has to be the same text.
+			if ( ( false === $elements || false === $before || false === $plain ) && trim( $old ) === trim( $html ) ) {
+				continue;
 			}
+			return true;
 		}
 		return false;
 	}
@@ -353,7 +351,7 @@ final class Lock {
 	 * paragraph, and breaks standing alone taken as elements.
 	 *
 	 * @param string $html Markup from outside the sections.
-	 * @return string
+	 * @return string|null Null when it could not be worked on.
 	 */
 	private static function as_words( $html ) {
 		$edge = '<(?!/?(?:' . self::INLINE . ')\b)[^>]*>';
@@ -364,8 +362,7 @@ final class Lock {
 			},
 			$html
 		);
-		$words = preg_replace( '#<br\b[^>]*>#i', ' . ', (string) $html );
-		return null === $words ? (string) $html : $words;
+		return null === $html ? null : preg_replace( '#<br\b[^>]*>#i', ' . ', $html );
 	}
 
 	/**
@@ -375,14 +372,25 @@ final class Lock {
 	 * words. Paragraph tags are put round plain words first, as the block editor
 	 * does itself just by opening the page.
 	 *
-	 * @param string $html Markup from outside the sections.
+	 * @param string|null $html Markup from outside the sections, or null when it could not be cleaned up.
 	 * @return string[]|false The elements, or false when the markup could not be read.
 	 */
 	private static function structure( $html ) {
-		if ( '' === trim( $html ) ) {
+		if ( null === $html ) {
+			return false;
+		}
+		$bare = preg_replace( '/<!--.*?-->/s', '', $html );
+		if ( null === $bare ) {
+			return false;
+		}
+		if ( '' === trim( $bare ) ) {
 			return array();
 		}
-		$html = strtolower( wpautop( (string) preg_replace( '/<!--.*?-->/s', '', $html ) ) );
+		// WordPress hands back nothing when it cannot work on markup, which must not read as no elements.
+		$html = strtolower( wpautop( $bare ) );
+		if ( '' === trim( $html ) ) {
+			return false;
+		}
 		// A comment nobody closed would hide the sections after it.
 		// A tag runs to its closing bracket, and what a quoted attribute says is not part of the markup.
 		// Possessive, so a long attribute cannot run PHP's regex engine out of stack.

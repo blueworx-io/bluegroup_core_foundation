@@ -15,6 +15,7 @@ final class PageLockTest extends TestCase {
 		$GLOBALS['bwpl_removed'] = [];
 		$GLOBALS['bwpl_blocks']  = [];
 		$GLOBALS['bwpl_revisions'] = [];
+		$GLOBALS['bwpl_wpautop_fails'] = [];
 		$restoring = new \ReflectionProperty( Lock::class, 'restoring' );
 		$restoring->setAccessible( true );
 		$restoring->setValue( null, 0 );
@@ -500,6 +501,29 @@ final class PageLockTest extends TestCase {
 		try {
 			$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ) );
 			$this->assertFalse( Lock::refuses( $old, $old ) );
+		} finally {
+			ini_set( 'pcre.backtrack_limit', '1000000' );
+			ini_set( 'pcre.jit', '1' );
+		}
+	}
+
+	public function test_markup_wordpress_cannot_tidy_does_not_read_as_empty(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$old = '<p>An old introduction BIGSVG</p>' . self::HERO;
+		$this->assertTrue( Lock::refuses( $old, '<p>An old introduction BIGSVG</p><iframe src="x"></iframe>' . self::HERO ) );
+		$this->assertTrue( Lock::refuses( '<p>Intro</p>' . self::HERO, '<p>Intro</p><div>BIGSVG</div>' . self::HERO ) );
+		$this->assertFalse( Lock::refuses( $old, $old ) );
+	}
+
+	public function test_words_can_change_when_only_the_second_reading_of_the_old_markup_fails(): void {
+		// The old markup read as the editor redraws it matches; reading it as saved is what fails.
+		$break = '<br ' . str_repeat( '"a" ', 5000 ) . '>';
+		$old   = '<p>Hello' . $break . 'world</p>' . self::HERO;
+		ini_set( 'pcre.backtrack_limit', '1000' );
+		ini_set( 'pcre.jit', '0' );
+		try {
+			$this->assertFalse( Lock::refuses( $old, '<p>Hello' . $break . 'edited</p>' . self::HERO ) );
+			$this->assertTrue( Lock::refuses( $old, '<p>Hello' . $break . 'edited</p><iframe src="x"></iframe>' . self::HERO ) );
 		} finally {
 			ini_set( 'pcre.backtrack_limit', '1000000' );
 			ini_set( 'pcre.jit', '1' );
