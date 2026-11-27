@@ -484,6 +484,33 @@ final class PageLockTest extends TestCase {
 		}
 	}
 
+	public function test_a_very_long_attribute_does_not_hide_the_layout(): void {
+		$long = str_repeat( 'a', 3000000 );
+		$old  = '<p data-x=' . $long . '>An old introduction</p>' . self::HERO;
+		$this->assertFalse( Lock::refuses( $old, '<p data-x=' . $long . '>Reworded</p>' . self::HERO ) );
+		$this->assertTrue( Lock::refuses( $old, '<p data-x=' . $long . '>An old introduction</p><iframe src="x"></iframe>' . self::HERO ) );
+		$quoted = '<p title="' . $long . '">An old introduction</p>' . self::HERO;
+		$this->assertTrue( Lock::refuses( $quoted, $quoted . '<iframe src="x"></iframe>' ) );
+	}
+
+	public function test_markup_that_cannot_be_read_is_refused_unless_it_is_unchanged(): void {
+		$old = '<p ' . str_repeat( '"a" ', 5000 ) . '>An old introduction</p>' . self::HERO;
+		ini_set( 'pcre.backtrack_limit', '1000' );
+		ini_set( 'pcre.jit', '0' );
+		try {
+			$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ) );
+			$this->assertFalse( Lock::refuses( $old, $old ) );
+		} finally {
+			ini_set( 'pcre.backtrack_limit', '1000000' );
+			ini_set( 'pcre.jit', '1' );
+		}
+	}
+
+	public function test_the_save_warning_is_cleared_from_the_address(): void {
+		$this->assertContains( 'blueworx_page_locked', Lock::removable_query_args( [ 'message' ] ) );
+		$this->assertContains( 'message', Lock::removable_query_args( [ 'message' ] ) );
+	}
+
 	public function test_an_autosave_cannot_be_restored_to_move_sections(): void {
 		$page = self::hero( 'Celebration' ) . self::hero( 'Dress code' );
 		$this->page( 1, $page );

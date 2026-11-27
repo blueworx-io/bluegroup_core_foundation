@@ -7,4 +7,6 @@
 - Markup outside sections is compared by tags, not by text inside quoted attributes.
 - A closing marker that closes itself (`<!-- /wp:x /-->`) is read as a section, as WordPress reads it.
 - A section with empty settings (`{}`) now gets an id like the others.
+- Long attributes can no longer hide the layout check: markup that cannot be read is refused unless it is unchanged.
+- The "page is locked" warning comes off the address after it is shown, so refreshing does not show it again.
 - Already in 1.0.1: refusing added markup on locked pages, and keeping same-type sections in their saved places.

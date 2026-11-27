@@ -57,7 +57,8 @@ if ( ! function_exists( 'wpautop' ) ) {
 	function wpautop( $text ) {
 		$text = preg_replace( '#<br\s*/?>\s*<br\s*/?>#', "\n\n", (string) $text );
 		$out  = '';
-		foreach ( preg_split( '#(<p\b.*</p>|<(?:div|h2)\b.*</(?:div|h2)>|<hr>)|\n\s*\n#sU', $text, -1, PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE ) as $piece ) {
+		$pieces = preg_split( '#(<p\b.*</p>|<(?:div|h2)\b.*</(?:div|h2)>|<hr>)|\n\s*\n#sU', $text, -1, PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE );
+		foreach ( false === $pieces ? array( $text ) : $pieces as $piece ) {
 			$loose = '' !== trim( $piece ) && ! preg_match( '#^\s*</?(?:p|div|h2|hr)\b#', $piece );
 			$piece = preg_replace( '#\n\s*\n#', '</p><p>', $piece );
 			$out  .= $loose ? '<p>' . trim( $piece ) . '</p>' : $piece;

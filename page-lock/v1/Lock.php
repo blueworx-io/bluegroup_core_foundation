@@ -110,6 +110,7 @@ final class Lock {
 		add_action( 'load-revision.php', array( self::class, 'check_restore' ) );
 		add_filter( 'redirect_post_location', array( self::class, 'redirect_post_location' ), 10, 2 );
 		add_action( 'admin_notices', array( self::class, 'notice' ) );
+		add_filter( 'removable_query_args', array( self::class, 'removable_query_args' ) );
 		add_filter( 'block_editor_settings_all', array( self::class, 'editor_settings' ), 10, 2 );
 		add_filter( 'allowed_block_types_all', array( self::class, 'allowed_blocks' ), 10, 2 );
 		add_filter( 'display_post_states', array( self::class, 'post_state' ), 10, 2 );
@@ -330,8 +331,17 @@ final class Lock {
 		foreach ( $now['html'] as $i => $html ) {
 			$old      = $was['html'][ $i ];
 			$elements = self::structure( self::as_words( $html ) );
+			$before   = self::structure( self::as_words( $old ) );
+			$plain    = self::structure( $old );
+			// Markup that could not be read says nothing about its elements, so it has to be the same text.
+			if ( false === $elements || false === $before || false === $plain ) {
+				if ( trim( $old ) !== trim( $html ) ) {
+					return true;
+				}
+				continue;
+			}
 			// As it is saved, or as the block editor redraws it by opening the page.
-			if ( self::structure( self::as_words( $old ) ) !== $elements && self::structure( $old ) !== $elements ) {
+			if ( $before !== $elements && $plain !== $elements ) {
 				return true;
 			}
 		}
@@ -354,7 +364,8 @@ final class Lock {
 			},
 			$html
 		);
-		return (string) preg_replace( '#<br\b[^>]*>#i', ' . ', (string) $html );
+		$words = preg_replace( '#<br\b[^>]*>#i', ' . ', (string) $html );
+		return null === $words ? (string) $html : $words;
 	}
 
 	/**
@@ -365,7 +376,7 @@ final class Lock {
 	 * does itself just by opening the page.
 	 *
 	 * @param string $html Markup from outside the sections.
-	 * @return string[]
+	 * @return string[]|false The elements, or false when the markup could not be read.
 	 */
 	private static function structure( $html ) {
 		if ( '' === trim( $html ) ) {
@@ -374,7 +385,10 @@ final class Lock {
 		$html = strtolower( wpautop( (string) preg_replace( '/<!--.*?-->/s', '', $html ) ) );
 		// A comment nobody closed would hide the sections after it.
 		// A tag runs to its closing bracket, and what a quoted attribute says is not part of the markup.
-		preg_match_all( '#</?[a-z][a-z0-9-]*(?:"[^"]*"|\'[^\']*\'|[^>"\'])*|<!--#', $html, $tags );
+		// Possessive, so a long attribute cannot run PHP's regex engine out of stack.
+		if ( false === preg_match_all( '#</?[a-z][a-z0-9-]*+(?:"[^"]*+"|\'[^\']*+\'|[^>"\']++)*+|<!--#', $html, $tags ) ) {
+			return false;
+		}
 		$names = array();
 		foreach ( $tags[0] as $tag ) {
 			$names[] = preg_match( '#^</?[a-z][a-z0-9-]*#', $tag, $name ) ? $name[0] : $tag;
@@ -919,6 +933,18 @@ final class Lock {
 			$location      = add_query_arg( 'blueworx_page_locked', '1', remove_query_arg( 'message', $location ) );
 		}
 		return $location;
+	}
+
+	/**
+	 * Lets WordPress take the warning off the address, as it does for its own save messages.
+	 *
+	 * @param string[] $args Query arguments WordPress removes from the address.
+	 * @return string[]
+	 */
+	public static function removable_query_args( $args ) {
+		$args   = (array) $args;
+		$args[] = 'blueworx_page_locked';
+		return $args;
 	}
 
 	/**
