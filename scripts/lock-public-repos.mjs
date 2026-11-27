@@ -56,7 +56,8 @@ async function main() {
     if (vet.problems.length) {
       for (const line of vet.problems) console.log(`PROBLEM  ${line}`);
       console.log('Nothing was posted.');
-      return 1;
+      // GitHub not answering is "could not talk to GitHub" (2), not a problem with the lock (1).
+      return vet.unreachable ? 2 : 1;
     }
     console.log(`Checking as ${vet.login}, who has no access to ${org}.`);
     const results = await probeAsStranger(request, org, open);

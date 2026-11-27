@@ -197,11 +197,12 @@ export function writeRouteProblems(repos) {
  * Returns the account's name and the problems found (none means it is a stranger).
  */
 export async function vetStranger(strangerRequest, adminRequest, org, repos) {
+  const noReplyText = 'GitHub stopped answering, so nothing was posted.';
   let me;
   try {
     me = await strangerRequest('GET', '/user');
   } catch {
-    return { login: null, problems: ['Could not reach GitHub to see whose token STRANGER_TOKEN is. Nothing was posted.'] };
+    return { login: null, unreachable: true, problems: [`Could not reach GitHub to see whose token STRANGER_TOKEN is. ${noReplyText}`] };
   }
   const login = me.body?.login;
   if (me.status !== 200 || !login) {
@@ -211,42 +212,56 @@ export async function vetStranger(strangerRequest, adminRequest, org, repos) {
   if (login.toLowerCase() === String(org).toLowerCase()) {
     problems.push(`STRANGER_TOKEN belongs to ${login}, the account that owns the repos. Use a different account.`);
   }
-  const ask = async (path) => {
+  // A dropped connection is remembered, so the script can exit 2 ("could not talk
+  // to GitHub") instead of blaming the token or the lock.
+  let noReply = false;
+  const call = async (path) => {
     try {
-      return (await adminRequest('GET', path)).status;
+      return await adminRequest('GET', path);
     } catch {
-      return 0;
+      noReply = true;
+      return { status: 0, body: null };
     }
   };
+  const ask = async (path) => (await call(path)).status;
+  const adminLogin = (await call('/user')).body?.login ?? null;
+  const type = (await call(`/users/${org}`)).body?.type ?? null;
+  if (noReply) return { login, unreachable: true, problems: [`Could not reach GitHub to check the owner's token. ${noReplyText}`] };
+
   // A token that cannot read who has access answers 404 to everything, which would
-  // look like "no access". Prove it can: the owner's own account is a collaborator.
-  let adminLogin = null;
-  try {
-    adminLogin = (await adminRequest('GET', '/user')).body?.login ?? null;
-  } catch {
-    adminLogin = null;
-  }
+  // look like "no access". Prove it can: the owner's own account is a collaborator,
+  // and for an organisation also a member (private members need Members read).
+  const blind = [];
   if (repos.length > 0) {
     const canary = adminLogin ? await ask(`/repos/${org}/${repos[0].name}/collaborators/${adminLogin}`) : 0;
-    if (canary !== 204) {
-      return {
-        login,
-        problems: [
-          'GITHUB_TOKEN cannot read who has access to the repos, so a "no access" answer would prove nothing. Give it Administration (read) and Members (read) on the organisation, or use a classic token with repo and read:org. Nothing was posted.',
-        ],
-      };
-    }
+    if (canary !== 204) blind.push('collaborators');
   }
-  // 204 means yes. For a personal account the members route answers 404, which is fine.
-  const member = await ask(`/orgs/${org}/members/${login}`);
-  if (member === 204) problems.push(`${login} is a member of ${org}, so the lock lets it in. Use an account with no access.`);
-  else if (member !== 404) problems.push(`Could not tell whether ${login} is a member of ${org} (HTTP ${member || 'no reply'}).`);
+  const isOrg = type === 'Organization';
+  if (isOrg) {
+    const canary = adminLogin ? await ask(`/orgs/${org}/members/${adminLogin}`) : 0;
+    if (canary !== 204) blind.push('members');
+  }
+  if (noReply) return { login, unreachable: true, problems: [`Could not reach GitHub to check the owner's token. ${noReplyText}`] };
+  if (blind.length) {
+    return {
+      login,
+      problems: [
+        `GITHUB_TOKEN cannot read the ${blind.join(' or ')} list, so a "no access" answer would prove nothing. Give it Administration (read) and Members (read) on the organisation, or use a classic token with repo and read:org. Nothing was posted.`,
+      ],
+    };
+  }
+  // 204 means yes. A personal account has no members, so only an organisation is asked.
+  if (isOrg) {
+    const member = await ask(`/orgs/${org}/members/${login}`);
+    if (member === 204) problems.push(`${login} is a member of ${org}, so the lock lets it in. Use an account with no access.`);
+    else if (member !== 404) problems.push(`Could not tell whether ${login} is a member of ${org} (HTTP ${member || 'no reply'}).`);
+  }
   for (const repo of repos) {
     const status = await ask(`/repos/${org}/${repo.name}/collaborators/${login}`);
     if (status === 204) problems.push(`${login} is a collaborator on ${repo.name}, so the lock lets it in. Use an account with no access.`);
     else if (status !== 404) problems.push(`Could not tell whether ${login} has access to ${repo.name} (HTTP ${status || 'no reply'}).`);
   }
-  return { login, problems };
+  return { login, problems, unreachable: noReply };
 }
 
 /**
