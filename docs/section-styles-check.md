@@ -17,18 +17,6 @@ instead of using the theme's named styles, so design and code can't drift apart.
 - `SECTION_STYLES=warn` reports without failing; `off` skips it.
 - Run it by hand from the plugin or theme root: `node ../bluegroup_core_foundation/scripts/check-section-styles.mjs`.
 
-## Wiring it into `ci-wordpress.yml`
+## In the shared checks
 
-Add beside the "Admin UI adherence" step:
-
-```yaml
-      - name: Section styles (theme names only)
-        env:
-          SECTION_STYLES: ${{ inputs.section_styles }}
-          SECTION_NAMES_FILE: ${{ inputs.section_names_file }}
-          BASE_REF: ${{ github.base_ref }}
-        run: node "$RUNNER_TEMP/foundation/scripts/check-section-styles.mjs"
-```
-
-with two inputs under `workflow_call.inputs`: `section_styles` (string, default `error`)
-and `section_names_file` (string, default empty).
+It runs in `ci-wordpress.yml` as the "Section styles (theme names only)" step, on `warn` for now: it reports and never fails. A repo can set `section_styles: error` (or `off`) and `section_names_file` in its caller workflow. Once the sections are caught up, the default moves to `error`.
