@@ -182,6 +182,20 @@ on:
           on it is quietly shipping a hand-rolled admin UI.
         type: string
         default: error
+      section_styles:
+        description: >-
+          Whether a section stylesheet or render.php this PR touches that types
+          its own colour, font or size, instead of the theme's named styles,
+          fails the run. `warn` (default for now) prints the report and passes,
+          `error` fails, `off` skips it. See docs/section-styles-check.md.
+        type: string
+        default: warn
+      section_names_file:
+        description: >-
+          Path to an older plugin's one file of theme names, which the section
+          styles check allows. Empty (default) when there is none.
+        type: string
+        default: ''
       foundation_ref:
         description: Ref of the foundation repo to pull the shared check scripts from.
         type: string
@@ -405,6 +419,15 @@ jobs:
           ADMIN_UI_ADHERENCE: ${{ inputs.admin_ui_adherence }}
           BASE_REF: ${{ github.base_ref }}
         run: node "$RUNNER_TEMP/foundation/scripts/check-admin-ui-adherence.mjs"
+
+      # Sections use the theme's named colours, fonts and sizes, so design and
+      # code can't drift apart. Starts as `warn`: it reports and never fails.
+      - name: Section styles (theme names only)
+        env:
+          SECTION_STYLES: ${{ inputs.section_styles }}
+          SECTION_NAMES_FILE: ${{ inputs.section_names_file }}
+          BASE_REF: ${{ github.base_ref }}
+        run: node "$RUNNER_TEMP/foundation/scripts/check-section-styles.mjs"
 
       - name: Plugin zip check (only one <slug> zip)
         env:
