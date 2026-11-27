@@ -524,6 +524,45 @@ final class PageLockTest extends TestCase {
 		$this->assertTrue( Lock::refuses( $old, str_replace( '<path d="M0 0"/>', '<path d="M0 0"/><script></script>', $old ) ) );
 	}
 
+	public function test_paragraphs_the_editor_adds_beside_a_large_inline_svg_are_not_a_change(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$loose = 'Intro words <svg viewBox="0 0 9 9"><path d="M0 0"/></svg> BIGSVG';
+		$this->assertFalse( Lock::refuses( $loose . self::HERO, '<p>' . $loose . '</p>' . self::HERO ) );
+		$this->assertFalse( Lock::refuses( '<p>' . $loose . '</p>' . self::HERO, $loose . self::HERO ) );
+		$this->assertTrue( Lock::refuses( $loose . self::HERO, '<p>' . $loose . '</p><iframe src="x"></iframe>' . self::HERO ) );
+	}
+
+	public function test_a_line_break_written_inside_an_attribute_does_not_hide_the_closing_tag(): void {
+		$old = '<div title="x <br y">Hello</div><div class="a">More</div>' . self::HERO;
+		$this->assertFalse( Lock::refuses( $old, '<div title="x <br y">Hello "there</div><div class="a">More</div>' . self::HERO ) );
+		$this->assertTrue( Lock::refuses( $old, '<div title="x <br y">Hello "there</div><div class="a">More</div><iframe src="x"></iframe>' . self::HERO ) );
+	}
+
+	public function test_an_autosave_keeps_section_ids_so_it_can_be_checked_and_restored(): void {
+		$page = '<!-- wp:bwx/section-hero {"heading":"X","body":"B"} /--><!-- wp:bwx/section-hero {"heading":"Y","body":"B"} /-->';
+		$this->page( 1, $page );
+		// Headings swapped in place: the sections did not move.
+		$edited = '<!-- wp:bwx/section-hero {"heading":"Y","body":"B","metadata":{"blueworxSection":"0"}} /--><!-- wp:bwx/section-hero {"heading":"X","body":"B","metadata":{"blueworxSection":"1"}} /-->';
+		$data   = Lock::insert_guard( [ 'post_type' => 'revision', 'post_name' => '1-autosave-v1', 'post_parent' => 1, 'post_content' => wp_slash( $edited ) ], [ 'ID' => 0 ] );
+		$this->assertSame( $edited, wp_unslash( $data['post_content'] ) );
+		// An ordinary revision still has them taken off.
+		$data = Lock::insert_guard( [ 'post_type' => 'revision', 'post_name' => '1-revision-v1', 'post_parent' => 1, 'post_content' => wp_slash( $edited ) ], [ 'ID' => 0 ] );
+		$this->assertSame( Lock::without_ids( $edited ), wp_unslash( $data['post_content'] ) );
+		$this->revisions( $edited );
+		$GLOBALS['bwpl_revisions'][50]->post_name = '1-autosave-v1';
+		$_REQUEST = [ 'action' => 'restore', 'revision' => '50' ];
+		Lock::check_restore();
+		// Ids that say the sections moved still stop it.
+		$GLOBALS['bwpl_revisions'][50]->post_content = '<!-- wp:bwx/section-hero {"heading":"Y","body":"B","metadata":{"blueworxSection":"1"}} /--><!-- wp:bwx/section-hero {"heading":"X","body":"B","metadata":{"blueworxSection":"0"}} /-->';
+		try {
+			Lock::check_restore();
+			$this->fail( 'the restore went ahead' );
+		} catch ( \RuntimeException $e ) {
+			$this->assertSame( Lock::message(), $e->getMessage() );
+		}
+		$_REQUEST = [];
+	}
+
 	public function test_words_can_change_when_only_the_second_reading_of_the_old_markup_fails(): void {
 		// The old markup read as the editor redraws it matches; reading it as saved is what fails.
 		$break = '<br ' . str_repeat( '"a" ', 5000 ) . '>';

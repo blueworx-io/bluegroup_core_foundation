@@ -354,7 +354,26 @@ final class Lock {
 	 * @return string|null Null when it could not be worked on.
 	 */
 	private static function as_words( $html ) {
-		$edge = '<(?!/?(?:' . self::INLINE . ')\b)[^>]*>';
+		// A tag runs to its closing bracket, so a "<br" written inside a quoted attribute is not a line break.
+		$safe = preg_replace_callback(
+			'#<!--.*?-->|<[a-z][a-z0-9-]*+(?:"[^"]*+"|\'[^\']*+\'|[^>"\']++)*+>#is',
+			function ( $m ) {
+				if ( 0 === strpos( $m[0], '<!--' ) ) {
+					return $m[0];
+				}
+				return preg_replace_callback(
+					'#"[^"]*+"|\'[^\']*+\'#',
+					function ( $quoted ) {
+						return strtr( $quoted[0], array( '<' => '&lt;', '>' => '&gt;' ) );
+					},
+					$m[0]
+				);
+			},
+			$html
+		);
+		// Markup this cannot read is worked on as it is: the tag reader then refuses it unless it is unchanged.
+		$html = null === $safe ? $html : $safe;
+		$edge ='<(?!/?(?:' . self::INLINE . ')\b)[^>]*>';
 		$html = preg_replace_callback(
 			'#(^|' . $edge . ')((?:\s*<br\b[^>]*>)+)(?=\s*(?:$|' . $edge . '))#i',
 			function ( $m ) {
@@ -388,8 +407,9 @@ final class Lock {
 		}
 		// WordPress hands back nothing when it cannot work on markup (a large inline SVG), which must not read as no
 		// elements. The tags are then read as they stand, so words beside the SVG can still be edited.
-		$html = strtolower( wpautop( $bare ) );
-		if ( '' === trim( $html ) ) {
+		$html     = strtolower( wpautop( $bare ) );
+		$untidied = '' === trim( $html );
+		if ( $untidied ) {
 			$html = strtolower( $bare );
 		}
 		// A comment nobody closed would hide the sections after it.
@@ -402,7 +422,9 @@ final class Lock {
 		foreach ( $tags[0] as $tag ) {
 			$names[] = preg_match( '#^</?[a-z][a-z0-9-]*#', $tag, $name ) ? $name[0] : $tag;
 		}
-		return array_values( preg_grep( '#^</?(?:' . self::INLINE . ')$#', $names, PREG_GREP_INVERT ) );
+		// Paragraph tags are the ones the editor puts round loose words, which untidied markup has not had done.
+		$skip = $untidied ? '|p' : '';
+		return array_values( preg_grep( '#^</?(?:' . self::INLINE . $skip . ')$#', $names, PREG_GREP_INVERT ) );
 	}
 
 	/**
@@ -919,7 +941,9 @@ final class Lock {
 		if ( 'revision' === $type && ! empty( $data['post_parent'] ) ) {
 			$type = get_post_type( $data['post_parent'] );
 		}
-		if ( self::covers( $type ) ) {
+		// An autosave is not the live page, and without ids a restore cannot tell sections that traded words from ones that moved.
+		$autosave = 'revision' === ( isset( $data['post_type'] ) ? $data['post_type'] : '' ) && ! empty( $data['post_name'] ) && preg_match( '/^\d+-autosave-v\d+$/', $data['post_name'] );
+		if ( self::covers( $type ) && ! $autosave ) {
 			$saved = self::without_ids( $content );
 			if ( $saved !== $content ) {
 				$data['post_content'] = wp_slash( $saved );
