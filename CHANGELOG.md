@@ -1,5 +1,10 @@
 # Changelog
 
+## Page lock 1.0.3
+
+- New version number, so a site can tell this copy from 1.0.2 (the first with the fixes below).
+- Words beside a large inline SVG can be edited on a locked page again: when WordPress cannot tidy the markup, its tags are read as they stand instead of the whole piece having to stay the same.
+
 ## Page lock 1.0.2
 
 - A locked-page save that is not a REST save and gets its content put back now sends the person to a page that says so, instead of "Page updated".

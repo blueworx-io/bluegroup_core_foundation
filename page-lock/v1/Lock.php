@@ -63,7 +63,7 @@ final class Lock {
 	 *
 	 * @var string
 	 */
-	private static $version = '1.0.2';
+	private static $version = '1.0.3';
 
 	/**
 	 * True while the lock writes its own flag, so its own guard lets it through.
@@ -386,10 +386,11 @@ final class Lock {
 		if ( '' === trim( $bare ) ) {
 			return array();
 		}
-		// WordPress hands back nothing when it cannot work on markup, which must not read as no elements.
+		// WordPress hands back nothing when it cannot work on markup (a large inline SVG), which must not read as no
+		// elements. The tags are then read as they stand, so words beside the SVG can still be edited.
 		$html = strtolower( wpautop( $bare ) );
 		if ( '' === trim( $html ) ) {
-			return false;
+			$html = strtolower( $bare );
 		}
 		// A comment nobody closed would hide the sections after it.
 		// A tag runs to its closing bracket, and what a quoted attribute says is not part of the markup.

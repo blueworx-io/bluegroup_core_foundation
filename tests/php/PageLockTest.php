@@ -515,6 +515,15 @@ final class PageLockTest extends TestCase {
 		$this->assertFalse( Lock::refuses( $old, $old ) );
 	}
 
+	public function test_words_beside_a_large_inline_svg_can_still_be_edited(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$old = '<p>An old introduction <svg viewBox="0 0 9 9"><path d="M0 0"/></svg> BIGSVG</p>' . self::HERO;
+		$this->assertFalse( Lock::refuses( $old, str_replace( 'old introduction', 'new words', $old ) ) );
+		$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ) );
+		$this->assertTrue( Lock::refuses( $old, str_replace( '</p>', '</p><iframe src="x"></iframe>', $old ) ) );
+		$this->assertTrue( Lock::refuses( $old, str_replace( '<path d="M0 0"/>', '<path d="M0 0"/><script></script>', $old ) ) );
+	}
+
 	public function test_words_can_change_when_only_the_second_reading_of_the_old_markup_fails(): void {
 		// The old markup read as the editor redraws it matches; reading it as saved is what fails.
 		$break = '<br ' . str_repeat( '"a" ', 5000 ) . '>';
