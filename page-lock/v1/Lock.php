@@ -63,7 +63,7 @@ final class Lock {
 	 *
 	 * @var string
 	 */
-	private static $version = '1.0.1';
+	private static $version = '1.0.2';
 
 	/**
 	 * True while the lock writes its own flag, so its own guard lets it through.
@@ -78,6 +78,13 @@ final class Lock {
 	 * @var int
 	 */
 	private static $restoring = 0;
+
+	/**
+	 * The page whose last save had its content put back, 0 for none.
+	 *
+	 * @var int
+	 */
+	private static $dropped = 0;
 
 	/**
 	 * Adds every hook.
@@ -101,6 +108,8 @@ final class Lock {
 		add_filter( 'wp_insert_post_data', array( self::class, 'insert_guard' ), 10, 2 );
 		add_action( 'wp_insert_post', array( self::class, 'lock_new_page' ), 10, 3 );
 		add_action( 'load-revision.php', array( self::class, 'check_restore' ) );
+		add_filter( 'redirect_post_location', array( self::class, 'redirect_post_location' ), 10, 2 );
+		add_action( 'admin_notices', array( self::class, 'notice' ) );
 		add_filter( 'block_editor_settings_all', array( self::class, 'editor_settings' ), 10, 2 );
 		add_filter( 'allowed_block_types_all', array( self::class, 'allowed_blocks' ), 10, 2 );
 		add_filter( 'display_post_states', array( self::class, 'post_state' ), 10, 2 );
@@ -202,7 +211,8 @@ final class Lock {
 			$depth   = count( $stack ) - 1;
 			$at      = $m[0][1];
 			$length  = strlen( $m[0][0] );
-			$closing = '' !== $m['closer'][0];
+			// A marker that closes itself is a section, even with a slash in front of its name: WordPress reads it that way.
+			$closing = '' !== $m['closer'][0] && empty( $m['void'][0] );
 
 			// WordPress reads no blocks after a closing comment that closes nothing.
 			if ( $closing && 0 === $depth ) {
@@ -363,8 +373,13 @@ final class Lock {
 		}
 		$html = strtolower( wpautop( (string) preg_replace( '/<!--.*?-->/s', '', $html ) ) );
 		// A comment nobody closed would hide the sections after it.
-		preg_match_all( '#</?[a-z][a-z0-9-]*|<!--#', $html, $tags );
-		return array_values( preg_grep( '#^</?(?:' . self::INLINE . ')$#', $tags[0], PREG_GREP_INVERT ) );
+		// A tag runs to its closing bracket, and what a quoted attribute says is not part of the markup.
+		preg_match_all( '#</?[a-z][a-z0-9-]*(?:"[^"]*"|\'[^\']*\'|[^>"\'])*|<!--#', $html, $tags );
+		$names = array();
+		foreach ( $tags[0] as $tag ) {
+			$names[] = preg_match( '#^</?[a-z][a-z0-9-]*#', $tag, $name ) ? $name[0] : $tag;
+		}
+		return array_values( preg_grep( '#^</?(?:' . self::INLINE . ')$#', $names, PREG_GREP_INVERT ) );
 	}
 
 	/**
@@ -449,7 +464,7 @@ final class Lock {
 		return serialize(
 			array(
 				$node['name'],
-				self::sorted( json_decode( self::unmark( $node['attrs'] ), true ) ),
+				self::sorted( (array) json_decode( self::unmark( $node['attrs'] ), true ) ),
 				array_map( 'trim', $node['html'] ),
 				array_map( array( self::class, 'fingerprint' ), $node['children'] ),
 			)
@@ -581,8 +596,11 @@ final class Lock {
 		if ( '' === $attrs ) {
 			return '{"metadata":{' . $mark . '}}';
 		}
-		if ( ! is_object( $settings ) || ! get_object_vars( $settings ) ) {
+		if ( ! is_object( $settings ) ) {
 			return $attrs;
+		}
+		if ( ! get_object_vars( $settings ) ) {
+			return '{"metadata":{' . $mark . '}}';
 		}
 		if ( ! property_exists( $settings, 'metadata' ) ) {
 			return substr( $attrs, 0, -1 ) . ',"metadata":{' . $mark . '}}';
@@ -785,11 +803,13 @@ final class Lock {
 		$id       = (int) $_REQUEST['revision'];
 		$revision = wp_get_post_revision( $id );
 		// phpcs:enable
-		if ( ! $revision || ! self::applies( $revision->post_parent ) ) {
+		// Someone who may not edit the page is not shown what a revision holds: WordPress says no itself.
+		if ( ! $revision || ! self::applies( $revision->post_parent ) || ! current_user_can( 'edit_post', $revision->post_parent ) ) {
 			return;
 		}
 		$post = get_post( $revision->post_parent );
-		if ( self::relays( self::read( $post->post_content ), self::read( $revision->post_content ) ) ) {
+		// An autosave holds whatever was typed, so its sections have to be where they were saved.
+		if ( self::relays( self::read( $post->post_content ), self::read( $revision->post_content ) ) || ( wp_is_post_autosave( $revision ) && self::refuses( $post->post_content, $revision->post_content ) ) ) {
 			wp_die( esc_html( self::message() ), '', array( 'response' => 403, 'back_link' => true ) );
 		}
 		self::$restoring = (int) $post->ID;
@@ -868,6 +888,7 @@ final class Lock {
 			$existing = get_post( $post_id );
 			if ( $existing && self::refuses( $existing->post_content, $content ) && ! self::restores( $existing, $content ) ) {
 				$data['post_content'] = wp_slash( $existing->post_content );
+				self::$dropped        = $post_id;
 				return $data;
 			}
 		}
@@ -882,6 +903,35 @@ final class Lock {
 			}
 		}
 		return $data;
+	}
+
+	/**
+	 * Sends a person whose edit was put back to a page that says so, not to
+	 * "Page updated".
+	 *
+	 * @param string $location Where the save sends the browser.
+	 * @param int    $post_id  Post ID.
+	 * @return string
+	 */
+	public static function redirect_post_location( $location, $post_id ) {
+		if ( self::$dropped && self::$dropped === (int) $post_id ) {
+			self::$dropped = 0;
+			$location      = add_query_arg( 'blueworx_page_locked', '1', remove_query_arg( 'message', $location ) );
+		}
+		return $location;
+	}
+
+	/**
+	 * Says why the content was not saved, on the page a refused save sends the person to.
+	 *
+	 * @return void
+	 */
+	public static function notice() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- only shows a message.
+		if ( empty( $_GET['blueworx_page_locked'] ) ) {
+			return;
+		}
+		echo '<div class="notice notice-error"><p>' . esc_html( self::message() ) . '</p></div>';
 	}
 
 	/**

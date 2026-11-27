@@ -255,7 +255,7 @@ final class PageLockTest extends TestCase {
 
 	public function test_ids_come_off_however_the_tool_writes_its_json(): void {
 		$this->assertSame( '<!-- wp:bwx/a {"b": 1} /-->', Lock::without_ids( '<!-- wp:bwx/a {"metadata": {"blueworxSection": "0"}, "b": 1} /-->' ) );
-		foreach ( [ '{}', '{"metadata":null}', '{"metadata":{}}', '{"metadata":"x"}' ] as $attrs ) {
+		foreach ( [ '{"metadata":null}', '{"metadata":{}}', '{"metadata":"x"}' ] as $attrs ) {
 			$this->assertSame( '<!-- wp:bwx/a ' . $attrs . ' /-->', Lock::without_ids( Lock::with_ids( '<!-- wp:bwx/a ' . $attrs . ' /-->' ) ) );
 		}
 		$this->assertSame( '<!-- wp:bwx/a {"metadata":{"name":"N"}} /-->', Lock::without_ids( '<!-- wp:bwx/a {"metadata":{"blueworxSection":"0","name":"N"}} /-->' ) );
@@ -402,6 +402,128 @@ final class PageLockTest extends TestCase {
 		$this->admin();
 		$response->data = [ 'content' => [ 'raw' => self::HERO ] ];
 		$this->assertSame( self::HERO, Lock::rest_ids( $response, $post )->data['content']['raw'] );
+	}
+
+	// Findings left open on the pull requests that carry the lock.
+
+	public function test_a_save_that_is_thrown_away_does_not_say_it_worked(): void {
+		$this->page( 1, self::HERO );
+		$this->page( 2, self::HERO );
+		$data = Lock::insert_guard( [ 'post_content' => wp_slash( self::HERO . self::STEPS ) ], [ 'ID' => 1 ] );
+		$this->assertSame( self::HERO, wp_unslash( $data['post_content'] ) );
+
+		$location = Lock::redirect_post_location( 'https://site.test/wp-admin/post.php?post=2&action=edit&message=1', 2 );
+		$this->assertStringContainsString( 'message=1', $location, 'another page is left alone' );
+
+		$location = Lock::redirect_post_location( 'https://site.test/wp-admin/post.php?post=1&action=edit&message=1', 1 );
+		$this->assertStringNotContainsString( 'message=1', $location );
+		$this->assertStringContainsString( 'blueworx_page_locked=1', $location );
+
+		// Said once: the next save is its own.
+		$this->assertStringContainsString( 'message=1', Lock::redirect_post_location( 'https://site.test/wp-admin/post.php?post=1&message=1', 1 ) );
+
+		// A save that kept every section is not thrown away.
+		Lock::insert_guard( [ 'post_content' => wp_slash( self::hero( 'New words' ) ) ], [ 'ID' => 1 ] );
+		$this->assertStringContainsString( 'message=1', Lock::redirect_post_location( 'https://site.test/wp-admin/post.php?post=1&message=1', 1 ) );
+	}
+
+	public function test_the_page_says_why_when_a_save_was_thrown_away(): void {
+		$_GET = [ 'blueworx_page_locked' => '1' ];
+		ob_start();
+		Lock::notice();
+		$html = ob_get_clean();
+		$this->assertStringContainsString( 'notice-error', $html );
+		$this->assertStringContainsString( htmlspecialchars( Lock::message() ), $html );
+		$_GET = [];
+		ob_start();
+		Lock::notice();
+		$this->assertSame( '', ob_get_clean() );
+	}
+
+	public function test_a_revision_is_not_read_for_someone_who_may_not_edit_the_page(): void {
+		$this->page( 1, self::HERO );
+		$this->revisions( self::HERO . self::STEPS );
+		$GLOBALS['bwpe_stub']['edit_posts'][1] = false;
+		$_REQUEST = [ 'action' => 'restore', 'revision' => '50' ];
+		Lock::check_restore();
+		$restoring = new \ReflectionProperty( Lock::class, 'restoring' );
+		$restoring->setAccessible( true );
+		$this->assertSame( 0, $restoring->getValue() );
+		// Someone who may edit it is still told.
+		$GLOBALS['bwpe_stub']['edit_posts'][1] = true;
+		try {
+			Lock::check_restore();
+			$this->fail( 'the restore went ahead' );
+		} catch ( \RuntimeException $e ) {
+			$this->assertSame( Lock::message(), $e->getMessage() );
+		} finally {
+			$_REQUEST = [];
+		}
+	}
+
+	public function test_an_attribute_is_not_an_element(): void {
+		$old = '<p>An old introduction</p>' . self::HERO;
+		foreach (
+			[
+				'<p title="<b>x</b> <div>">An old introduction</p>',
+				"<p title='<div><iframe>'>An old introduction</p>",
+				'<p title="a > b">An old introduction</p>',
+				'<p data-x="<!--">An old introduction</p>',
+			] as $now
+		) {
+			$this->assertFalse( Lock::refuses( $old, $now . self::HERO ), $now );
+		}
+		foreach (
+			[
+				'<p title="a > b"><iframe src="x"></iframe>An old introduction</p>',
+				'<p title="x">An old introduction</p><div title="<p>"></div>',
+				'<p title="x">An old introduction</p><iframe title=">"></iframe>',
+			] as $now
+		) {
+			$this->assertTrue( Lock::refuses( $old, $now . self::HERO ), $now );
+		}
+	}
+
+	public function test_an_autosave_cannot_be_restored_to_move_sections(): void {
+		$page = self::hero( 'Celebration' ) . self::hero( 'Dress code' );
+		$this->page( 1, $page );
+		$this->revisions( self::hero( 'Dress code' ) . self::hero( 'Celebration' ) );
+		$GLOBALS['bwpl_revisions'][50]->post_name = '1-autosave-v1';
+		$_REQUEST = [ 'action' => 'restore', 'revision' => '50' ];
+		try {
+			Lock::check_restore();
+			$this->fail( 'the restore went ahead' );
+		} catch ( \RuntimeException $e ) {
+			$this->assertSame( Lock::message(), $e->getMessage() );
+		}
+		// An autosave that only has other words is still restored.
+		$GLOBALS['bwpl_revisions'][50]->post_content = self::hero( 'Celebration, edited' ) . self::hero( 'Dress code' );
+		Lock::check_restore();
+		$_REQUEST = [];
+	}
+
+	public function test_a_closing_marker_that_closes_itself_is_a_section_as_wordpress_reads_it(): void {
+		$this->assertSame( [ [ 'bwx/a', [] ] ], Lock::shape( '<!-- /wp:bwx/a /-->' ) );
+		$this->assertSame(
+			[ [ 'core/group', [ [ 'bwx/a', [] ] ] ], [ 'bwx/b', [] ] ],
+			Lock::shape( '<!-- wp:group --><div><!-- /wp:bwx/a /--></div><!-- /wp:group --><!-- wp:bwx/b /-->' )
+		);
+		$this->assertTrue( Lock::refuses( self::HERO, self::HERO . '<!-- /wp:bwx/section-steps /-->' ) );
+		$this->assertTrue( Lock::refuses( self::HERO . self::STEPS, self::HERO . '<!-- /wp:bwx/section-steps /-->' . self::STEPS ) );
+		// A closer with settings is still only a closer.
+		$this->assertSame( [], Lock::shape( '<!-- /wp:bwx/a {"x":1} -->' ) );
+	}
+
+	public function test_a_section_with_empty_settings_is_given_an_id(): void {
+		$content = '<!-- wp:bwx/a {} /--><!-- wp:bwx/a { } /-->';
+		$read    = Lock::with_ids( $content );
+		$this->assertStringContainsString( '"blueworxSection":"0"', $read );
+		$this->assertStringContainsString( '"blueworxSection":"1"', $read );
+		$this->assertSame( '<!-- wp:bwx/a /--><!-- wp:bwx/a /-->', Lock::without_ids( $read ) );
+		$this->assertFalse( Lock::refuses( $content, $read ) );
+		// Sections traded between two places are seen as moved, because the ids say so.
+		$page = '<!-- wp:bwx/a {} /--><!-- wp:bwx/a {"x":"1"} /-->';
+		$this->assertTrue( Lock::refuses( $page, '<!-- wp:bwx/a {"x":"1","metadata":{"blueworxSection":"1"}} /--><!-- wp:bwx/a {"metadata":{"blueworxSection":"0"}} /-->' ) );
 	}
 
 	// Who the lock applies to.

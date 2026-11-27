@@ -100,3 +100,13 @@ if ( ! class_exists( 'WP_Block_Type_Registry' ) ) {
 		}
 	}
 }
+if ( ! function_exists( 'add_query_arg' ) ) {
+	function add_query_arg( $key, $value, $url ) {
+		return $url . ( false === strpos( $url, '?' ) ? '?' : '&' ) . $key . '=' . $value;
+	}
+}
+if ( ! function_exists( 'remove_query_arg' ) ) {
+	function remove_query_arg( $key, $url ) {
+		return rtrim( preg_replace( '#([?&])' . preg_quote( $key, '#' ) . '=[^&]*&?#', '$1', $url ), '?&' );
+	}
+}
