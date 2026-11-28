@@ -674,7 +674,7 @@ final class PageLockTest extends TestCase {
 		$this->assertFalse( Lock::refuses( $old, str_replace( 'After words', 'New words', $old ) ) );
 		$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ) );
 		// Inside MathML text an HTML tag starts HTML again, so CDATA after it is not CDATA and the SVG is a real one.
-		$real = '<p>Intro words</p><math><mtext><b></b><![CDATA[ a > b ' . $svg . ' ]]></mtext></math><p>After words</p>' . self::HERO;
+		$real = '<p>Intro words</p><math><mtext><b><![CDATA[ a > b ' . $svg . ' ]]></b></mtext></math><p>After words</p>' . self::HERO;
 		$this->assertFalse( Lock::refuses( $real, str_replace( 'After words', 'New words', $real ) ) );
 	}
 
@@ -746,13 +746,30 @@ final class PageLockTest extends TestCase {
 		}
 	}
 
+	public function test_an_unfinished_tag_in_a_textarea_cannot_cut_away_its_closing_tag(): void {
+		$old = '<p>Intro words</p><textarea>Write <b</textarea><p>After words</p>' . self::HERO;
+		foreach ( [ '<br', '<!--', '<br <b title="', '<p class="x' ] as $typed ) {
+			$new = str_replace( 'Write <b', 'Write ' . $typed, $old );
+			$this->assertFalse( Lock::refuses( $old, $new ), $typed );
+			$this->assertFalse( Lock::refuses( $new, $old ), $typed );
+		}
+		$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ) );
+	}
+
+	public function test_text_after_an_html_child_closes_in_an_svg_description_is_still_text(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$old = '<p>Intro words</p><svg viewBox="0 0 9 9"><desc><b>Note</b> <![CDATA[ a > b </svg> ]]></desc><path d="BIGSVG"/></svg><p>After words</p>' . self::HERO;
+		$this->assertFalse( Lock::refuses( $old, str_replace( 'After words', 'New words', $old ) ) );
+		$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ) );
+	}
+
 	public function test_a_deeply_nested_svg_is_read_quickly(): void {
 		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
-		$svg = str_repeat( '<svg viewBox="0 0 9 9"><g>', 4000 ) . '<path d="BIGSVG"/>' . str_repeat( '</g></svg>', 4000 );
+		$svg = str_repeat( '<svg viewBox="0 0 9 9"><g>', 20000 ) . '<path d="BIGSVG"/>' . str_repeat( '</g></svg>', 20000 );
 		$old = '<p>Intro words</p>' . $svg . self::HERO;
 		$time = microtime( true );
 		$this->assertFalse( Lock::refuses( $old, str_replace( 'Intro', 'New', $old ) ) );
-		$this->assertLessThan( 3, microtime( true ) - $time );
+		$this->assertLessThan( 6, microtime( true ) - $time );
 	}
 
 	public function test_page_elements_named_like_the_svg_marker_stay_different_from_each_other(): void {

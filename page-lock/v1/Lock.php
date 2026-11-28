@@ -48,6 +48,9 @@ final class Lock {
 	/** How the tags inside an inline SVG start in a list of tags, kept as one piece of text. No tag name can start like this. */
 	const SVG_INSIDE = '<!svg ';
 
+	/** Elements that never have an end tag. */
+	const VOID = array( 'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr' );
+
 	/** Elements that are part of the words they sit in. */
 	const INLINE = 'a|abbr|b|bdi|bdo|br|cite|code|del|em|font|i|ins|kbd|mark|q|s|samp|small|span|strike|strong|sub|sup|time|tt|u|var|wbr';
 
@@ -427,7 +430,7 @@ final class Lock {
 		// are not them. Each one the page has gets a dash after it, so no two different names come to read the same.
 		$html   = str_ireplace( array( 'bwplbr', 'bwplsv' ), array( 'bwplbr-', 'bwplsv-' ), $html );
 		$svgs   = array();
-		$masked = self::set_aside_svgs( $html, $svgs );
+		$masked = self::without_raw_text( self::set_aside_svgs( $html, $svgs ) );
 		return self::structure( $words ? self::as_words( $masked ) : $masked, $svgs, $every );
 	}
 
@@ -523,6 +526,34 @@ final class Lock {
 	}
 
 	/**
+	 * Markup with what is written inside a textarea, script, style and the like taken out.
+	 *
+	 * It is text, not markup, so nothing that reads the markup after this (the comment
+	 * and line break clean-up, WordPress's own tidying) can take part of it for a tag
+	 * and cut away the real closing tag.
+	 *
+	 * @param string $html Markup from outside the sections, with its SVGs set aside.
+	 * @return string
+	 */
+	private static function without_raw_text( $html ) {
+		$out   = '';
+		$taken = 0;
+		$pos   = 0;
+		while ( true ) {
+			$token = self::next_token( $html, $pos, false );
+			if ( null === $token ) {
+				break;
+			}
+			$pos = $token['next'];
+			if ( 'tag' === $token['kind'] && null !== $token['name'] && $token['next'] > $token['end'] ) {
+				$out  .= substr( $html, $taken, $token['end'] - $taken );
+				$taken = $token['next'];
+			}
+		}
+		return $taken ? $out . substr( $html, $taken ) : $html;
+	}
+
+	/**
 	 * A fresh record of what is being read, for track().
 	 *
 	 * @return array
@@ -553,46 +584,51 @@ final class Lock {
 			return;
 		}
 		$count = count( $state['open'] );
+		$kind  = $count ? $state['open'][ $count - 1 ][1] : 'html';
 		if ( $token['close'] ) {
-			if ( empty( $state['names'][ $name ] ) ) {
-				return;
-			}
-			for ( $i = $count - 1; $i >= 0; $i-- ) {
-				if ( $state['open'][ $i ][0] === $name ) {
-					for ( $j = $i; $j < $count; $j++ ) {
-						--$state['names'][ $state['open'][ $j ][0] ];
-						if ( 'svg' === $state['open'][ $j ][0] ) {
-							--$state['svg'];
+			if ( ! empty( $state['names'][ $name ] ) ) {
+				for ( $i = $count - 1; $i >= 0; $i-- ) {
+					if ( $state['open'][ $i ][0] === $name ) {
+						// Taken off one at a time, so a long list is not copied for each closing tag.
+						for ( $j = $count - 1; $j >= $i; $j-- ) {
+							$gone = array_pop( $state['open'] );
+							--$state['names'][ $gone[0] ];
+							if ( 'svg' === $gone[0] ) {
+								--$state['svg'];
+							}
 						}
+						return;
 					}
-					array_splice( $state['open'], $i );
-					return;
 				}
+			}
+			// Closing something that opened inside a place that holds HTML.
+			if ( $count && 'html' === $kind && $state['open'][ $count - 1 ][2] > 0 ) {
+				--$state['open'][ $count - 1 ][2];
 			}
 			return;
 		}
 		if ( $token['self'] ) {
 			return;
 		}
-		$kind = $count ? $state['open'][ $count - 1 ][1] : 'html';
-		if ( $count && 'html' === $kind ) {
-			// Something has opened in this place, so what follows is no longer straight inside the SVG or MathML element.
-			$state['open'][ $count - 1 ][2] = false;
-		}
 		$push = null;
 		if ( 'svg' === $name || 'math' === $name ) {
-			$push = array( $name, $name, false );
+			$push = array( $name, $name, 0 );
 		} elseif ( 'svg' === $kind && in_array( $name, array( 'foreignobject', 'desc', 'title' ), true ) ) {
-			$push = array( $name, 'html', true );
+			$push = array( $name, 'html', 0 );
 		} elseif ( 'math' === $kind && in_array( $name, array( 'mi', 'mo', 'mn', 'ms', 'mtext' ), true ) ) {
-			$push = array( $name, 'html', true );
+			$push = array( $name, 'html', 0 );
 		}
-		if ( null !== $push ) {
-			$state['open'][] = $push;
-			$state['names'][ $name ] = isset( $state['names'][ $name ] ) ? $state['names'][ $name ] + 1 : 1;
-			if ( 'svg' === $name ) {
-				++$state['svg'];
+		if ( null === $push ) {
+			// Something opened inside a place that holds HTML, so what follows is no longer straight inside the SVG or MathML element until it closes.
+			if ( $count && 'html' === $kind && ! in_array( $name, self::VOID, true ) ) {
+				++$state['open'][ $count - 1 ][2];
 			}
+			return;
+		}
+		$state['open'][]         = $push;
+		$state['names'][ $name ] = isset( $state['names'][ $name ] ) ? $state['names'][ $name ] + 1 : 1;
+		if ( 'svg' === $name ) {
+			++$state['svg'];
 		}
 	}
 
@@ -615,7 +651,7 @@ final class Lock {
 		if ( 'html' !== $top[1] ) {
 			return true;
 		}
-		return $top[2] ? 'mixed' : false;
+		return 0 === $top[2] ? 'mixed' : false;
 	}
 
 	/**

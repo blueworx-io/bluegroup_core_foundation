@@ -15,6 +15,9 @@
 - Text in an SVG's desc or title (including a `>` or a literal `</svg>` in its CDATA) is read as text again; only what is written inside an HTML tag there follows HTML rules.
 - A deeply nested SVG is read in one pass (the open elements are no longer walked again for each tag), and a very large one is held as one piece of text, so saves stay fast and small.
 - Names that look like the page lock's own markers (`bwplsvg-card`, `bwplsvx-card`) stay different from each other.
+- An unfinished tag typed in a textarea (such as `<br`) can no longer cut away its real closing tag: what is inside a textarea, script or style is taken out before the markup is cleaned up.
+- In an SVG's desc or title, CDATA written after an HTML tag has closed is text again, as in a browser.
+- Closing a tag in a deeply nested SVG no longer copies the list of open elements, so a 20,000-level SVG is read in about two seconds, not minutes.
 
 ## Page lock 1.0.7
 
