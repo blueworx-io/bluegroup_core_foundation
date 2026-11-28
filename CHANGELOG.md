@@ -7,11 +7,14 @@
 - MathML text (`<![CDATA[ a > b <svg> ]]>` inside `<math>`) can no longer hide a large inline SVG after it, so words beside the SVG stay editable. Text inside MathML's own text elements is read as HTML, as a browser does.
 - A textarea, title, xmp, iframe, noembed or noframes written with a slash (`<textarea/>`) still holds text until its closing tag, as in a browser, so an SVG tag written inside it cannot hide a real SVG.
 - A horizontal rule written with the editor's own marker (`<hr class="bwplbr">`) can no longer stand in for a line break standing alone; the marker is now one no page can write.
-
 - A very large inline SVG is read as it comes, not tag by tag in memory, so a words-only save no longer runs a small host out of memory.
 - The final layout check skips what is written inside a textarea (and script, style and the like), so an edited code example there cannot upset it.
 - Inside an SVG's foreignObject, desc and title, and MathML's text elements, markup follows HTML rules, so an SVG written as text in an iframe or textarea there is not read as a nested SVG.
 - The marker left where an SVG stood can no longer be forged by a `bwplsvg` element in the page.
+- A quote added in a code example inside a textarea no longer upsets the layout check (the cleanup step skips textarea text too).
+- Text in an SVG's desc or title (including a `>` or a literal `</svg>` in its CDATA) is read as text again; only what is written inside an HTML tag there follows HTML rules.
+- A deeply nested SVG is read in one pass (the open elements are no longer walked again for each tag), and a very large one is held as one piece of text, so saves stay fast and small.
+- Names that look like the page lock's own markers (`bwplsvg-card`, `bwplsvx-card`) stay different from each other.
 
 ## Page lock 1.0.7
 

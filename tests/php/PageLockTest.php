@@ -673,8 +673,8 @@ final class PageLockTest extends TestCase {
 		$old = '<p>Intro words</p><math><![CDATA[ a > b <svg> ]]></math>' . $svg . '<p>After words</p>' . self::HERO;
 		$this->assertFalse( Lock::refuses( $old, str_replace( 'After words', 'New words', $old ) ) );
 		$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ) );
-		// In MathML text (an integration point) it is HTML again, so this is a real SVG.
-		$real = '<p>Intro words</p><math><mtext><![CDATA[ a > b ' . $svg . ' ]]></mtext></math><p>After words</p>' . self::HERO;
+		// Inside MathML text an HTML tag starts HTML again, so CDATA after it is not CDATA and the SVG is a real one.
+		$real = '<p>Intro words</p><math><mtext><b></b><![CDATA[ a > b ' . $svg . ' ]]></mtext></math><p>After words</p>' . self::HERO;
 		$this->assertFalse( Lock::refuses( $real, str_replace( 'After words', 'New words', $real ) ) );
 	}
 
@@ -705,7 +705,7 @@ final class PageLockTest extends TestCase {
 		$new = str_replace( 'Intro', 'New', $old );
 		$was = ini_get( 'memory_limit' );
 		// The limit a small host would set, with room for the page itself.
-		ini_set( 'memory_limit', ( (int) ( memory_get_usage() / 1048576 ) + 70 ) . 'M' );
+		ini_set( 'memory_limit', ( (int) ( memory_get_usage() / 1048576 ) + 60 ) . 'M' );
 		try {
 			$this->assertFalse( Lock::refuses( $old, $new ) );
 		} finally {
@@ -727,6 +727,39 @@ final class PageLockTest extends TestCase {
 			$this->assertFalse( Lock::refuses( $old, str_replace( 'After words', 'New words', $old ) ), $tag );
 			$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ), $tag );
 		}
+	}
+
+	public function test_a_quote_added_inside_a_textarea_does_not_upset_the_layout_check(): void {
+		$old = '<p>Intro words</p><textarea><b title=x</textarea><p class="a">He said "hi</p>' . self::HERO;
+		$new = str_replace( 'title=x', 'title="x', $old );
+		$this->assertFalse( Lock::refuses( $old, $new ) );
+		$this->assertFalse( Lock::refuses( $new, $old ) );
+		$this->assertTrue( Lock::refuses( $old, $new . '<iframe src="x"></iframe>' ) );
+	}
+
+	public function test_text_in_an_svg_description_is_not_read_as_tags(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		foreach ( [ 'desc', 'title' ] as $tag ) {
+			$old = '<p>Intro words</p><svg viewBox="0 0 9 9"><' . $tag . '><![CDATA[ a > b </svg> ]]></' . $tag . '><path d="BIGSVG"/></svg><p>After words</p>' . self::HERO;
+			$this->assertFalse( Lock::refuses( $old, str_replace( 'After words', 'New words', $old ) ), $tag );
+			$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ), $tag );
+		}
+	}
+
+	public function test_a_deeply_nested_svg_is_read_quickly(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$svg = str_repeat( '<svg viewBox="0 0 9 9"><g>', 4000 ) . '<path d="BIGSVG"/>' . str_repeat( '</g></svg>', 4000 );
+		$old = '<p>Intro words</p>' . $svg . self::HERO;
+		$time = microtime( true );
+		$this->assertFalse( Lock::refuses( $old, str_replace( 'Intro', 'New', $old ) ) );
+		$this->assertLessThan( 3, microtime( true ) - $time );
+	}
+
+	public function test_page_elements_named_like_the_svg_marker_stay_different_from_each_other(): void {
+		$old = '<p>Intro words</p><bwplsvg-card></bwplsvg-card>' . self::HERO;
+		$this->assertTrue( Lock::refuses( $old, str_replace( 'bwplsvg-card', 'bwplsvx-card', $old ) ) );
+		$this->assertTrue( Lock::refuses( $old, str_replace( 'bwplsvg-card', 'bwplsv-g-card', $old ) ) );
+		$this->assertFalse( Lock::refuses( $old, str_replace( 'Intro', 'New', $old ) ) );
 	}
 
 	public function test_a_page_element_called_bwplsvg_cannot_take_an_svgs_place(): void {
