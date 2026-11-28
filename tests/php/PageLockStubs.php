@@ -55,9 +55,16 @@ if ( ! function_exists( 'wpautop' ) ) {
 	// The parts that matter here: loose words become paragraphs, and two line
 	// breaks or an empty line end one.
 	function wpautop( $text ) {
+		// WordPress gives back nothing when it cannot work on markup, such as a large inline SVG.
+		foreach ( $GLOBALS['bwpl_wpautop_fails'] ?? [] as $needle ) {
+			if ( false !== strpos( (string) $text, $needle ) ) {
+				return '';
+			}
+		}
 		$text = preg_replace( '#<br\s*/?>\s*<br\s*/?>#', "\n\n", (string) $text );
 		$out  = '';
-		foreach ( preg_split( '#(<p\b.*</p>|<(?:div|h2)\b.*</(?:div|h2)>|<hr>)|\n\s*\n#sU', $text, -1, PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE ) as $piece ) {
+		$pieces = preg_split( '#(<p\b.*</p>|<(?:div|h2)\b.*</(?:div|h2)>|<hr>)|\n\s*\n#sU', $text, -1, PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE );
+		foreach ( false === $pieces ? array( $text ) : $pieces as $piece ) {
 			$loose = '' !== trim( $piece ) && ! preg_match( '#^\s*</?(?:p|div|h2|hr)\b#', $piece );
 			$piece = preg_replace( '#\n\s*\n#', '</p><p>', $piece );
 			$out  .= $loose ? '<p>' . trim( $piece ) . '</p>' : $piece;
@@ -98,5 +105,15 @@ if ( ! class_exists( 'WP_Block_Type_Registry' ) ) {
 		public function get_all_registered() {
 			return array_fill_keys( $GLOBALS['bwpl_blocks'], true );
 		}
+	}
+}
+if ( ! function_exists( 'add_query_arg' ) ) {
+	function add_query_arg( $key, $value, $url ) {
+		return $url . ( false === strpos( $url, '?' ) ? '?' : '&' ) . $key . '=' . $value;
+	}
+}
+if ( ! function_exists( 'remove_query_arg' ) ) {
+	function remove_query_arg( $key, $url ) {
+		return rtrim( preg_replace( '#([?&])' . preg_quote( $key, '#' ) . '=[^&]*&?#', '$1', $url ), '?&' );
 	}
 }

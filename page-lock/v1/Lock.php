@@ -42,6 +42,15 @@ final class Lock {
 	/** What an id looks like: the section's place on the page, such as 2, or 2.0 for the first one inside it. */
 	const PLACE = '\d+(?:\.\d+)*';
 
+	/** How a line break standing alone is named in a list of tags. It starts with a character no tag name can, so no tag in a page can pass for it. */
+	const STANDALONE_BREAK = '<!br';
+
+	/** How the tags inside an inline SVG start in a list of tags, kept as one piece of text. No tag name can start like this. */
+	const SVG_INSIDE = '<!svg ';
+
+	/** Elements that never have an end tag. */
+	const VOID = array( 'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr' );
+
 	/** Elements that are part of the words they sit in. */
 	const INLINE = 'a|abbr|b|bdi|bdo|br|cite|code|del|em|font|i|ins|kbd|mark|q|s|samp|small|span|strike|strong|sub|sup|time|tt|u|var|wbr';
 
@@ -63,7 +72,7 @@ final class Lock {
 	 *
 	 * @var string
 	 */
-	private static $version = '1.0.1';
+	private static $version = '1.0.8';
 
 	/**
 	 * True while the lock writes its own flag, so its own guard lets it through.
@@ -78,6 +87,13 @@ final class Lock {
 	 * @var int
 	 */
 	private static $restoring = 0;
+
+	/**
+	 * The page whose last save had its content put back, 0 for none.
+	 *
+	 * @var int
+	 */
+	private static $dropped = 0;
 
 	/**
 	 * Adds every hook.
@@ -101,6 +117,9 @@ final class Lock {
 		add_filter( 'wp_insert_post_data', array( self::class, 'insert_guard' ), 10, 2 );
 		add_action( 'wp_insert_post', array( self::class, 'lock_new_page' ), 10, 3 );
 		add_action( 'load-revision.php', array( self::class, 'check_restore' ) );
+		add_filter( 'redirect_post_location', array( self::class, 'redirect_post_location' ), 10, 2 );
+		add_action( 'admin_notices', array( self::class, 'notice' ) );
+		add_filter( 'removable_query_args', array( self::class, 'removable_query_args' ) );
 		add_filter( 'block_editor_settings_all', array( self::class, 'editor_settings' ), 10, 2 );
 		add_filter( 'allowed_block_types_all', array( self::class, 'allowed_blocks' ), 10, 2 );
 		add_filter( 'display_post_states', array( self::class, 'post_state' ), 10, 2 );
@@ -202,7 +221,8 @@ final class Lock {
 			$depth   = count( $stack ) - 1;
 			$at      = $m[0][1];
 			$length  = strlen( $m[0][0] );
-			$closing = '' !== $m['closer'][0];
+			// A marker that closes itself is a section, even with a slash in front of its name: WordPress reads it that way.
+			$closing = '' !== $m['closer'][0] && empty( $m['void'][0] );
 
 			// WordPress reads no blocks after a closing comment that closes nothing.
 			if ( $closing && 0 === $depth ) {
@@ -319,11 +339,24 @@ final class Lock {
 		}
 		foreach ( $now['html'] as $i => $html ) {
 			$old      = $was['html'][ $i ];
-			$elements = self::structure( self::as_words( $html ) );
+			$elements = self::elements( $html, true );
+			$before   = self::elements( $old, true );
+			$plain    = self::elements( $old, false );
 			// As it is saved, or as the block editor redraws it by opening the page.
-			if ( self::structure( self::as_words( $old ) ) !== $elements && self::structure( $old ) !== $elements ) {
-				return true;
+			if ( false !== $elements && ( $before === $elements || $plain === $elements ) ) {
+				continue;
 			}
+			// Words typed beside a break standing alone inside an SVG make it part of the words, but it is still there.
+			// Read with every break inside an SVG counted, the layout is then the same.
+			$every = self::elements( $html, true, true );
+			if ( false !== $every && self::elements( $old, true, true ) === $every ) {
+				continue;
+			}
+			// Markup that could not be read says nothing about its elements, so it has to be the same text.
+			if ( ( false === $elements || false === $before || false === $plain ) && trim( $old ) === trim( $html ) ) {
+				continue;
+			}
+			return true;
 		}
 		return false;
 	}
@@ -333,18 +366,74 @@ final class Lock {
 	 * paragraph, and breaks standing alone taken as elements.
 	 *
 	 * @param string $html Markup from outside the sections.
-	 * @return string
+	 * @return string|null Null when it could not be worked on.
 	 */
 	private static function as_words( $html ) {
+		// A tag runs to its closing bracket, so a "<br" written inside a quoted attribute is not a line break.
+		// Read the way the tag reader reads, so what is written inside a textarea (or a comment) is text and left alone.
+		$safe  = '';
+		$taken = 0;
+		$pos   = 0;
+		$state = self::fresh_state();
+		while ( true ) {
+			$token = self::next_token( $html, $pos, self::is_foreign( $state ) );
+			if ( null === $token ) {
+				break;
+			}
+			$pos = $token['next'];
+			self::track( $state, $token );
+			if ( 'tag' !== $token['kind'] || null === $token['name'] ) {
+				continue;
+			}
+			$tag = substr( $html, $token['start'], $token['end'] - $token['start'] );
+			if ( false === strpos( $tag, '"' ) && false === strpos( $tag, "'" ) ) {
+				continue;
+			}
+			$tag = preg_replace_callback(
+				'#"[^"]*+"|\'[^\']*+\'#',
+				function ( $quoted ) {
+					return strtr( $quoted[0], array( '<' => '&lt;', '>' => '&gt;' ) );
+				},
+				$tag
+			);
+			if ( null === $tag ) {
+				return null;
+			}
+			$safe .= substr( $html, $taken, $token['start'] - $taken ) . $tag;
+			$taken = $token['end'];
+		}
+		$html = $safe . substr( $html, $taken );
 		$edge = '<(?!/?(?:' . self::INLINE . ')\b)[^>]*>';
 		$html = preg_replace_callback(
 			'#(^|' . $edge . ')((?:\s*<br\b[^>]*>)+)(?=\s*(?:$|' . $edge . '))#i',
 			function ( $m ) {
-				return $m[1] . str_repeat( '<hr>', preg_match_all( '#<br#i', $m[2] ) );
+				return $m[1] . str_repeat( '<hr class="bwplbr">', preg_match_all( '#<br#i', $m[2] ) );
 			},
 			$html
 		);
-		return (string) preg_replace( '#<br\b[^>]*>#i', ' . ', (string) $html );
+		return null === $html ? null : preg_replace( '#<br\b[^>]*>#i', ' . ', $html );
+	}
+
+	/**
+	 * The elements outside the sections in one piece of markup.
+	 *
+	 * Large inline SVGs are set aside first, before anything else reads the
+	 * markup, so what is written inside one (a description, an unfinished tag
+	 * example, a comment) can neither be mistaken for markup nor damaged by the
+	 * tidying of the words round it.
+	 *
+	 * @param string $html  Markup from outside the sections.
+	 * @param bool   $words Whether line breaks are read as the editor does, inside words.
+	 * @param bool   $every Whether every line break inside an SVG counts as an element, not only those standing alone.
+	 * @return string[]|false The elements, or false when the markup could not be read.
+	 */
+	private static function elements( $html, $words, $every = false ) {
+		// The marks put on a break standing alone, and where an SVG stood, are ours: the same words written in the page
+		// are not them. Each one the page has gets a dash after it, so no two different names come to read the same.
+		$html   = str_ireplace( array( 'bwplbr', 'bwplsv' ), array( 'bwplbr-', 'bwplsv-' ), $html );
+		$svgs   = array();
+		$masked = self::without_raw_text( self::set_aside_svgs( $html, $svgs ) );
+		return self::structure( $words ? self::as_words( $masked ) : $masked, $svgs, $every );
 	}
 
 	/**
@@ -354,17 +443,476 @@ final class Lock {
 	 * words. Paragraph tags are put round plain words first, as the block editor
 	 * does itself just by opening the page.
 	 *
-	 * @param string $html Markup from outside the sections.
-	 * @return string[]
+	 * @param string|null $html Markup from outside the sections with its SVGs set aside, or null when it could not be cleaned up.
+	 * @param string[]    $svgs  The SVGs that were set aside, in order.
+	 * @param bool        $every Whether every line break inside an SVG counts as an element.
+	 * @return string[]|false The elements, or false when the markup could not be read.
 	 */
-	private static function structure( $html ) {
-		if ( '' === trim( $html ) ) {
+	private static function structure( $html, $svgs = array(), $every = false ) {
+		if ( null === $html ) {
+			return false;
+		}
+		$bare = preg_replace( '/<!--.*?-->/s', '', $html );
+		if ( null === $bare ) {
+			return false;
+		}
+		if ( '' === trim( $bare ) ) {
 			return array();
 		}
-		$html = strtolower( wpautop( (string) preg_replace( '/<!--.*?-->/s', '', $html ) ) );
-		// A comment nobody closed would hide the sections after it.
-		preg_match_all( '#</?[a-z][a-z0-9-]*|<!--#', $html, $tags );
-		return array_values( preg_grep( '#^</?(?:' . self::INLINE . ')$#', $tags[0], PREG_GREP_INVERT ) );
+		// A large inline SVG is more than WordPress can work on, and it hands back nothing, which must not read as no
+		// elements. The words round it are tidied as they are anywhere else, and its own tags are put back where it stood.
+		$html = strtolower( wpautop( $bare ) );
+		if ( '' === trim( $html ) ) {
+			return false;
+		}
+		$names = self::tag_names( $html );
+		if ( false === $names ) {
+			return false;
+		}
+		$out  = array();
+		$next = 0;
+		foreach ( $names as $name ) {
+			if ( '<bwplsvg' === $name && isset( $svgs[ $next ] ) ) {
+				$inside = self::svg_tag_names( $svgs[ $next ], $every );
+				++$next;
+				if ( false === $inside ) {
+					return false;
+				}
+				$out[] = $inside;
+				continue;
+			}
+			$out[] = $name;
+		}
+		return array_values( preg_grep( '#^</?(?:' . self::INLINE . ')$#', $out, PREG_GREP_INVERT ) );
+	}
+
+	/**
+	 * Markup with each inline SVG taken out and a marker left in its place.
+	 *
+	 * Found by position, not by a pattern, so a very large SVG cannot run PHP's
+	 * regex engine out of steps. Comments, CDATA, processing instructions and
+	 * whole tags are passed over as they come, so an SVG tag written inside one
+	 * of them is not an SVG. One that never closes is left as it is.
+	 *
+	 * @param string   $html Markup from outside the sections.
+	 * @param string[] $svgs Filled with each SVG taken out, in order.
+	 * @return string
+	 */
+	private static function set_aside_svgs( $html, &$svgs ) {
+		$out   = '';
+		$taken = 0;
+		$pos   = 0;
+		$start = 0;
+		$stack = self::fresh_state();
+		while ( true ) {
+			$token = self::next_token( $html, $pos, self::is_foreign( $stack ) );
+			if ( ! is_array( $token ) ) {
+				break;
+			}
+			$pos    = $token['next'];
+			$before = $stack['svg'];
+			self::track( $stack, $token );
+			if ( 'svg' !== $token['name'] || ( $token['close'] && $before < 1 ) ) {
+				continue;
+			}
+			if ( ! $token['close'] && 0 === $before ) {
+				$start = $token['start'];
+			}
+			if ( 0 === $stack['svg'] ) {
+				$svgs[] = substr( $html, $start, $token['end'] - $start );
+				$out   .= substr( $html, $taken, $start - $taken ) . '<bwplsvg/>';
+				$taken  = $token['end'];
+			}
+		}
+		return $out . substr( $html, $taken );
+	}
+
+	/**
+	 * Markup with what is written inside a textarea, script, style and the like taken out.
+	 *
+	 * It is text, not markup, so nothing that reads the markup after this (the comment
+	 * and line break clean-up, WordPress's own tidying) can take part of it for a tag
+	 * and cut away the real closing tag.
+	 *
+	 * @param string $html Markup from outside the sections, with its SVGs set aside.
+	 * @return string
+	 */
+	private static function without_raw_text( $html ) {
+		$out   = '';
+		$taken = 0;
+		$pos   = 0;
+		$state = self::fresh_state();
+		while ( true ) {
+			$token = self::next_token( $html, $pos, self::is_foreign( $state ) );
+			if ( null === $token ) {
+				break;
+			}
+			$pos = $token['next'];
+			self::track( $state, $token );
+			if ( 'tag' === $token['kind'] && null !== $token['name'] && $token['next'] > $token['end'] ) {
+				$out  .= substr( $html, $taken, $token['end'] - $taken );
+				$taken = $token['next'];
+			}
+		}
+		return $taken ? $out . substr( $html, $taken ) : $html;
+	}
+
+	/**
+	 * A fresh record of what is being read, for track().
+	 *
+	 * @return array
+	 */
+	private static function fresh_state() {
+		return array(
+			'open'  => array(),
+			'names' => array(),
+			'svg'   => 0,
+		);
+	}
+
+	/**
+	 * Keeps track of which kind of markup is being read, as a browser does: inside an
+	 * SVG or MathML the rules for those apply, and HTML starts again inside the
+	 * places that hold HTML (an SVG's foreignObject, desc and title, and MathML's text).
+	 *
+	 * Only those elements are kept, and how many of each is open, so a long run of
+	 * other tags costs nothing and a deeply nested SVG is not walked again for each tag.
+	 *
+	 * @param array $state From fresh_state(): the open elements (name, kind, and for a place that holds HTML the elements opened inside it and how many of each), innermost last.
+	 * @param array $token A token from next_token().
+	 * @return void
+	 */
+	private static function track( &$state, $token ) {
+		$name = $token['name'];
+		if ( null === $name ) {
+			return;
+		}
+		$count = count( $state['open'] );
+		$kind  = $count ? $state['open'][ $count - 1 ][1] : 'html';
+		if ( $token['close'] ) {
+			if ( ! empty( $state['names'][ $name ] ) ) {
+				for ( $i = $count - 1; $i >= 0; $i-- ) {
+					if ( $state['open'][ $i ][0] === $name ) {
+						// Taken off one at a time, so a long list is not copied for each closing tag.
+						for ( $j = $count - 1; $j >= $i; $j-- ) {
+							$gone = array_pop( $state['open'] );
+							--$state['names'][ $gone[0] ];
+							if ( 'svg' === $gone[0] ) {
+								--$state['svg'];
+							}
+						}
+						return;
+					}
+				}
+			}
+			// Closing something that opened inside a place that holds HTML. Like a browser, it also closes
+			// what opened inside it and was left open ("<ul><li>Note</ul>" closes both).
+			if ( $count && 'html' === $kind && ! empty( $state['open'][ $count - 1 ][3][ $name ] ) ) {
+				do {
+					$gone = array_pop( $state['open'][ $count - 1 ][2] );
+					--$state['open'][ $count - 1 ][3][ $gone ];
+				} while ( $gone !== $name );
+			}
+			return;
+		}
+		if ( $token['self'] ) {
+			return;
+		}
+		$push = null;
+		if ( 'svg' === $name || 'math' === $name ) {
+			$push = array( $name, $name, array(), array() );
+		} elseif ( 'svg' === $kind && in_array( $name, array( 'foreignobject', 'desc', 'title' ), true ) ) {
+			$push = array( $name, 'html', array(), array() );
+		} elseif ( 'math' === $kind && in_array( $name, array( 'mi', 'mo', 'mn', 'ms', 'mtext' ), true ) ) {
+			$push = array( $name, 'html', array(), array() );
+		}
+		if ( null === $push ) {
+			// Something opened inside a place that holds HTML, so what follows is no longer straight inside the SVG or MathML element until it closes.
+			if ( $count && 'html' === $kind && ! in_array( $name, self::VOID, true ) ) {
+				$state['open'][ $count - 1 ][2][] = $name;
+				$state['open'][ $count - 1 ][3][ $name ] = isset( $state['open'][ $count - 1 ][3][ $name ] ) ? $state['open'][ $count - 1 ][3][ $name ] + 1 : 1;
+			}
+			return;
+		}
+		$state['open'][]         = $push;
+		$state['names'][ $name ] = isset( $state['names'][ $name ] ) ? $state['names'][ $name ] + 1 : 1;
+		if ( 'svg' === $name ) {
+			++$state['svg'];
+		}
+	}
+
+	/**
+	 * How the next token is to be read.
+	 *
+	 * Inside an SVG or MathML it is read by their rules (true). Inside a place that holds
+	 * HTML it is read by HTML rules (false), except that CDATA still counts straight
+	 * inside the place, where the element round it is the SVG's or MathML's ("mixed").
+	 *
+	 * @param array $state From fresh_state().
+	 * @return bool|string
+	 */
+	private static function is_foreign( $state ) {
+		$count = count( $state['open'] );
+		if ( 0 === $count ) {
+			return false;
+		}
+		$top = $state['open'][ $count - 1 ];
+		if ( 'html' !== $top[1] ) {
+			return true;
+		}
+		return empty( $top[2] ) ? 'mixed' : false;
+	}
+
+	/**
+	 * The tags inside one SVG, in order, as one piece of text.
+	 *
+	 * Comments, CDATA and processing instructions are not tags, whatever they say.
+	 * Tags that are part of words are left out, as they are outside an SVG. Line breaks
+	 * standing alone between elements count as elements, as they do outside an SVG
+	 * (inside a foreignObject they change the spacing), and they are kept even when
+	 * the editor would drop them, as it does not touch an SVG.
+	 *
+	 * Read as it comes, keeping only the tag before a run of breaks and the one after
+	 * and the names in one piece of text, so a very large SVG does not have to be held
+	 * tag by tag.
+	 *
+	 * @param string $svg   The SVG's markup.
+	 * @param bool   $every Whether every line break counts as an element, wherever it stands.
+	 * @return string|false The names, or false when the SVG could not be read.
+	 */
+	private static function svg_tag_names( $svg, $every = false ) {
+		$names  = '';
+		$state  = self::fresh_state();
+		$inline = array_flip( explode( '|', self::INLINE ) );
+		$pos    = 0;
+		$prev   = null;
+		$run    = 0;
+		$first  = null;
+		$last   = null;
+		$before = null;
+		while ( true ) {
+			$token = self::next_token( $svg, $pos, self::is_foreign( $state ) );
+			if ( null === $token ) {
+				break;
+			}
+			if ( $token['bad'] ) {
+				return false;
+			}
+			$pos = $token['next'];
+			self::track( $state, $token );
+			$joins = $run > 0 && self::is_break( $token ) && self::blank_between( $svg, $last, $token );
+			if ( $run > 0 && ! $joins ) {
+				// A run of breaks with only space between them, read once from its first break.
+				$names .= self::break_names( $svg, $every, $run, array( $before, $first, $last, $token ) );
+				$prev   = $last;
+				$run    = 0;
+			}
+			if ( null === $token['name'] ) {
+				$prev = $token;
+				continue;
+			}
+			if ( self::is_break( $token ) ) {
+				if ( $joins ) {
+					++$run;
+					$last = $token;
+				} else {
+					$run    = 1;
+					$first  = $token;
+					$last   = $token;
+					$before = $prev;
+				}
+				continue;
+			}
+			if ( ! isset( $inline[ $token['name'] ] ) ) {
+				$names .= ( $token['close'] ? '</' : '<' ) . $token['name'] . ' ';
+			}
+			$prev = $token;
+		}
+		if ( $run > 0 ) {
+			$names .= self::break_names( $svg, $every, $run, array( $before, $first, $last, null ) );
+		}
+		return self::SVG_INSIDE . $names;
+	}
+
+	/**
+	 * The names for a run of line breaks inside an SVG: only those standing alone count.
+	 *
+	 * Standing alone between two elements (or comments), a break is an element of its own.
+	 *
+	 * @param string $svg    The SVG's markup.
+	 * @param bool   $every  Whether every break counts as an element.
+	 * @param int    $run    How many breaks.
+	 * @param array  $around The token before the run (or null), its first and last break, and the token after it (or null).
+	 * @return string
+	 */
+	private static function break_names( $svg, $every, $run, $around ) {
+		list( $before, $first, $last, $after ) = $around;
+		$inline = '#^(?:' . self::INLINE . ')$#';
+		$alone  = $every || ( null !== $before && self::blank_between( $svg, $before, $first )
+			&& ( null === $after || self::blank_between( $svg, $last, $after ) )
+			&& self::is_edge( $before, $inline ) && ( null === $after || self::is_edge( $after, $inline ) ) );
+		return $alone ? str_repeat( self::STANDALONE_BREAK . ' ', $run ) : '';
+	}
+
+	/**
+	 * Whether a token is an opening line break.
+	 *
+	 * @param array $token A token from next_token().
+	 * @return bool
+	 */
+	private static function is_break( $token ) {
+		return 'br' === $token['name'] && ! $token['close'];
+	}
+
+	/**
+	 * Whether only space lies between two tokens.
+	 *
+	 * @param string $html  Markup.
+	 * @param array  $first The earlier token.
+	 * @param array  $next  The later token.
+	 * @return bool
+	 */
+	private static function blank_between( $html, $first, $next ) {
+		return '' === trim( substr( $html, $first['end'], $next['start'] - $first['end'] ) );
+	}
+
+	/**
+	 * Whether a token separates elements: any tag that is not part of words, a
+	 * comment, or a processing instruction. CDATA is words.
+	 *
+	 * @param array  $token  A token from next_token().
+	 * @param string $inline Pattern for the tags that are part of words.
+	 * @return bool
+	 */
+	private static function is_edge( $token, $inline ) {
+		if ( null !== $token['name'] ) {
+			return ! preg_match( $inline, $token['name'] );
+		}
+		return 'cdata' !== $token['kind'];
+	}
+
+	/**
+	 * The next tag in some markup, or the next comment, CDATA section or
+	 * processing instruction, which are passed over whole.
+	 *
+	 * What is inside a textarea, script or style is text, so it is passed over too.
+	 * Something that never ends is reported as bad and only its opening is passed over,
+	 * so one stray "<?" cannot hide the markup after it.
+	 *
+	 * Like a browser, a processing instruction ends at the first closing bracket, and
+	 * CDATA only counts as CDATA inside an SVG; elsewhere it ends there too.
+	 *
+	 * @param string      $html    Markup.
+	 * @param int         $from    Where to start looking.
+	 * @param bool|string $foreign True inside an SVG or MathML, "mixed" straight inside a place there that holds HTML (CDATA still counts), false in HTML.
+	 * @return array|null Null at the end. Otherwise its start, end, where to carry on from (next), its kind, lowercase tag name (null when it is not a tag), whether it closes or closes itself, and whether it is bad.
+	 */
+	private static function next_token( $html, $from, $foreign = false ) {
+		if ( ! preg_match( '#<!--|<!\[CDATA\[|<\?|</?[a-z]#i', $html, $found, PREG_OFFSET_CAPTURE, $from ) ) {
+			return null;
+		}
+		$start = $found[0][1];
+		$open  = $found[0][0];
+		$kinds = array(
+			'<!--'      => array( '-->', 'comment' ),
+			'<![CDATA[' => array( true === $foreign || 'mixed' === $foreign ? ']]>' : '>', 'cdata' ),
+			'<?'        => array( '>', 'instruction' ),
+		);
+		$key = strtoupper( $open ) === '<![CDATA[' ? '<![CDATA[' : $open;
+		if ( isset( $kinds[ $key ] ) ) {
+			$end = strpos( $html, $kinds[ $key ][0], $start + strlen( $open ) );
+			$bad = false === $end;
+			$end = $bad ? $start + strlen( $open ) : $end + strlen( $kinds[ $key ][0] );
+			return array(
+				'start' => $start,
+				'end'   => $end,
+				'next'  => $end,
+				'kind'  => $kinds[ $key ][1],
+				'name'  => null,
+				'close' => false,
+				'self'  => false,
+				'bad'   => $bad,
+			);
+		}
+		// A tag runs to its closing bracket, and what a quoted attribute says is not part of the markup.
+		if ( ! preg_match( '#</?([a-z][a-z0-9-]*+)(?:"[^"]*+"|\'[^\']*+\'|[^>"\']++)*+>#iA', $html, $tag, 0, $start ) ) {
+			return array(
+				'start' => $start,
+				'end'   => $start + 1,
+				'next'  => $start + 1,
+				'kind'  => 'tag',
+				'name'  => null,
+				'close' => false,
+				'self'  => false,
+				'bad'   => true,
+			);
+		}
+		$name  = strtolower( $tag[1] );
+		$end   = $start + strlen( $tag[0] );
+		$close = '</' === substr( $tag[0], 0, 2 );
+		$self  = '/>' === substr( $tag[0], -2 );
+		$next  = $end;
+		// Outside an SVG a slash does not close these, so what follows is still text; inside one only these three hold text.
+		$raw = true === $foreign ? array( 'script', 'style' ) : array( 'textarea', 'script', 'style', 'title', 'xmp', 'iframe', 'noembed', 'noframes' );
+		if ( ! $close && ( ! $self || true !== $foreign ) && in_array( $name, $raw, true ) ) {
+			// Its end is its own closing tag, not one that only starts with the same letters.
+			$next = preg_match( '#</' . $name . '(?=[\s/>])#i', $html, $raw, PREG_OFFSET_CAPTURE, $end ) ? $raw[0][1] : $end;
+		}
+		return array(
+			'start' => $start,
+			'end'   => $end,
+			'next'  => $next,
+			'kind'  => 'tag',
+			'name'  => $name,
+			'close' => $close,
+			'self'  => $self,
+			'bad'   => false,
+		);
+	}
+
+	/**
+	 * The names of the tags in some markup, in order.
+	 *
+	 * A comment nobody closed would hide the sections after it, so its opening is
+	 * listed too. Read like the SVG finder reads: a tag runs to its closing bracket,
+	 * what a quoted attribute says is not part of the markup, and what is inside a
+	 * textarea (or script, style and the like) is text, not tags.
+	 *
+	 * @param string $html Markup.
+	 * @return string[]|false The names, or false when the markup could not be read.
+	 */
+	private static function tag_names( $html ) {
+		$names  = array();
+		$pos    = 0;
+		$marker = '<hr class="bwplbr"';
+		$state = self::fresh_state();
+		while ( true ) {
+			$token = self::next_token( $html, $pos, self::is_foreign( $state ) );
+			if ( null === $token ) {
+				break;
+			}
+			$pos = $token['next'];
+			self::track( $state, $token );
+			if ( 'comment' === $token['kind'] ) {
+				if ( $token['bad'] ) {
+					$names[] = '<!--';
+				}
+				continue;
+			}
+			if ( 'tag' !== $token['kind'] ) {
+				continue;
+			}
+			if ( null === $token['name'] ) {
+				// A tag that never ends is still a tag.
+				if ( preg_match( '#</?[a-z][a-z0-9-]*#', $html, $name, 0, $token['start'] ) ) {
+					$names[] = $name[0];
+				}
+				continue;
+			}
+			// A break standing alone, which as_words() turned into a marked rule, is not the same element as a real rule.
+			$names[] = substr( $html, $token['start'], strlen( $marker ) ) === $marker ? self::STANDALONE_BREAK : ( $token['close'] ? '</' : '<' ) . $token['name'];
+		}
+		return $names;
 	}
 
 	/**
@@ -449,7 +997,7 @@ final class Lock {
 		return serialize(
 			array(
 				$node['name'],
-				self::sorted( json_decode( self::unmark( $node['attrs'] ), true ) ),
+				self::sorted( (array) json_decode( self::unmark( $node['attrs'] ), true ) ),
 				array_map( 'trim', $node['html'] ),
 				array_map( array( self::class, 'fingerprint' ), $node['children'] ),
 			)
@@ -581,8 +1129,11 @@ final class Lock {
 		if ( '' === $attrs ) {
 			return '{"metadata":{' . $mark . '}}';
 		}
-		if ( ! is_object( $settings ) || ! get_object_vars( $settings ) ) {
+		if ( ! is_object( $settings ) ) {
 			return $attrs;
+		}
+		if ( ! get_object_vars( $settings ) ) {
+			return '{"metadata":{' . $mark . '}}';
 		}
 		if ( ! property_exists( $settings, 'metadata' ) ) {
 			return substr( $attrs, 0, -1 ) . ',"metadata":{' . $mark . '}}';
@@ -785,11 +1336,13 @@ final class Lock {
 		$id       = (int) $_REQUEST['revision'];
 		$revision = wp_get_post_revision( $id );
 		// phpcs:enable
-		if ( ! $revision || ! self::applies( $revision->post_parent ) ) {
+		// Someone who may not edit the page is not shown what a revision holds: WordPress says no itself.
+		if ( ! $revision || ! self::applies( $revision->post_parent ) || ! current_user_can( 'edit_post', $revision->post_parent ) ) {
 			return;
 		}
 		$post = get_post( $revision->post_parent );
-		if ( self::relays( self::read( $post->post_content ), self::read( $revision->post_content ) ) ) {
+		// An autosave holds whatever was typed, so its sections have to be where they were saved.
+		if ( self::relays( self::read( $post->post_content ), self::read( $revision->post_content ) ) || ( wp_is_post_autosave( $revision ) && self::refuses( $post->post_content, $revision->post_content ) ) ) {
 			wp_die( esc_html( self::message() ), '', array( 'response' => 403, 'back_link' => true ) );
 		}
 		self::$restoring = (int) $post->ID;
@@ -868,6 +1421,7 @@ final class Lock {
 			$existing = get_post( $post_id );
 			if ( $existing && self::refuses( $existing->post_content, $content ) && ! self::restores( $existing, $content ) ) {
 				$data['post_content'] = wp_slash( $existing->post_content );
+				self::$dropped        = $post_id;
 				return $data;
 			}
 		}
@@ -875,13 +1429,56 @@ final class Lock {
 		if ( 'revision' === $type && ! empty( $data['post_parent'] ) ) {
 			$type = get_post_type( $data['post_parent'] );
 		}
-		if ( self::covers( $type ) ) {
+		// An autosave is not the live page, and without ids a restore cannot tell sections that traded words from ones that moved.
+		$autosave = 'revision' === ( isset( $data['post_type'] ) ? $data['post_type'] : '' ) && ! empty( $data['post_name'] ) && preg_match( '/^\d+-autosave-v\d+$/', $data['post_name'] );
+		if ( self::covers( $type ) && ! $autosave ) {
 			$saved = self::without_ids( $content );
 			if ( $saved !== $content ) {
 				$data['post_content'] = wp_slash( $saved );
 			}
 		}
 		return $data;
+	}
+
+	/**
+	 * Sends a person whose edit was put back to a page that says so, not to
+	 * "Page updated".
+	 *
+	 * @param string $location Where the save sends the browser.
+	 * @param int    $post_id  Post ID.
+	 * @return string
+	 */
+	public static function redirect_post_location( $location, $post_id ) {
+		if ( self::$dropped && self::$dropped === (int) $post_id ) {
+			self::$dropped = 0;
+			$location      = add_query_arg( 'blueworx_page_locked', '1', remove_query_arg( 'message', $location ) );
+		}
+		return $location;
+	}
+
+	/**
+	 * Lets WordPress take the warning off the address, as it does for its own save messages.
+	 *
+	 * @param string[] $args Query arguments WordPress removes from the address.
+	 * @return string[]
+	 */
+	public static function removable_query_args( $args ) {
+		$args   = (array) $args;
+		$args[] = 'blueworx_page_locked';
+		return $args;
+	}
+
+	/**
+	 * Says why the content was not saved, on the page a refused save sends the person to.
+	 *
+	 * @return void
+	 */
+	public static function notice() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- only shows a message.
+		if ( empty( $_GET['blueworx_page_locked'] ) ) {
+			return;
+		}
+		echo '<div class="notice notice-error"><p>' . esc_html( self::message() ) . '</p></div>';
 	}
 
 	/**
