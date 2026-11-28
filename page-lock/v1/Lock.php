@@ -63,7 +63,7 @@ final class Lock {
 	 *
 	 * @var string
 	 */
-	private static $version = '1.0.3';
+	private static $version = '1.0.4';
 
 	/**
 	 * True while the lock writes its own flag, so its own guard lets it through.
@@ -418,14 +418,19 @@ final class Lock {
 		if ( false === $names ) {
 			return false;
 		}
-		$out = array();
+		$out  = array();
+		$next = 0;
 		foreach ( $names as $name ) {
-			if ( '<bwplsvg' === $name && $svgs ) {
-				$inside = self::tag_names( strtolower( array_shift( $svgs ) ) );
+			if ( '<bwplsvg' === $name && isset( $svgs[ $next ] ) ) {
+				$inside = self::tag_names( strtolower( $svgs[ $next ] ) );
+				++$next;
 				if ( false === $inside ) {
 					return false;
 				}
-				$out = array_merge( $out, $inside );
+				// Appended one by one, so a page with many SVGs does not copy the list for each.
+				foreach ( $inside as $inner ) {
+					$out[] = $inner;
+				}
 				continue;
 			}
 			$out[] = $name;
@@ -492,11 +497,21 @@ final class Lock {
 			if ( $low < 1 ) {
 				return $at - 1;
 			}
-			// On to the next opening or closing SVG tag.
-			if ( ! preg_match( '#<(/?)svg(?=[\s/>])#i', $html, $next, PREG_OFFSET_CAPTURE, $at ) ) {
-				return false;
+			// On to the next opening or closing SVG tag, passing over any CDATA, whose words are not markup.
+			while ( true ) {
+				if ( ! preg_match( '#<!\[CDATA\[|<(/?)svg(?=[\s/>])#i', $html, $next, PREG_OFFSET_CAPTURE, $at ) ) {
+					return false;
+				}
+				$at = $next[0][1];
+				if ( '<!' !== substr( $next[0][0], 0, 2 ) ) {
+					break;
+				}
+				$end = strpos( $html, ']]>', $at );
+				if ( false === $end ) {
+					return false;
+				}
+				$at = $end + 3;
 			}
-			$at = $next[0][1];
 		} while ( true );
 	}
 

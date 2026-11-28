@@ -559,6 +559,22 @@ final class PageLockTest extends TestCase {
 		$this->assertTrue( Lock::refuses( $nested . self::HERO, str_replace( '<g/>', '<g/><script></script>', $nested ) . self::HERO ) );
 	}
 
+	public function test_svg_tags_written_inside_cdata_do_not_count_as_nested_svgs(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$svg = '<svg viewBox="0 0 9 9"><desc><![CDATA[ draw an <svg> here ]]></desc><path d="BIGSVG"/></svg>';
+		$old = '<p>Intro words</p>' . "\n\n" . $svg . '<p>After words</p>' . self::HERO;
+		$this->assertFalse( Lock::refuses( $old, str_replace( 'After words', 'New words', $old ) ) );
+		$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ) );
+	}
+
+	public function test_many_inline_svgs_are_read_quickly(): void {
+		$svg   = '<svg viewBox="0 0 9 9"><path d="M0 0"/></svg>';
+		$old   = '<p>Intro</p>' . str_repeat( $svg, 8000 ) . self::HERO;
+		$start = microtime( true );
+		$this->assertFalse( Lock::refuses( $old, str_replace( 'Intro', 'New words', $old ) ) );
+		$this->assertLessThan( 1.5, microtime( true ) - $start );
+	}
+
 	public function test_a_text_edit_that_pushes_an_svg_past_the_limit_is_not_refused(): void {
 		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
 		$old = '<p>Intro <svg viewBox="0 0 9 9"><path d="M0 0"/></svg></p>' . self::HERO;

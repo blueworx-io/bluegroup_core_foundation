@@ -1,5 +1,11 @@
 # Changelog
 
+## Page lock 1.0.4
+
+- New version number, so it is told apart from any earlier 1.0.3 copy (a site runs the copy with the highest number).
+- Literal `<svg>` text inside an SVG's CDATA is no longer taken for a nested SVG, so words beside that graphic stay editable.
+- Pages with many inline SVGs are read much faster on save (the tag list is no longer copied for each SVG).
+
 ## Page lock 1.0.3
 
 - New version number, so a site can tell this copy from 1.0.2 (the first with the fixes below).
