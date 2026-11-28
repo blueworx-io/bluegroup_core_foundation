@@ -1,5 +1,11 @@
 # Changelog
 
+## Page lock 1.0.6
+
+- New version number, so it is told apart from any copy of 1.0.5.
+- A stray `<?`, or one written in a textarea, script or style, can no longer hide a large inline SVG after it, so words beside the SVG stay editable.
+- A line break standing alone between elements inside an SVG (such as in a foreignObject) is a layout change on a locked page, as it is outside an SVG.
+
 ## Page lock 1.0.5
 
 - New version number, so it is told apart from any copy of 1.0.4.

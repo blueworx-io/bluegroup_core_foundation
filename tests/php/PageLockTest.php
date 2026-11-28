@@ -596,6 +596,32 @@ final class PageLockTest extends TestCase {
 		$this->assertFalse( Lock::refuses( $pi, $note ) );
 	}
 
+	public function test_raw_text_before_a_large_svg_cannot_hide_it(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$svg = '<svg viewBox="0 0 9 9"><path d="BIGSVG"/></svg>';
+		// A "<?" written in a textarea, or alone, is not the start of an instruction that swallows what follows.
+		foreach ( [ '<textarea><?</textarea>', '<p>Is it <? or not</p>', '<script>var a = "<!--";</script>' ] as $before ) {
+			$old = '<p>Intro words</p>' . $before . $svg . '<p>After words</p>' . self::HERO;
+			$this->assertFalse( Lock::refuses( $old, str_replace( 'After words', 'New words', $old ) ), $before );
+			$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ), $before );
+		}
+	}
+
+	public function test_a_line_break_between_elements_inside_an_svg_is_a_layout_change(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$make = function ( $between ) {
+			return '<p>Intro words</p><svg viewBox="0 0 9 9"><path d="BIGSVG"/><foreignObject><div>One</div>' . $between . '<div>Two</div></foreignObject></svg>' . self::HERO;
+		};
+		$this->assertTrue( Lock::refuses( $make( '' ), $make( '<br>' ) ) );
+		// Dropping a break the editor would drop on opening the page is allowed outside an SVG too.
+		$this->assertFalse( Lock::refuses( $make( '<br>' ), $make( '' ) ) );
+		$this->assertTrue( Lock::refuses( $make( '<br>' ), $make( '<br><br>' ) ) );
+		// A break inside words is part of the words, as it is outside an SVG.
+		$words = '<svg viewBox="0 0 9 9"><path d="BIGSVG"/><foreignObject><div>One<br>more</div></foreignObject></svg>' . self::HERO;
+		$this->assertFalse( Lock::refuses( $words, str_replace( '<br>', '<br><br>', $words ) ) );
+		$this->assertFalse( Lock::refuses( $make( '<br>' ), str_replace( 'One', 'Uno', $make( '<br>' ) ) ) );
+	}
+
 	public function test_a_text_edit_that_pushes_an_svg_past_the_limit_is_not_refused(): void {
 		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
 		$old = '<p>Intro <svg viewBox="0 0 9 9"><path d="M0 0"/></svg></p>' . self::HERO;

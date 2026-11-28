@@ -63,7 +63,7 @@ final class Lock {
 	 *
 	 * @var string
 	 */
-	private static $version = '1.0.5';
+	private static $version = '1.0.6';
 
 	/**
 	 * True while the lock writes its own flag, so its own guard lets it through.
@@ -399,7 +399,7 @@ final class Lock {
 	private static function elements( $html, $words ) {
 		$svgs   = array();
 		$masked = self::set_aside_svgs( $html, $svgs );
-		return self::structure( $words ? self::as_words( $masked ) : $masked, $svgs );
+		return self::structure( $words ? self::as_words( $masked ) : $masked, $svgs, $words );
 	}
 
 	/**
@@ -410,10 +410,11 @@ final class Lock {
 	 * does itself just by opening the page.
 	 *
 	 * @param string|null $html Markup from outside the sections with its SVGs set aside, or null when it could not be cleaned up.
-	 * @param string[]    $svgs The SVGs that were set aside, in order.
+	 * @param string[]    $svgs  The SVGs that were set aside, in order.
+	 * @param bool        $words Whether line breaks are read as the editor does, inside words.
 	 * @return string[]|false The elements, or false when the markup could not be read.
 	 */
-	private static function structure( $html, $svgs = array() ) {
+	private static function structure( $html, $svgs = array(), $words = false ) {
 		if ( null === $html ) {
 			return false;
 		}
@@ -438,7 +439,7 @@ final class Lock {
 		$next = 0;
 		foreach ( $names as $name ) {
 			if ( '<bwplsvg' === $name && isset( $svgs[ $next ] ) ) {
-				$inside = self::svg_tag_names( $svgs[ $next ] );
+				$inside = self::svg_tag_names( $svgs[ $next ], $words );
 				++$next;
 				if ( false === $inside ) {
 					return false;
@@ -477,7 +478,7 @@ final class Lock {
 			if ( ! is_array( $token ) ) {
 				break;
 			}
-			$pos = $token['end'];
+			$pos = $token['next'];
 			if ( 'svg' !== $token['name'] ) {
 				continue;
 			}
@@ -507,35 +508,106 @@ final class Lock {
 	 * The names of the tags inside one SVG, in order.
 	 *
 	 * Comments, CDATA and processing instructions are not tags, whatever they say.
+	 * With $words, line breaks standing alone between elements count as elements,
+	 * as they do outside an SVG (inside a foreignObject they change the spacing).
 	 *
-	 * @param string $svg The SVG's markup.
+	 * @param string $svg   The SVG's markup.
+	 * @param bool   $words Whether line breaks are read as the editor does, inside words.
 	 * @return string[]|false The names, or false when the SVG could not be read.
 	 */
-	private static function svg_tag_names( $svg ) {
-		$names = array();
-		$pos   = 0;
+	private static function svg_tag_names( $svg, $words = false ) {
+		$tokens = array();
+		$pos    = 0;
 		while ( true ) {
 			$token = self::next_token( $svg, $pos );
-			if ( false === $token ) {
+			if ( null === $token ) {
+				break;
+			}
+			if ( $token['bad'] ) {
 				return false;
 			}
-			if ( null === $token ) {
-				return $names;
-			}
-			$pos = $token['end'];
-			if ( null !== $token['name'] ) {
-				$names[] = ( $token['close'] ? '</' : '<' ) . $token['name'];
-			}
+			$pos      = $token['next'];
+			$tokens[] = $token;
 		}
+		$inline = '#^(?:' . self::INLINE . ')$#';
+		$names  = array();
+		$count  = count( $tokens );
+		for ( $i = 0; $i < $count; $i++ ) {
+			$token = $tokens[ $i ];
+			if ( null === $token['name'] ) {
+				continue;
+			}
+			if ( $words && $i > 0 && self::is_break( $token ) ) {
+				// A run of breaks with only space between them, standing between two elements (or comments).
+				$run = 1;
+				while ( isset( $tokens[ $i + $run ] ) && self::is_break( $tokens[ $i + $run ] ) && self::blank_between( $svg, $tokens[ $i + $run - 1 ], $tokens[ $i + $run ] ) ) {
+					++$run;
+				}
+				$before = $tokens[ $i - 1 ];
+				$after  = isset( $tokens[ $i + $run ] ) ? $tokens[ $i + $run ] : null;
+				if ( self::blank_between( $svg, $before, $token )
+					&& ( null === $after || self::blank_between( $svg, $tokens[ $i + $run - 1 ], $after ) )
+					&& self::is_edge( $before, $inline ) && ( null === $after || self::is_edge( $after, $inline ) ) ) {
+					for ( $r = 0; $r < $run; $r++ ) {
+						$names[] = '<hr';
+					}
+					$i += $run - 1;
+					continue;
+				}
+			}
+			$names[] = ( $token['close'] ? '</' : '<' ) . $token['name'];
+		}
+		return $names;
+	}
+
+	/**
+	 * Whether a token is an opening line break.
+	 *
+	 * @param array $token A token from next_token().
+	 * @return bool
+	 */
+	private static function is_break( $token ) {
+		return 'br' === $token['name'] && ! $token['close'];
+	}
+
+	/**
+	 * Whether only space lies between two tokens.
+	 *
+	 * @param string $html  Markup.
+	 * @param array  $first The earlier token.
+	 * @param array  $next  The later token.
+	 * @return bool
+	 */
+	private static function blank_between( $html, $first, $next ) {
+		return '' === trim( substr( $html, $first['end'], $next['start'] - $first['end'] ) );
+	}
+
+	/**
+	 * Whether a token separates elements: any tag that is not part of words, a
+	 * comment, or a processing instruction. CDATA is words.
+	 *
+	 * @param array  $token  A token from next_token().
+	 * @param string $inline Pattern for the tags that are part of words.
+	 * @return bool
+	 */
+	private static function is_edge( $token, $inline ) {
+		if ( null !== $token['name'] ) {
+			return ! preg_match( $inline, $token['name'] );
+		}
+		return 'cdata' !== $token['kind'];
 	}
 
 	/**
 	 * The next tag in some markup, or the next comment, CDATA section or
 	 * processing instruction, which are passed over whole.
 	 *
+	 * What is inside a textarea, script or style is text, so it is passed over too.
+	 * Something that never ends is reported as bad and only its opening is passed over,
+	 * so one stray "<?" cannot hide the markup after it.
+	 *
 	 * @param string $html Markup.
 	 * @param int    $from Where to start looking.
-	 * @return array|false|null Null at the end, false when what comes next never ends, otherwise its start, end, lowercase tag name (null when it is not a tag), and whether it closes or closes itself.
+	 * @return array|null Null at the end. Otherwise its start, end, where to carry on from (next), its kind, lowercase tag name (null when it is not a tag), whether it closes or closes itself, and whether it is bad.
 	 */
 	private static function next_token( $html, $from ) {
 		if ( ! preg_match( '#<!--|<!\[CDATA\[|<\?|</?[a-z]#i', $html, $found, PREG_OFFSET_CAPTURE, $from ) ) {
@@ -543,37 +615,61 @@ final class Lock {
 		}
 		$start = $found[0][1];
 		$open  = $found[0][0];
-		$ends  = array(
-			'<!--'      => '-->',
-			'<![CDATA[' => ']]>',
-			'<?'        => '?>',
+		$kinds = array(
+			'<!--'      => array( '-->', 'comment' ),
+			'<![CDATA[' => array( ']]>', 'cdata' ),
+			'<?'        => array( '?>', 'instruction' ),
 		);
 		$key = strtoupper( $open ) === '<![CDATA[' ? '<![CDATA[' : $open;
-		if ( isset( $ends[ $key ] ) ) {
-			$end = strpos( $html, $ends[ $key ], $start + strlen( $open ) );
-			if ( false === $end ) {
-				return false;
-			}
+		if ( isset( $kinds[ $key ] ) ) {
+			$end = strpos( $html, $kinds[ $key ][0], $start + strlen( $open ) );
+			$bad = false === $end;
+			$end = $bad ? $start + strlen( $open ) : $end + strlen( $kinds[ $key ][0] );
 			return array(
 				'start' => $start,
-				'end'   => $end + strlen( $ends[ $key ] ),
+				'end'   => $end,
+				'next'  => $end,
+				'kind'  => $kinds[ $key ][1],
 				'name'  => null,
 				'close' => false,
 				'self'  => false,
+				'bad'   => $bad,
 			);
 		}
 		// A tag runs to its closing bracket, and what a quoted attribute says is not part of the markup.
 		if ( ! preg_match( '#</?([a-z][a-z0-9-]*+)(?:"[^"]*+"|\'[^\']*+\'|[^>"\']++)*+>#iA', $html, $tag, 0, $start ) ) {
-			return false;
+			return array(
+				'start' => $start,
+				'end'   => $start + 1,
+				'next'  => $start + 1,
+				'kind'  => 'tag',
+				'name'  => null,
+				'close' => false,
+				'self'  => false,
+				'bad'   => true,
+			);
+		}
+		$name  = strtolower( $tag[1] );
+		$end   = $start + strlen( $tag[0] );
+		$close = '</' === substr( $tag[0], 0, 2 );
+		$self  = '/>' === substr( $tag[0], -2 );
+		$next  = $end;
+		if ( ! $close && ! $self && in_array( $name, array( 'textarea', 'script', 'style' ), true ) ) {
+			$raw  = stripos( $html, '</' . $name, $end );
+			$next = false === $raw ? $end : $raw;
 		}
 		return array(
 			'start' => $start,
-			'end'   => $start + strlen( $tag[0] ),
-			'name'  => strtolower( $tag[1] ),
-			'close' => '</' === substr( $tag[0], 0, 2 ),
-			'self'  => '/>' === substr( $tag[0], -2 ),
+			'end'   => $end,
+			'next'  => $next,
+			'kind'  => 'tag',
+			'name'  => $name,
+			'close' => $close,
+			'self'  => $self,
+			'bad'   => false,
 		);
 	}
+
 	/**
 	 * The names of the tags in some markup, in order.
 	 *
