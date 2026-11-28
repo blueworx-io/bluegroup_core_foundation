@@ -698,6 +698,45 @@ final class PageLockTest extends TestCase {
 		$this->assertFalse( Lock::refuses( '<p>A</p><hr class="bwplbr"><p>B</p>' . self::HERO, '<p>A!</p><hr class="bwplbr"><p>B</p>' . self::HERO ) );
 	}
 
+	public function test_a_very_large_svg_is_read_without_holding_every_tag(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$svg = '<svg viewBox="0 0 9 9"><path d="BIGSVG"/><foreignObject><div>One</div><br><div>Two</div></foreignObject>' . str_repeat( '<path d="M0 0"/>', 200000 ) . '</svg>';
+		$old = '<p>Intro words</p>' . $svg . self::HERO;
+		$new = str_replace( 'Intro', 'New', $old );
+		$was = ini_get( 'memory_limit' );
+		// The limit a small host would set, with room for the page itself.
+		ini_set( 'memory_limit', ( (int) ( memory_get_usage() / 1048576 ) + 70 ) . 'M' );
+		try {
+			$this->assertFalse( Lock::refuses( $old, $new ) );
+		} finally {
+			ini_set( 'memory_limit', $was );
+		}
+	}
+
+	public function test_textarea_text_is_not_read_as_tags_in_the_final_check(): void {
+		$old = '<p>Intro words</p><textarea><b title="x</textarea><p class="a">After words</p>' . self::HERO;
+		$this->assertFalse( Lock::refuses( $old, str_replace( 'title="x', 'title=x', $old ) ) );
+		$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ) );
+	}
+
+	public function test_html_inside_a_foreignobject_follows_html_rules(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		foreach ( [ 'iframe', 'xmp', 'noembed', 'title', 'textarea' ] as $tag ) {
+			// An SVG written as text inside it is not a nested SVG, so the real one still closes.
+			$old = '<p>Intro words</p><svg viewBox="0 0 9 9"><path d="BIGSVG"/><foreignObject><' . $tag . '><svg></' . $tag . '></foreignObject></svg><p>After words</p>' . self::HERO;
+			$this->assertFalse( Lock::refuses( $old, str_replace( 'After words', 'New words', $old ) ), $tag );
+			$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ), $tag );
+		}
+	}
+
+	public function test_a_page_element_called_bwplsvg_cannot_take_an_svgs_place(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$svg = '<svg viewBox="0 0 9 9"><path d="BIGSVG"/></svg>';
+		$old = '<p>Intro words</p>' . $svg . '<bwplsvg/>' . $svg . self::HERO;
+		$this->assertFalse( Lock::refuses( $old, str_replace( 'Intro', 'New', $old ) ) );
+		$this->assertTrue( Lock::refuses( $old, '<p>Intro words</p><bwplsvg/>' . $svg . $svg . self::HERO ) );
+	}
+
 	public function test_a_text_edit_that_pushes_an_svg_past_the_limit_is_not_refused(): void {
 		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
 		$old = '<p>Intro <svg viewBox="0 0 9 9"><path d="M0 0"/></svg></p>' . self::HERO;

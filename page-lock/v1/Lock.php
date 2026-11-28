@@ -407,10 +407,10 @@ final class Lock {
 	 * @return string[]|false The elements, or false when the markup could not be read.
 	 */
 	private static function elements( $html, $words, $every = false ) {
+		// The marks put on a break standing alone, and where an SVG stood, are ours: the same words written in the page are not them.
+		$html   = str_ireplace( array( 'bwplbr', 'bwplsvg' ), array( 'bwplbx', 'bwplsvx' ), $html );
 		$svgs   = array();
 		$masked = self::set_aside_svgs( $html, $svgs );
-		// The mark put on a break standing alone is ours: the same word written in the page is not it.
-		$masked = str_ireplace( 'bwplbr', 'bwplbx', $masked );
 		return self::structure( $words ? self::as_words( $masked ) : $masked, $svgs, $every );
 	}
 
@@ -483,56 +483,91 @@ final class Lock {
 		$out   = '';
 		$taken = 0;
 		$pos   = 0;
-		$depth = 0;
 		$start = 0;
-		$math  = 0;
-		$text  = 0;
+		$stack = array();
 		while ( true ) {
-			// Inside an SVG, or inside MathML outside its text (where HTML starts again), CDATA runs to "]]>".
-			$token = self::next_token( $html, $pos, $depth > 0 || ( $math > 0 && 0 === $text ) );
+			$token = self::next_token( $html, $pos, self::is_foreign( $stack ) );
 			if ( ! is_array( $token ) ) {
 				break;
 			}
-			$pos = $token['next'];
-			if ( 0 === $depth && null !== $token['name'] && ! $token['bad'] ) {
-				$name = $token['name'];
-				if ( 'math' === $name ) {
-					if ( ! $token['close'] && ! $token['self'] ) {
-						++$math;
-					} elseif ( $token['close'] && $math > 0 && 0 === --$math ) {
-						$text = 0;
-					}
-				} elseif ( $math > 0 && in_array( $name, array( 'mi', 'mo', 'mn', 'ms', 'mtext' ), true ) ) {
-					if ( ! $token['close'] && ! $token['self'] ) {
-						++$text;
-					} elseif ( $token['close'] && $text > 0 ) {
-						--$text;
-					}
-				}
-			}
-			if ( 'svg' !== $token['name'] ) {
+			$pos    = $token['next'];
+			$before = self::svg_depth( $stack );
+			self::track( $stack, $token );
+			if ( 'svg' !== $token['name'] || ( $token['close'] && $before < 1 ) ) {
 				continue;
 			}
-			if ( $token['close'] ) {
-				if ( $depth < 1 ) {
-					continue;
-				}
-				--$depth;
-			} else {
-				if ( 0 === $depth ) {
-					$start = $token['start'];
-				}
-				if ( ! $token['self'] ) {
-					++$depth;
-				}
+			if ( ! $token['close'] && 0 === $before ) {
+				$start = $token['start'];
 			}
-			if ( 0 === $depth ) {
+			if ( 0 === self::svg_depth( $stack ) ) {
 				$svgs[] = substr( $html, $start, $token['end'] - $start );
 				$out   .= substr( $html, $taken, $start - $taken ) . '<bwplsvg/>';
 				$taken  = $token['end'];
 			}
 		}
 		return $out . substr( $html, $taken );
+	}
+
+	/**
+	 * Keeps track of which kind of markup is being read, as a browser does: inside an
+	 * SVG or MathML the rules for those apply, and HTML starts again inside the
+	 * places that hold HTML (an SVG's foreignObject, desc and title, and MathML's text).
+	 *
+	 * @param array[] $stack The open SVG and MathML elements and the places that hold HTML, innermost last.
+	 * @param array   $token A token from next_token().
+	 * @return void
+	 */
+	private static function track( &$stack, $token ) {
+		$name = $token['name'];
+		if ( null === $name ) {
+			return;
+		}
+		$top = empty( $stack ) ? 'html' : $stack[ count( $stack ) - 1 ][1];
+		if ( $token['close'] ) {
+			for ( $i = count( $stack ) - 1; $i >= 0; $i-- ) {
+				if ( $stack[ $i ][0] === $name ) {
+					array_splice( $stack, $i );
+					return;
+				}
+			}
+			return;
+		}
+		if ( $token['self'] ) {
+			return;
+		}
+		if ( 'svg' === $name || 'math' === $name ) {
+			$stack[] = array( $name, $name );
+		} elseif ( 'svg' === $top && in_array( $name, array( 'foreignobject', 'desc', 'title' ), true ) ) {
+			$stack[] = array( $name, 'html' );
+		} elseif ( 'math' === $top && in_array( $name, array( 'mi', 'mo', 'mn', 'ms', 'mtext' ), true ) ) {
+			$stack[] = array( $name, 'html' );
+		}
+	}
+
+	/**
+	 * Whether the markup being read is inside an SVG or MathML, not in a place that holds HTML.
+	 *
+	 * @param array[] $stack From track().
+	 * @return bool
+	 */
+	private static function is_foreign( $stack ) {
+		return ! empty( $stack ) && 'html' !== $stack[ count( $stack ) - 1 ][1];
+	}
+
+	/**
+	 * How many SVGs are open.
+	 *
+	 * @param array[] $stack From track().
+	 * @return int
+	 */
+	private static function svg_depth( $stack ) {
+		$depth = 0;
+		foreach ( $stack as $open ) {
+			if ( 'svg' === $open[0] ) {
+				++$depth;
+			}
+		}
+		return $depth;
 	}
 
 	/**
@@ -548,48 +583,77 @@ final class Lock {
 	 * @return string[]|false The names, or false when the SVG could not be read.
 	 */
 	private static function svg_tag_names( $svg, $every = false ) {
-		$tokens = array();
+		$names  = array();
+		$stack  = array();
 		$pos    = 0;
+		$prev   = null;
+		$run    = 0;
+		$first  = null;
+		$last   = null;
+		$before = null;
 		while ( true ) {
-			$token = self::next_token( $svg, $pos, true );
+			$token = self::next_token( $svg, $pos, self::is_foreign( $stack ) );
 			if ( null === $token ) {
 				break;
 			}
 			if ( $token['bad'] ) {
 				return false;
 			}
-			$pos      = $token['next'];
-			$tokens[] = $token;
-		}
-		$inline = '#^(?:' . self::INLINE . ')$#';
-		$names  = array();
-		$count  = count( $tokens );
-		for ( $i = 0; $i < $count; $i++ ) {
-			$token = $tokens[ $i ];
+			$pos = $token['next'];
+			self::track( $stack, $token );
+			$joins = $run > 0 && self::is_break( $token ) && self::blank_between( $svg, $last, $token );
+			if ( $run > 0 && ! $joins ) {
+				// A run of breaks with only space between them, read once from its first break.
+				self::break_names( $names, $svg, $every, $run, array( $before, $first, $last, $token ) );
+				$prev = $last;
+				$run  = 0;
+			}
 			if ( null === $token['name'] ) {
+				$prev = $token;
 				continue;
 			}
 			if ( self::is_break( $token ) ) {
-				// A run of breaks with only space between them, read once from its first break.
-				$run = 1;
-				while ( isset( $tokens[ $i + $run ] ) && self::is_break( $tokens[ $i + $run ] ) && self::blank_between( $svg, $tokens[ $i + $run - 1 ], $tokens[ $i + $run ] ) ) {
+				if ( $joins ) {
 					++$run;
+					$last = $token;
+				} else {
+					$run    = 1;
+					$first  = $token;
+					$last   = $token;
+					$before = $prev;
 				}
-				$before = $i > 0 ? $tokens[ $i - 1 ] : null;
-				$after  = isset( $tokens[ $i + $run ] ) ? $tokens[ $i + $run ] : null;
-				// Standing alone between two elements (or comments), a break is an element of its own.
-				$alone = $every || null !== $before && self::blank_between( $svg, $before, $token )
-					&& ( null === $after || self::blank_between( $svg, $tokens[ $i + $run - 1 ], $after ) )
-					&& self::is_edge( $before, $inline ) && ( null === $after || self::is_edge( $after, $inline ) );
-				for ( $r = 0; $r < $run; $r++ ) {
-					$names[] = $alone ? self::STANDALONE_BREAK : '<br';
-				}
-				$i += $run - 1;
 				continue;
 			}
 			$names[] = ( $token['close'] ? '</' : '<' ) . $token['name'];
+			$prev    = $token;
+		}
+		if ( $run > 0 ) {
+			self::break_names( $names, $svg, $every, $run, array( $before, $first, $last, null ) );
 		}
 		return $names;
+	}
+
+	/**
+	 * Adds the names for a run of line breaks inside an SVG.
+	 *
+	 * Standing alone between two elements (or comments), a break is an element of its own.
+	 *
+	 * @param string[] $names  The names so far.
+	 * @param string   $svg    The SVG's markup.
+	 * @param bool     $every  Whether every break counts as an element.
+	 * @param int      $run    How many breaks.
+	 * @param array    $around The token before the run (or null), its first and last break, and the token after it (or null).
+	 * @return void
+	 */
+	private static function break_names( &$names, $svg, $every, $run, $around ) {
+		list( $before, $first, $last, $after ) = $around;
+		$inline = '#^(?:' . self::INLINE . ')$#';
+		$alone  = $every || ( null !== $before && self::blank_between( $svg, $before, $first )
+			&& ( null === $after || self::blank_between( $svg, $last, $after ) )
+			&& self::is_edge( $before, $inline ) && ( null === $after || self::is_edge( $after, $inline ) ) );
+		for ( $r = 0; $r < $run; $r++ ) {
+			$names[] = $alone ? self::STANDALONE_BREAK : '<br';
+		}
 	}
 
 	/**
@@ -712,21 +776,41 @@ final class Lock {
 	 * The names of the tags in some markup, in order.
 	 *
 	 * A comment nobody closed would hide the sections after it, so its opening is
-	 * listed too. A tag runs to its closing bracket, and what a quoted attribute
-	 * says is not part of the markup. Possessive, so a long attribute cannot run
-	 * PHP's regex engine out of stack.
+	 * listed too. Read like the SVG finder reads: a tag runs to its closing bracket,
+	 * what a quoted attribute says is not part of the markup, and what is inside a
+	 * textarea (or script, style and the like) is text, not tags.
 	 *
 	 * @param string $html Markup.
 	 * @return string[]|false The names, or false when the markup could not be read.
 	 */
 	private static function tag_names( $html ) {
-		if ( false === preg_match_all( '#</?[a-z][a-z0-9-]*+(?:"[^"]*+"|\'[^\']*+\'|[^>"\']++)*+|<!--#', $html, $tags ) ) {
-			return false;
-		}
-		$names = array();
-		foreach ( $tags[0] as $tag ) {
+		$names  = array();
+		$pos    = 0;
+		$marker = '<hr class="bwplbr"';
+		while ( true ) {
+			$token = self::next_token( $html, $pos, false );
+			if ( null === $token ) {
+				break;
+			}
+			$pos = $token['next'];
+			if ( 'comment' === $token['kind'] ) {
+				if ( $token['bad'] ) {
+					$names[] = '<!--';
+				}
+				continue;
+			}
+			if ( 'tag' !== $token['kind'] ) {
+				continue;
+			}
+			if ( null === $token['name'] ) {
+				// A tag that never ends is still a tag.
+				if ( preg_match( '#</?[a-z][a-z0-9-]*#', $html, $name, 0, $token['start'] ) ) {
+					$names[] = $name[0];
+				}
+				continue;
+			}
 			// A break standing alone, which as_words() turned into a marked rule, is not the same element as a real rule.
-			$names[] = 0 === strpos( $tag, '<hr class="bwplbr"' ) ? self::STANDALONE_BREAK : ( preg_match( '#^</?[a-z][a-z0-9-]*#', $tag, $name ) ? $name[0] : $tag );
+			$names[] = substr( $html, $token['start'], strlen( $marker ) ) === $marker ? self::STANDALONE_BREAK : ( $token['close'] ? '</' : '<' ) . $token['name'];
 		}
 		return $names;
 	}

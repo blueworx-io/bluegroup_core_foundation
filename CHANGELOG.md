@@ -8,6 +8,11 @@
 - A textarea, title, xmp, iframe, noembed or noframes written with a slash (`<textarea/>`) still holds text until its closing tag, as in a browser, so an SVG tag written inside it cannot hide a real SVG.
 - A horizontal rule written with the editor's own marker (`<hr class="bwplbr">`) can no longer stand in for a line break standing alone; the marker is now one no page can write.
 
+- A very large inline SVG is read as it comes, not tag by tag in memory, so a words-only save no longer runs a small host out of memory.
+- The final layout check skips what is written inside a textarea (and script, style and the like), so an edited code example there cannot upset it.
+- Inside an SVG's foreignObject, desc and title, and MathML's text elements, markup follows HTML rules, so an SVG written as text in an iframe or textarea there is not read as a nested SVG.
+- The marker left where an SVG stood can no longer be forged by a `bwplsvg` element in the page.
+
 ## Page lock 1.0.7
 
 - New version number, so it is told apart from any copy of 1.0.6.
