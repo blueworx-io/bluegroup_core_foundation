@@ -1,5 +1,13 @@
 # Changelog
 
+## Page lock 1.0.8
+
+- New version number, so it is told apart from any copy of 1.0.7.
+- Typing words beside a line break that stands alone inside an SVG is no longer refused; deleting the break, adding one or swapping it for a rule still is.
+- MathML text (`<![CDATA[ a > b <svg> ]]>` inside `<math>`) can no longer hide a large inline SVG after it, so words beside the SVG stay editable. Text inside MathML's own text elements is read as HTML, as a browser does.
+- A textarea, title, xmp, iframe, noembed or noframes written with a slash (`<textarea/>`) still holds text until its closing tag, as in a browser, so an SVG tag written inside it cannot hide a real SVG.
+- A horizontal rule written with the editor's own marker (`<hr class="bwplbr">`) can no longer stand in for a line break standing alone; the marker is now one no page can write.
+
 ## Page lock 1.0.7
 
 - New version number, so it is told apart from any copy of 1.0.6.

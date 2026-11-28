@@ -652,6 +652,52 @@ final class PageLockTest extends TestCase {
 		$this->assertFalse( Lock::refuses( $old, str_replace( 'more', '<br>more', $old ) ) );
 	}
 
+	public function test_typing_beside_a_standalone_break_inside_an_svg_is_not_refused(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$make = function ( $between ) {
+			return '<p>Intro words</p><svg viewBox="0 0 9 9"><path d="BIGSVG"/><foreignObject><div>One</div>' . $between . '<div>Two</div></foreignObject></svg>' . self::HERO;
+		};
+		$this->assertFalse( Lock::refuses( $make( '<br>' ), $make( 'Hi<br>' ) ) );
+		$this->assertFalse( Lock::refuses( $make( '<br>' ), $make( '<br>Hi' ) ) );
+		$this->assertFalse( Lock::refuses( $make( '<br>' ), $make( 'Hi<br>there' ) ) );
+		// The break itself is still a layout element.
+		$this->assertTrue( Lock::refuses( $make( '<br>' ), $make( 'Hi' ) ) );
+		$this->assertTrue( Lock::refuses( $make( '<br>' ), $make( '<hr>Hi' ) ) );
+		$this->assertTrue( Lock::refuses( $make( '<br>' ), $make( 'Hi<br><br>' ) ) );
+	}
+
+	public function test_mathml_text_cannot_hide_a_large_svg(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$svg = '<svg viewBox="0 0 9 9"><path d="BIGSVG"/></svg>';
+		// CDATA inside MathML runs to "]]>", so the ">" and the svg tag inside it are only text.
+		$old = '<p>Intro words</p><math><![CDATA[ a > b <svg> ]]></math>' . $svg . '<p>After words</p>' . self::HERO;
+		$this->assertFalse( Lock::refuses( $old, str_replace( 'After words', 'New words', $old ) ) );
+		$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ) );
+		// In MathML text (an integration point) it is HTML again, so this is a real SVG.
+		$real = '<p>Intro words</p><math><mtext><![CDATA[ a > b ' . $svg . ' ]]></mtext></math><p>After words</p>' . self::HERO;
+		$this->assertFalse( Lock::refuses( $real, str_replace( 'After words', 'New words', $real ) ) );
+	}
+
+	public function test_a_textarea_written_as_self_closing_still_hides_what_is_inside_it(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$svg = '<svg viewBox="0 0 9 9"><path d="BIGSVG"/></svg>';
+		foreach ( [ 'textarea', 'title', 'xmp' ] as $tag ) {
+			$old = '<p>Intro words</p><' . $tag . '/> <svg> </' . $tag . '>' . $svg . '<p>After words</p>' . self::HERO;
+			$this->assertFalse( Lock::refuses( $old, str_replace( 'After words', 'New words', $old ) ), $tag );
+			$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ), $tag );
+		}
+	}
+
+	public function test_a_rule_made_to_look_like_a_standalone_break_is_refused(): void {
+		$old = '<p>A</p><br><p>B</p>' . self::HERO;
+		$this->assertTrue( Lock::refuses( $old, '<p>A</p><hr class="bwplbr"><p>B</p>' . self::HERO ) );
+		$this->assertTrue( Lock::refuses( $old, '<p>A</p><HR CLASS="bwplbr"><p>B</p>' . self::HERO ) );
+		$this->assertTrue( Lock::refuses( $old, '<p>A</p><hr-br><p>B</p>' . self::HERO ) );
+		// And the real one still is a break.
+		$this->assertFalse( Lock::refuses( $old, '<p>A!</p><br><p>B</p>' . self::HERO ) );
+		$this->assertFalse( Lock::refuses( '<p>A</p><hr class="bwplbr"><p>B</p>' . self::HERO, '<p>A!</p><hr class="bwplbr"><p>B</p>' . self::HERO ) );
+	}
+
 	public function test_a_text_edit_that_pushes_an_svg_past_the_limit_is_not_refused(): void {
 		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
 		$old = '<p>Intro <svg viewBox="0 0 9 9"><path d="M0 0"/></svg></p>' . self::HERO;

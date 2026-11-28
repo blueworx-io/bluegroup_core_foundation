@@ -42,6 +42,9 @@ final class Lock {
 	/** What an id looks like: the section's place on the page, such as 2, or 2.0 for the first one inside it. */
 	const PLACE = '\d+(?:\.\d+)*';
 
+	/** How a line break standing alone is named in a list of tags. It starts with a character no tag name can, so no tag in a page can pass for it. */
+	const STANDALONE_BREAK = '<!br';
+
 	/** Elements that are part of the words they sit in. */
 	const INLINE = 'a|abbr|b|bdi|bdo|br|cite|code|del|em|font|i|ins|kbd|mark|q|s|samp|small|span|strike|strong|sub|sup|time|tt|u|var|wbr';
 
@@ -63,7 +66,7 @@ final class Lock {
 	 *
 	 * @var string
 	 */
-	private static $version = '1.0.7';
+	private static $version = '1.0.8';
 
 	/**
 	 * True while the lock writes its own flag, so its own guard lets it through.
@@ -337,6 +340,12 @@ final class Lock {
 			if ( false !== $elements && ( $before === $elements || $plain === $elements ) ) {
 				continue;
 			}
+			// Words typed beside a break standing alone inside an SVG make it part of the words, but it is still there.
+			// Read with every break inside an SVG counted, the layout is then the same.
+			$every = self::elements( $html, true, true );
+			if ( false !== $every && self::elements( $old, true, true ) === $every ) {
+				continue;
+			}
 			// Markup that could not be read says nothing about its elements, so it has to be the same text.
 			if ( ( false === $elements || false === $before || false === $plain ) && trim( $old ) === trim( $html ) ) {
 				continue;
@@ -394,12 +403,15 @@ final class Lock {
 	 *
 	 * @param string $html  Markup from outside the sections.
 	 * @param bool   $words Whether line breaks are read as the editor does, inside words.
+	 * @param bool   $every Whether every line break inside an SVG counts as an element, not only those standing alone.
 	 * @return string[]|false The elements, or false when the markup could not be read.
 	 */
-	private static function elements( $html, $words ) {
+	private static function elements( $html, $words, $every = false ) {
 		$svgs   = array();
 		$masked = self::set_aside_svgs( $html, $svgs );
-		return self::structure( $words ? self::as_words( $masked ) : $masked, $svgs );
+		// The mark put on a break standing alone is ours: the same word written in the page is not it.
+		$masked = str_ireplace( 'bwplbr', 'bwplbx', $masked );
+		return self::structure( $words ? self::as_words( $masked ) : $masked, $svgs, $every );
 	}
 
 	/**
@@ -410,10 +422,11 @@ final class Lock {
 	 * does itself just by opening the page.
 	 *
 	 * @param string|null $html Markup from outside the sections with its SVGs set aside, or null when it could not be cleaned up.
-	 * @param string[]    $svgs The SVGs that were set aside, in order.
+	 * @param string[]    $svgs  The SVGs that were set aside, in order.
+	 * @param bool        $every Whether every line break inside an SVG counts as an element.
 	 * @return string[]|false The elements, or false when the markup could not be read.
 	 */
-	private static function structure( $html, $svgs = array() ) {
+	private static function structure( $html, $svgs = array(), $every = false ) {
 		if ( null === $html ) {
 			return false;
 		}
@@ -438,7 +451,7 @@ final class Lock {
 		$next = 0;
 		foreach ( $names as $name ) {
 			if ( '<bwplsvg' === $name && isset( $svgs[ $next ] ) ) {
-				$inside = self::svg_tag_names( $svgs[ $next ] );
+				$inside = self::svg_tag_names( $svgs[ $next ], $every );
 				++$next;
 				if ( false === $inside ) {
 					return false;
@@ -472,12 +485,31 @@ final class Lock {
 		$pos   = 0;
 		$depth = 0;
 		$start = 0;
+		$math  = 0;
+		$text  = 0;
 		while ( true ) {
-			$token = self::next_token( $html, $pos, $depth > 0 );
+			// Inside an SVG, or inside MathML outside its text (where HTML starts again), CDATA runs to "]]>".
+			$token = self::next_token( $html, $pos, $depth > 0 || ( $math > 0 && 0 === $text ) );
 			if ( ! is_array( $token ) ) {
 				break;
 			}
 			$pos = $token['next'];
+			if ( 0 === $depth && null !== $token['name'] && ! $token['bad'] ) {
+				$name = $token['name'];
+				if ( 'math' === $name ) {
+					if ( ! $token['close'] && ! $token['self'] ) {
+						++$math;
+					} elseif ( $token['close'] && $math > 0 && 0 === --$math ) {
+						$text = 0;
+					}
+				} elseif ( $math > 0 && in_array( $name, array( 'mi', 'mo', 'mn', 'ms', 'mtext' ), true ) ) {
+					if ( ! $token['close'] && ! $token['self'] ) {
+						++$text;
+					} elseif ( $token['close'] && $text > 0 ) {
+						--$text;
+					}
+				}
+			}
 			if ( 'svg' !== $token['name'] ) {
 				continue;
 			}
@@ -511,10 +543,11 @@ final class Lock {
 	 * outside an SVG (inside a foreignObject they change the spacing), and they
 	 * are kept even when the editor would drop them, as it does not touch an SVG.
 	 *
-	 * @param string $svg The SVG's markup.
+	 * @param string $svg   The SVG's markup.
+	 * @param bool   $every Whether every line break counts as an element, wherever it stands.
 	 * @return string[]|false The names, or false when the SVG could not be read.
 	 */
-	private static function svg_tag_names( $svg ) {
+	private static function svg_tag_names( $svg, $every = false ) {
 		$tokens = array();
 		$pos    = 0;
 		while ( true ) {
@@ -545,11 +578,11 @@ final class Lock {
 				$before = $i > 0 ? $tokens[ $i - 1 ] : null;
 				$after  = isset( $tokens[ $i + $run ] ) ? $tokens[ $i + $run ] : null;
 				// Standing alone between two elements (or comments), a break is an element of its own.
-				$alone = null !== $before && self::blank_between( $svg, $before, $token )
+				$alone = $every || null !== $before && self::blank_between( $svg, $before, $token )
 					&& ( null === $after || self::blank_between( $svg, $tokens[ $i + $run - 1 ], $after ) )
 					&& self::is_edge( $before, $inline ) && ( null === $after || self::is_edge( $after, $inline ) );
 				for ( $r = 0; $r < $run; $r++ ) {
-					$names[] = $alone ? '<hr-br' : '<br';
+					$names[] = $alone ? self::STANDALONE_BREAK : '<br';
 				}
 				$i += $run - 1;
 				continue;
@@ -657,7 +690,9 @@ final class Lock {
 		$close = '</' === substr( $tag[0], 0, 2 );
 		$self  = '/>' === substr( $tag[0], -2 );
 		$next  = $end;
-		if ( ! $close && ! $self && in_array( $name, array( 'textarea', 'script', 'style' ), true ) ) {
+		// Outside an SVG a slash does not close these, so what follows is still text; inside one only these three hold text.
+		$raw = $foreign ? array( 'textarea', 'script', 'style' ) : array( 'textarea', 'script', 'style', 'title', 'xmp', 'iframe', 'noembed', 'noframes' );
+		if ( ! $close && ( ! $self || ! $foreign ) && in_array( $name, $raw, true ) ) {
 			// Its end is its own closing tag, not one that only starts with the same letters.
 			$next = preg_match( '#</' . $name . '(?=[\s/>])#i', $html, $raw, PREG_OFFSET_CAPTURE, $end ) ? $raw[0][1] : $end;
 		}
@@ -691,7 +726,7 @@ final class Lock {
 		$names = array();
 		foreach ( $tags[0] as $tag ) {
 			// A break standing alone, which as_words() turned into a marked rule, is not the same element as a real rule.
-			$names[] = 0 === strpos( $tag, '<hr class="bwplbr"' ) ? '<hr-br' : ( preg_match( '#^</?[a-z][a-z0-9-]*#', $tag, $name ) ? $name[0] : $tag );
+			$names[] = 0 === strpos( $tag, '<hr class="bwplbr"' ) ? self::STANDALONE_BREAK : ( preg_match( '#^</?[a-z][a-z0-9-]*#', $tag, $name ) ? $name[0] : $tag );
 		}
 		return $names;
 	}
