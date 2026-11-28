@@ -763,6 +763,21 @@ final class PageLockTest extends TestCase {
 		$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ) );
 	}
 
+	public function test_a_textarea_inside_mathml_is_not_text_and_hides_nothing(): void {
+		// In MathML a textarea is an ordinary element, so what follows it is still the page.
+		$old = '<p>Intro words</p><math><textarea></math><div>Block</div><textarea></textarea>' . self::HERO;
+		$this->assertTrue( Lock::refuses( $old, str_replace( '<div>Block</div>', '<div>Block</div><iframe src="x"></iframe>', $old ) ) );
+		$this->assertTrue( Lock::refuses( $old, str_replace( '<div>Block</div>', '', $old ) ) );
+		$this->assertFalse( Lock::refuses( $old, str_replace( 'Intro', 'New', $old ) ) );
+	}
+
+	public function test_a_tag_left_open_in_an_svg_description_is_closed_with_its_parent(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$old = '<p>Intro words</p><svg viewBox="0 0 9 9"><desc><ul><li>Note</ul> <![CDATA[ a > b </svg> ]]></desc><path d="BIGSVG"/></svg><p>After words</p>' . self::HERO;
+		$this->assertFalse( Lock::refuses( $old, str_replace( 'After words', 'New words', $old ) ) );
+		$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ) );
+	}
+
 	public function test_a_deeply_nested_svg_is_read_quickly(): void {
 		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
 		$svg = str_repeat( '<svg viewBox="0 0 9 9"><g>', 20000 ) . '<path d="BIGSVG"/>' . str_repeat( '</g></svg>', 20000 );

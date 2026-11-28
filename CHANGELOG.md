@@ -18,6 +18,8 @@
 - An unfinished tag typed in a textarea (such as `<br`) can no longer cut away its real closing tag: what is inside a textarea, script or style is taken out before the markup is cleaned up.
 - In an SVG's desc or title, CDATA written after an HTML tag has closed is text again, as in a browser.
 - Closing a tag in a deeply nested SVG no longer copies the list of open elements, so a 20,000-level SVG is read in about two seconds, not minutes.
+- A textarea inside MathML or an SVG is an ordinary element there, not text, so it can no longer hide the page elements after it from the layout check.
+- In an SVG's desc or title, `<ul><li>Note</ul>` closes both elements, as in a browser, so CDATA after it is still text.
 
 ## Page lock 1.0.7
 

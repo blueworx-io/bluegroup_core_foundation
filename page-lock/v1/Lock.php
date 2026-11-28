@@ -374,12 +374,14 @@ final class Lock {
 		$safe  = '';
 		$taken = 0;
 		$pos   = 0;
+		$state = self::fresh_state();
 		while ( true ) {
-			$token = self::next_token( $html, $pos, false );
+			$token = self::next_token( $html, $pos, self::is_foreign( $state ) );
 			if ( null === $token ) {
 				break;
 			}
 			$pos = $token['next'];
+			self::track( $state, $token );
 			if ( 'tag' !== $token['kind'] || null === $token['name'] ) {
 				continue;
 			}
@@ -539,12 +541,14 @@ final class Lock {
 		$out   = '';
 		$taken = 0;
 		$pos   = 0;
+		$state = self::fresh_state();
 		while ( true ) {
-			$token = self::next_token( $html, $pos, false );
+			$token = self::next_token( $html, $pos, self::is_foreign( $state ) );
 			if ( null === $token ) {
 				break;
 			}
 			$pos = $token['next'];
+			self::track( $state, $token );
 			if ( 'tag' === $token['kind'] && null !== $token['name'] && $token['next'] > $token['end'] ) {
 				$out  .= substr( $html, $taken, $token['end'] - $taken );
 				$taken = $token['next'];
@@ -574,7 +578,7 @@ final class Lock {
 	 * Only those elements are kept, and how many of each is open, so a long run of
 	 * other tags costs nothing and a deeply nested SVG is not walked again for each tag.
 	 *
-	 * @param array $state From fresh_state(): the open elements (name, kind, and whether nothing has opened inside a place that holds HTML yet), innermost last.
+	 * @param array $state From fresh_state(): the open elements (name, kind, and for a place that holds HTML the elements opened inside it and how many of each), innermost last.
 	 * @param array $token A token from next_token().
 	 * @return void
 	 */
@@ -601,9 +605,13 @@ final class Lock {
 					}
 				}
 			}
-			// Closing something that opened inside a place that holds HTML.
-			if ( $count && 'html' === $kind && $state['open'][ $count - 1 ][2] > 0 ) {
-				--$state['open'][ $count - 1 ][2];
+			// Closing something that opened inside a place that holds HTML. Like a browser, it also closes
+			// what opened inside it and was left open ("<ul><li>Note</ul>" closes both).
+			if ( $count && 'html' === $kind && ! empty( $state['open'][ $count - 1 ][3][ $name ] ) ) {
+				do {
+					$gone = array_pop( $state['open'][ $count - 1 ][2] );
+					--$state['open'][ $count - 1 ][3][ $gone ];
+				} while ( $gone !== $name );
 			}
 			return;
 		}
@@ -612,16 +620,17 @@ final class Lock {
 		}
 		$push = null;
 		if ( 'svg' === $name || 'math' === $name ) {
-			$push = array( $name, $name, 0 );
+			$push = array( $name, $name, array(), array() );
 		} elseif ( 'svg' === $kind && in_array( $name, array( 'foreignobject', 'desc', 'title' ), true ) ) {
-			$push = array( $name, 'html', 0 );
+			$push = array( $name, 'html', array(), array() );
 		} elseif ( 'math' === $kind && in_array( $name, array( 'mi', 'mo', 'mn', 'ms', 'mtext' ), true ) ) {
-			$push = array( $name, 'html', 0 );
+			$push = array( $name, 'html', array(), array() );
 		}
 		if ( null === $push ) {
 			// Something opened inside a place that holds HTML, so what follows is no longer straight inside the SVG or MathML element until it closes.
 			if ( $count && 'html' === $kind && ! in_array( $name, self::VOID, true ) ) {
-				++$state['open'][ $count - 1 ][2];
+				$state['open'][ $count - 1 ][2][] = $name;
+				$state['open'][ $count - 1 ][3][ $name ] = isset( $state['open'][ $count - 1 ][3][ $name ] ) ? $state['open'][ $count - 1 ][3][ $name ] + 1 : 1;
 			}
 			return;
 		}
@@ -651,7 +660,7 @@ final class Lock {
 		if ( 'html' !== $top[1] ) {
 			return true;
 		}
-		return 0 === $top[2] ? 'mixed' : false;
+		return empty( $top[2] ) ? 'mixed' : false;
 	}
 
 	/**
@@ -844,7 +853,7 @@ final class Lock {
 		$self  = '/>' === substr( $tag[0], -2 );
 		$next  = $end;
 		// Outside an SVG a slash does not close these, so what follows is still text; inside one only these three hold text.
-		$raw = true === $foreign ? array( 'textarea', 'script', 'style' ) : array( 'textarea', 'script', 'style', 'title', 'xmp', 'iframe', 'noembed', 'noframes' );
+		$raw = true === $foreign ? array( 'script', 'style' ) : array( 'textarea', 'script', 'style', 'title', 'xmp', 'iframe', 'noembed', 'noframes' );
 		if ( ! $close && ( ! $self || true !== $foreign ) && in_array( $name, $raw, true ) ) {
 			// Its end is its own closing tag, not one that only starts with the same letters.
 			$next = preg_match( '#</' . $name . '(?=[\s/>])#i', $html, $raw, PREG_OFFSET_CAPTURE, $end ) ? $raw[0][1] : $end;
@@ -876,12 +885,14 @@ final class Lock {
 		$names  = array();
 		$pos    = 0;
 		$marker = '<hr class="bwplbr"';
+		$state = self::fresh_state();
 		while ( true ) {
-			$token = self::next_token( $html, $pos, false );
+			$token = self::next_token( $html, $pos, self::is_foreign( $state ) );
 			if ( null === $token ) {
 				break;
 			}
 			$pos = $token['next'];
+			self::track( $state, $token );
 			if ( 'comment' === $token['kind'] ) {
 				if ( $token['bad'] ) {
 					$names[] = '<!--';
