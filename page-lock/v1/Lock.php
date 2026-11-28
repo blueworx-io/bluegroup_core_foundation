@@ -373,7 +373,7 @@ final class Lock {
 		);
 		// Markup this cannot read is worked on as it is: the tag reader then refuses it unless it is unchanged.
 		$html = null === $safe ? $html : $safe;
-		$edge ='<(?!/?(?:' . self::INLINE . ')\b)[^>]*>';
+		$edge = '<(?!/?(?:' . self::INLINE . ')\b)[^>]*>';
 		$html = preg_replace_callback(
 			'#(^|' . $edge . ')((?:\s*<br\b[^>]*>)+)(?=\s*(?:$|' . $edge . '))#i',
 			function ( $m ) {
