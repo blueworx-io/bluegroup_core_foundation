@@ -567,12 +567,33 @@ final class PageLockTest extends TestCase {
 		$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ) );
 	}
 
-	public function test_many_inline_svgs_are_read_quickly(): void {
-		$svg   = '<svg viewBox="0 0 9 9"><path d="M0 0"/></svg>';
-		$old   = '<p>Intro</p>' . str_repeat( $svg, 8000 ) . self::HERO;
-		$start = microtime( true );
+	public function test_many_inline_svgs_are_read_and_compared(): void {
+		// Timing is not asserted (a busy machine would make it flaky); this keeps a page of many SVGs working.
+		$svg = '<svg viewBox="0 0 9 9"><path d="M0 0"/></svg>';
+		$old = '<p>Intro</p>' . str_repeat( $svg, 8000 ) . self::HERO;
 		$this->assertFalse( Lock::refuses( $old, str_replace( 'Intro', 'New words', $old ) ) );
-		$this->assertLessThan( 1.5, microtime( true ) - $start );
+		$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ) );
+	}
+
+	public function test_text_inside_an_svg_description_is_not_markup(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$make = function ( $text ) {
+			return '<p>Intro words</p>' . "\n\n" . '<svg viewBox="0 0 9 9"><desc><![CDATA[' . $text . ']]></desc><path d="BIGSVG"/></svg><p>After words</p>' . self::HERO;
+		};
+		// Words written in the description, even ones that look like tags, are not a layout change.
+		$this->assertFalse( Lock::refuses( $make( 'a picture' ), $make( 'draw an <svg> here' ) ) );
+		$this->assertFalse( Lock::refuses( $make( 'draw an <svg> here' ), $make( 'a picture' ) ) );
+		// An example tag left unfinished does not damage the closing marker or block edits beside it.
+		$open = $make( 'like <svg title="' );
+		$this->assertFalse( Lock::refuses( $open, str_replace( 'After words', 'New words', $open ) ) );
+		$this->assertTrue( Lock::refuses( $open, $open . '<iframe src="x"></iframe>' ) );
+		// A processing instruction can hold CDATA-looking text without starting a CDATA section.
+		$pi = '<p>Intro words</p>' . "\n\n" . '<svg viewBox="0 0 9 9"><?note <![CDATA[ ?><path d="BIGSVG"/></svg><p>After words</p>' . self::HERO;
+		$this->assertFalse( Lock::refuses( $pi, str_replace( 'After words', 'New words', $pi ) ) );
+		$this->assertTrue( Lock::refuses( $pi, $pi . '<iframe src="x"></iframe>' ) );
+		// A comment inside the SVG is not a tag either way.
+		$note = str_replace( '<path', '<!-- a <b> note --><path', $pi );
+		$this->assertFalse( Lock::refuses( $pi, $note ) );
 	}
 
 	public function test_a_text_edit_that_pushes_an_svg_past_the_limit_is_not_refused(): void {

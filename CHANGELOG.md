@@ -1,5 +1,10 @@
 # Changelog
 
+## Page lock 1.0.5
+
+- New version number, so it is told apart from any copy of 1.0.4.
+- Large inline SVGs are now set aside before anything else reads the markup, and inside one comments, CDATA and processing instructions are passed over whole. What an SVG's description says (even `<svg>` or an unfinished `<svg title="`) is no longer mistaken for markup or damaged, so editing it, or the words beside it, is not refused.
+
 ## Page lock 1.0.4
 
 - New version number, so it is told apart from any earlier 1.0.3 copy (a site runs the copy with the highest number).

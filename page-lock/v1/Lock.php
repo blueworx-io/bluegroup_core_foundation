@@ -63,7 +63,7 @@ final class Lock {
 	 *
 	 * @var string
 	 */
-	private static $version = '1.0.4';
+	private static $version = '1.0.5';
 
 	/**
 	 * True while the lock writes its own flag, so its own guard lets it through.
@@ -330,9 +330,9 @@ final class Lock {
 		}
 		foreach ( $now['html'] as $i => $html ) {
 			$old      = $was['html'][ $i ];
-			$elements = self::structure( self::as_words( $html ) );
-			$before   = self::structure( self::as_words( $old ) );
-			$plain    = self::structure( $old );
+			$elements = self::elements( $html, true );
+			$before   = self::elements( $old, true );
+			$plain    = self::elements( $old, false );
 			// As it is saved, or as the block editor redraws it by opening the page.
 			if ( false !== $elements && ( $before === $elements || $plain === $elements ) ) {
 				continue;
@@ -385,16 +385,35 @@ final class Lock {
 	}
 
 	/**
+	 * The elements outside the sections in one piece of markup.
+	 *
+	 * Large inline SVGs are set aside first, before anything else reads the
+	 * markup, so what is written inside one (a description, an unfinished tag
+	 * example, a comment) can neither be mistaken for markup nor damaged by the
+	 * tidying of the words round it.
+	 *
+	 * @param string $html  Markup from outside the sections.
+	 * @param bool   $words Whether line breaks are read as the editor does, inside words.
+	 * @return string[]|false The elements, or false when the markup could not be read.
+	 */
+	private static function elements( $html, $words ) {
+		$svgs   = array();
+		$masked = self::set_aside_svgs( $html, $svgs );
+		return self::structure( $words ? self::as_words( $masked ) : $masked, $svgs );
+	}
+
+	/**
 	 * The elements in some markup, in order.
 	 *
 	 * Links and formatting inside words are left out, as they are part of the
 	 * words. Paragraph tags are put round plain words first, as the block editor
 	 * does itself just by opening the page.
 	 *
-	 * @param string|null $html Markup from outside the sections, or null when it could not be cleaned up.
+	 * @param string|null $html Markup from outside the sections with its SVGs set aside, or null when it could not be cleaned up.
+	 * @param string[]    $svgs The SVGs that were set aside, in order.
 	 * @return string[]|false The elements, or false when the markup could not be read.
 	 */
-	private static function structure( $html ) {
+	private static function structure( $html, $svgs = array() ) {
 		if ( null === $html ) {
 			return false;
 		}
@@ -406,11 +425,8 @@ final class Lock {
 			return array();
 		}
 		// A large inline SVG is more than WordPress can work on, and it hands back nothing, which must not read as no
-		// elements. The SVGs are set aside, so the words round them are tidied as they are anywhere else, and their
-		// own tags are put back where they stood.
-		$svgs   = array();
-		$masked = self::set_aside_svgs( $bare, $svgs );
-		$html   = strtolower( wpautop( $masked ) );
+		// elements. The words round it are tidied as they are anywhere else, and its own tags are put back where it stood.
+		$html = strtolower( wpautop( $bare ) );
 		if ( '' === trim( $html ) ) {
 			return false;
 		}
@@ -422,7 +438,7 @@ final class Lock {
 		$next = 0;
 		foreach ( $names as $name ) {
 			if ( '<bwplsvg' === $name && isset( $svgs[ $next ] ) ) {
-				$inside = self::tag_names( strtolower( $svgs[ $next ] ) );
+				$inside = self::svg_tag_names( $svgs[ $next ] );
 				++$next;
 				if ( false === $inside ) {
 					return false;
@@ -442,79 +458,122 @@ final class Lock {
 	 * Markup with each inline SVG taken out and a marker left in its place.
 	 *
 	 * Found by position, not by a pattern, so a very large SVG cannot run PHP's
-	 * regex engine out of steps.
+	 * regex engine out of steps. Comments, CDATA, processing instructions and
+	 * whole tags are passed over as they come, so an SVG tag written inside one
+	 * of them is not an SVG. One that never closes is left as it is.
 	 *
 	 * @param string   $html Markup from outside the sections.
 	 * @param string[] $svgs Filled with each SVG taken out, in order.
 	 * @return string
 	 */
 	private static function set_aside_svgs( $html, &$svgs ) {
-		$out = '';
-		$at  = 0;
-		while ( preg_match( '#<svg(?=[\s/>])#i', $html, $open, PREG_OFFSET_CAPTURE, $at ) ) {
-			$from = $open[0][1];
-			$last = self::svg_end( $html, $from );
-			if ( false === $last ) {
+		$out   = '';
+		$taken = 0;
+		$pos   = 0;
+		$depth = 0;
+		$start = 0;
+		while ( true ) {
+			$token = self::next_token( $html, $pos );
+			if ( ! is_array( $token ) ) {
 				break;
 			}
-			$svgs[] = substr( $html, $from, $last + 1 - $from );
-			$out   .= substr( $html, $at, $from - $at ) . '<bwplsvg/>';
-			$at     = $last + 1;
+			$pos = $token['end'];
+			if ( 'svg' !== $token['name'] ) {
+				continue;
+			}
+			if ( $token['close'] ) {
+				if ( $depth < 1 ) {
+					continue;
+				}
+				--$depth;
+			} else {
+				if ( 0 === $depth ) {
+					$start = $token['start'];
+				}
+				if ( ! $token['self'] ) {
+					++$depth;
+				}
+			}
+			if ( 0 === $depth ) {
+				$svgs[] = substr( $html, $start, $token['end'] - $start );
+				$out   .= substr( $html, $taken, $start - $taken ) . '<bwplsvg/>';
+				$taken  = $token['end'];
+			}
 		}
-		return $out . substr( $html, $at );
+		return $out . substr( $html, $taken );
 	}
 
 	/**
-	 * Where the SVG that opens at a position ends.
+	 * The names of the tags inside one SVG, in order.
 	 *
-	 * An SVG that closes itself ends with its own tag, and one inside another
-	 * ends at its own closing tag, so the words between SVGs stay outside them.
+	 * Comments, CDATA and processing instructions are not tags, whatever they say.
 	 *
-	 * @param string $html Markup.
-	 * @param int    $from Position of the SVG's opening `<svg`.
-	 * @return int|false Position of the final `>`, or false when it never closes.
+	 * @param string $svg The SVG's markup.
+	 * @return string[]|false The names, or false when the SVG could not be read.
 	 */
-	private static function svg_end( $html, $from ) {
-		$tag = '#<svg(?:"[^"]*+"|\'[^\']*+\'|[^>"\']++)*+>#iA';
-		$at  = $from;
-		$low = 0;
-		do {
-			if ( preg_match( $tag, $html, $open, 0, $at ) ) {
-				$at = $at + strlen( $open[0] );
-				if ( '/>' !== substr( $open[0], -2 ) ) {
-					++$low;
-				}
-			} else {
-				// A closing tag, or an opening one that never ends.
-				$close = stripos( $html, '</svg', $at );
-				$last  = false === $close ? false : strpos( $html, '>', $close );
-				if ( false === $last || $low < 1 || '</' !== substr( $html, $at, 2 ) ) {
-					return false;
-				}
-				--$low;
-				$at = $last + 1;
+	private static function svg_tag_names( $svg ) {
+		$names = array();
+		$pos   = 0;
+		while ( true ) {
+			$token = self::next_token( $svg, $pos );
+			if ( false === $token ) {
+				return false;
 			}
-			if ( $low < 1 ) {
-				return $at - 1;
+			if ( null === $token ) {
+				return $names;
 			}
-			// On to the next opening or closing SVG tag, passing over any CDATA, whose words are not markup.
-			while ( true ) {
-				if ( ! preg_match( '#<!\[CDATA\[|<(/?)svg(?=[\s/>])#i', $html, $next, PREG_OFFSET_CAPTURE, $at ) ) {
-					return false;
-				}
-				$at = $next[0][1];
-				if ( '<!' !== substr( $next[0][0], 0, 2 ) ) {
-					break;
-				}
-				$end = strpos( $html, ']]>', $at );
-				if ( false === $end ) {
-					return false;
-				}
-				$at = $end + 3;
+			$pos = $token['end'];
+			if ( null !== $token['name'] ) {
+				$names[] = ( $token['close'] ? '</' : '<' ) . $token['name'];
 			}
-		} while ( true );
+		}
 	}
 
+	/**
+	 * The next tag in some markup, or the next comment, CDATA section or
+	 * processing instruction, which are passed over whole.
+	 *
+	 * @param string $html Markup.
+	 * @param int    $from Where to start looking.
+	 * @return array|false|null Null at the end, false when what comes next never ends, otherwise its start, end, lowercase tag name (null when it is not a tag), and whether it closes or closes itself.
+	 */
+	private static function next_token( $html, $from ) {
+		if ( ! preg_match( '#<!--|<!\[CDATA\[|<\?|</?[a-z]#i', $html, $found, PREG_OFFSET_CAPTURE, $from ) ) {
+			return null;
+		}
+		$start = $found[0][1];
+		$open  = $found[0][0];
+		$ends  = array(
+			'<!--'      => '-->',
+			'<![CDATA[' => ']]>',
+			'<?'        => '?>',
+		);
+		$key = strtoupper( $open ) === '<![CDATA[' ? '<![CDATA[' : $open;
+		if ( isset( $ends[ $key ] ) ) {
+			$end = strpos( $html, $ends[ $key ], $start + strlen( $open ) );
+			if ( false === $end ) {
+				return false;
+			}
+			return array(
+				'start' => $start,
+				'end'   => $end + strlen( $ends[ $key ] ),
+				'name'  => null,
+				'close' => false,
+				'self'  => false,
+			);
+		}
+		// A tag runs to its closing bracket, and what a quoted attribute says is not part of the markup.
+		if ( ! preg_match( '#</?([a-z][a-z0-9-]*+)(?:"[^"]*+"|\'[^\']*+\'|[^>"\']++)*+>#iA', $html, $tag, 0, $start ) ) {
+			return false;
+		}
+		return array(
+			'start' => $start,
+			'end'   => $start + strlen( $tag[0] ),
+			'name'  => strtolower( $tag[1] ),
+			'close' => '</' === substr( $tag[0], 0, 2 ),
+			'self'  => '/>' === substr( $tag[0], -2 ),
+		);
+	}
 	/**
 	 * The names of the tags in some markup, in order.
 	 *
