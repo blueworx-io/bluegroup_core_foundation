@@ -1,5 +1,12 @@
 # Changelog
 
+## Page lock 1.0.7
+
+- New version number, so it is told apart from any copy of 1.0.6.
+- A stray `<?` ends at the first `>`, as in a browser, so a `?>` further on cannot swallow a large inline SVG; a textarea, script or style ends only at its own closing tag (`</textarea-example>` does not end one).
+- A long run of line breaks inside an SVG is read once, not once per break, so a save stays fast.
+- A line break standing alone between elements inside an SVG can no longer be deleted or swapped for a horizontal rule, and outside an SVG a standalone break swapped for a rule is refused too.
+
 ## Page lock 1.0.6
 
 - New version number, so it is told apart from any copy of 1.0.5.

@@ -613,13 +613,43 @@ final class PageLockTest extends TestCase {
 			return '<p>Intro words</p><svg viewBox="0 0 9 9"><path d="BIGSVG"/><foreignObject><div>One</div>' . $between . '<div>Two</div></foreignObject></svg>' . self::HERO;
 		};
 		$this->assertTrue( Lock::refuses( $make( '' ), $make( '<br>' ) ) );
-		// Dropping a break the editor would drop on opening the page is allowed outside an SVG too.
-		$this->assertFalse( Lock::refuses( $make( '<br>' ), $make( '' ) ) );
+		$this->assertTrue( Lock::refuses( $make( '<br>' ), $make( '' ) ) );
+		// A break swapped for a rule is a different element.
+		$this->assertTrue( Lock::refuses( $make( '<br>' ), $make( '<hr>' ) ) );
+		$this->assertFalse( Lock::refuses( $make( '<hr>' ), str_replace( 'One', 'Uno', $make( '<hr>' ) ) ) );
 		$this->assertTrue( Lock::refuses( $make( '<br>' ), $make( '<br><br>' ) ) );
 		// A break inside words is part of the words, as it is outside an SVG.
 		$words = '<svg viewBox="0 0 9 9"><path d="BIGSVG"/><foreignObject><div>One<br>more</div></foreignObject></svg>' . self::HERO;
 		$this->assertFalse( Lock::refuses( $words, str_replace( '<br>', '<br><br>', $words ) ) );
 		$this->assertFalse( Lock::refuses( $make( '<br>' ), str_replace( 'One', 'Uno', $make( '<br>' ) ) ) );
+	}
+
+	public function test_a_break_swapped_for_a_rule_outside_an_svg_is_refused(): void {
+		$this->assertTrue( Lock::refuses( '<p>A</p><br><p>B</p>' . self::HERO, '<p>A</p><hr><p>B</p>' . self::HERO ) );
+		$this->assertTrue( Lock::refuses( '<p>A</p><hr><p>B</p>' . self::HERO, '<p>A</p><br><p>B</p>' . self::HERO ) );
+	}
+
+	public function test_a_stray_instruction_or_fake_textarea_end_cannot_hide_a_large_svg(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$svg = '<svg viewBox="0 0 9 9"><path d="BIGSVG"/></svg>';
+		$set = [
+			// The first closing bracket ends an opening "<?", as in a browser, so a later instruction end does not reach back over the SVG.
+			'<p>Intro words</p><p>Is it <? maybe</p>' . $svg . '<p>After words ?></p>',
+			// "</textarea-example>" does not end a textarea.
+			'<p>Intro words</p><textarea>see </textarea-example> <svg></textarea>' . $svg . '<p>After words</p>',
+		];
+		foreach ( $set as $html ) {
+			$old = $html . self::HERO;
+			$this->assertFalse( Lock::refuses( $old, str_replace( 'After words', 'New words', $old ) ), $html );
+			$this->assertTrue( Lock::refuses( $old, $old . '<iframe src="x"></iframe>' ), $html );
+		}
+	}
+
+	public function test_a_long_run_of_line_breaks_inside_an_svg_is_read_in_one_pass(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$old = '<p>Intro words</p><svg viewBox="0 0 9 9"><path d="BIGSVG"/><foreignObject><div>Word' . str_repeat( '<br>', 4000 ) . 'more</div></foreignObject></svg>' . self::HERO;
+		$this->assertFalse( Lock::refuses( $old, str_replace( 'Intro', 'New', $old ) ) );
+		$this->assertFalse( Lock::refuses( $old, str_replace( 'more', '<br>more', $old ) ) );
 	}
 
 	public function test_a_text_edit_that_pushes_an_svg_past_the_limit_is_not_refused(): void {
