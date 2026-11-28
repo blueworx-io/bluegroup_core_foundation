@@ -540,6 +540,25 @@ final class PageLockTest extends TestCase {
 		$this->assertTrue( Lock::refuses( '<div>One</div><div>Two ' . $svg . '</div>' . self::HERO, '<div>One ' . $svg . '</div><div>Two</div>' . self::HERO ) );
 	}
 
+	public function test_each_svg_is_matched_to_its_own_closing_tag(): void {
+		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
+		$small = '<svg viewBox="0 0 9 9"/>';
+		$big   = '<svg viewBox="0 0 9 9"><path d="BIGSVG"/></svg>';
+		$loose = 'Intro ' . $small . ' middle words ' . $big;
+		$paras = '<p>Intro ' . $small . '</p><p>Middle words ' . $big . '</p>';
+		$plain = 'Intro ' . $small . "\n\nMiddle words " . $big;
+		// A self-closing SVG before another one does not join them and the words between.
+		$this->assertFalse( Lock::refuses( $paras . self::HERO, $plain . self::HERO ) );
+		$this->assertFalse( Lock::refuses( $plain . self::HERO, $paras . self::HERO ) );
+		$this->assertFalse( Lock::refuses( $loose . self::HERO, str_replace( 'middle words', 'other words', $loose ) . self::HERO ) );
+		$this->assertTrue( Lock::refuses( $loose . self::HERO, str_replace( ' middle words ', ' middle <iframe src="x"></iframe> ', $loose ) . self::HERO ) );
+		// An SVG inside another SVG ends at its own closing tag.
+		$nested = 'Intro <svg viewBox="0 0 9 9"><svg x="1"><path d="BIGSVG"/></svg><g/></svg>' . "\n\nafter words";
+		$this->assertFalse( Lock::refuses( $nested . self::HERO, str_replace( 'after words', 'new words', $nested ) . self::HERO ) );
+		$this->assertTrue( Lock::refuses( $nested . self::HERO, $nested . '<iframe src="x"></iframe>' . self::HERO ) );
+		$this->assertTrue( Lock::refuses( $nested . self::HERO, str_replace( '<g/>', '<g/><script></script>', $nested ) . self::HERO ) );
+	}
+
 	public function test_a_text_edit_that_pushes_an_svg_past_the_limit_is_not_refused(): void {
 		$GLOBALS['bwpl_wpautop_fails'] = [ 'BIGSVG' ];
 		$old = '<p>Intro <svg viewBox="0 0 9 9"><path d="M0 0"/></svg></p>' . self::HERO;

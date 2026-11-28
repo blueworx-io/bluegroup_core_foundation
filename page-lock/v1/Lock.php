@@ -447,9 +447,8 @@ final class Lock {
 		$out = '';
 		$at  = 0;
 		while ( preg_match( '#<svg(?=[\s/>])#i', $html, $open, PREG_OFFSET_CAPTURE, $at ) ) {
-			$from  = $open[0][1];
-			$close = stripos( $html, '</svg', $from );
-			$last  = false === $close ? false : strpos( $html, '>', $close );
+			$from = $open[0][1];
+			$last = self::svg_end( $html, $from );
 			if ( false === $last ) {
 				break;
 			}
@@ -458,6 +457,47 @@ final class Lock {
 			$at     = $last + 1;
 		}
 		return $out . substr( $html, $at );
+	}
+
+	/**
+	 * Where the SVG that opens at a position ends.
+	 *
+	 * An SVG that closes itself ends with its own tag, and one inside another
+	 * ends at its own closing tag, so the words between SVGs stay outside them.
+	 *
+	 * @param string $html Markup.
+	 * @param int    $from Position of the SVG's opening `<svg`.
+	 * @return int|false Position of the final `>`, or false when it never closes.
+	 */
+	private static function svg_end( $html, $from ) {
+		$tag = '#<svg(?:"[^"]*+"|\'[^\']*+\'|[^>"\']++)*+>#iA';
+		$at  = $from;
+		$low = 0;
+		do {
+			if ( preg_match( $tag, $html, $open, 0, $at ) ) {
+				$at = $at + strlen( $open[0] );
+				if ( '/>' !== substr( $open[0], -2 ) ) {
+					++$low;
+				}
+			} else {
+				// A closing tag, or an opening one that never ends.
+				$close = stripos( $html, '</svg', $at );
+				$last  = false === $close ? false : strpos( $html, '>', $close );
+				if ( false === $last || $low < 1 || '</' !== substr( $html, $at, 2 ) ) {
+					return false;
+				}
+				--$low;
+				$at = $last + 1;
+			}
+			if ( $low < 1 ) {
+				return $at - 1;
+			}
+			// On to the next opening or closing SVG tag.
+			if ( ! preg_match( '#<(/?)svg(?=[\s/>])#i', $html, $next, PREG_OFFSET_CAPTURE, $at ) ) {
+				return false;
+			}
+			$at = $next[0][1];
+		} while ( true );
 	}
 
 	/**

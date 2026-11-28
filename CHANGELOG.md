@@ -6,6 +6,7 @@
 - Words beside a large inline SVG can be edited on a locked page again: when WordPress cannot tidy the markup, its tags are read as they stand instead of the whole piece having to stay the same.
 - Large inline SVGs are set aside before WordPress tidies the words round them, so paragraphs beside one are read as anywhere else (editor-added paragraph tags are no change; a paragraph added or removed is), and a text edit that tips an SVG over WordPress's limit is not refused.
 - Autosaves keep their section ids (the live page and ordinary revisions still do not), so restoring one that only changed words is no longer mistaken for a move.
+- Each inline SVG is matched to its own closing tag: a self-closing one before another no longer joins them with the words between, and a nested one ends at its own closing tag.
 - A `<br` written inside a quoted attribute is no longer read as a line break, so it cannot hide a closing tag.
 
 ## Page lock 1.0.2
